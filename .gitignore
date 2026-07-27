@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Shared authentication
+shared-auth/
+**/shared-auth/
+.aws/
+.config/gh/
+
+# Runtime state
+data/
+runtime-data/
+workspaces-data/
+.cloud-sandbox-data/
+*.pid
+*.log
+
+# Dependencies and builds
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.next/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Editors
+.vscode/
+.idea/

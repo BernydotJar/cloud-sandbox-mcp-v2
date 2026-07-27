@@ -1,0 +1,27 @@
+services:
+  mcp:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # The service always listens inside its container on port 3000 and stores
+      # persistent data at /data. All other values come directly from .env.
+      PORT: 3000
+      BIND_HOST: 0.0.0.0
+      MCP_DATA_DIR: /data
+    volumes:
+      - "${HOST_DATA_DIR:?Run ./scripts/bootstrap.sh first}:/data"
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s

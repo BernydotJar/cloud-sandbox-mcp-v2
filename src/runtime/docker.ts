@@ -1,0 +1,153 @@
+import type { AppConfig } from '../config.js';
+import type { CommandResult } from '../domain.js';
+import { AppError } from '../utils/errors.js';
+import { runCommand } from './command.js';
+
+export class DockerRuntime {
+  constructor(private readonly cfg: AppConfig) {}
+
+  async ensureAvailable(): Promise<void> {
+    const result = await runCommand('docker', ['version', '--format', '{{.Server.Version}}'], {
+      timeoutMs: 10_000,
+      maxOutputBytes: 10_000
+    });
+    if (result.exitCode !== 0) {
+      throw new AppError(`Docker is unavailable: ${result.stderr || result.stdout}`, 'DOCKER_UNAVAILABLE', 503);
+    }
+  }
+
+  async imageExists(image: string): Promise<boolean> {
+    const result = await runCommand('docker', ['image', 'inspect', image], {
+      timeoutMs: 15_000,
+      maxOutputBytes: 10_000
+    });
+    return result.exitCode === 0;
+  }
+
+  async fixOwnership(hostPath: string, image: string): Promise<void> {
+    const result = await runCommand(
+      'docker',
+      ['run', '--rm', '--user', '0:0', '--mount', `type=bind,src=${hostPath},dst=/workspace`, image, 'chown', '-R', '1000:1000', '/workspace'],
+      { timeoutMs: 120_000, maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES }
+    );
+    if (result.exitCode !== 0) {
+      throw new AppError(`Could not set workspace ownership: ${result.stderr}`, 'OWNERSHIP_FAILED', 500);
+    }
+  }
+
+  async createContainer(params: {
+    name: string;
+    image: string;
+    hostRepoPath: string;
+    hostHomePath: string;
+    hostDockerPath: string;
+    workspaceId: string;
+  }): Promise<void> {
+    const common = [
+      'run', '-d',
+      '--name', params.name,
+      '--hostname', `workstation-${params.workspaceId.slice(0, 8)}`,
+      '--label', 'cloud-sandbox-mcp=true',
+      '--label', `cloud-sandbox-workspace=${params.workspaceId}`,
+      '--workdir', '/workspace',
+      '--pids-limit', String(this.cfg.SANDBOX_PIDS_LIMIT),
+      '--memory', this.cfg.SANDBOX_MEMORY,
+      '--cpus', this.cfg.SANDBOX_CPUS,
+      '--network', this.cfg.SANDBOX_NETWORK,
+      '--mount', `type=bind,src=${params.hostRepoPath},dst=/workspace`,
+      '--mount', `type=bind,src=${params.hostHomePath},dst=/home/agent`,
+      '--mount', `type=bind,src=${process.env.HOST_DATA_DIR}/shared-auth,dst=/shared-auth`,
+      '--env', 'HOME=/home/agent',
+      '--env', 'GH_CONFIG_DIR=/shared-auth/gh',
+      '--env', 'AWS_CONFIG_FILE=/shared-auth/aws/config',
+      '--env', 'AWS_SHARED_CREDENTIALS_FILE=/shared-auth/aws/credentials',
+      '--env', 'AWS_LOGIN_CACHE_DIRECTORY=/shared-auth/aws/login/cache',
+      '--env', 'CI=true'
+    ];
+
+    const args = this.cfg.workstationMode
+      ? [
+          ...common,
+          '--privileged',
+          '--mount', `type=bind,src=${params.hostDockerPath},dst=/var/lib/docker`,
+          '--env', `INNER_DOCKER_STORAGE_DRIVER=${this.cfg.INNER_DOCKER_STORAGE_DRIVER}`,
+          params.image
+        ]
+      : [
+          ...common,
+          '--user', '1000:1000',
+          '--read-only',
+          '--cap-drop', 'ALL',
+          '--security-opt', 'no-new-privileges',
+          '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m',
+          params.image,
+          'sleep', 'infinity'
+        ];
+
+    const result = await runCommand('docker', args, {
+      timeoutMs: 120_000,
+      maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES
+    });
+    if (result.exitCode !== 0) {
+      throw new AppError(`Container creation failed: ${result.stderr}`, 'CONTAINER_CREATE_FAILED', 500);
+    }
+
+    if (this.cfg.workstationMode) {
+      const ready = await this.exec(params.name, 'docker info >/dev/null && python3 --version && uv --version && node --version', 120_000, '/workspace');
+      if (ready.exitCode !== 0) {
+        const logs = await runCommand('docker', ['logs', params.name], { timeoutMs: 15_000, maxOutputBytes: 50_000 });
+        await this.remove(params.name).catch(() => undefined);
+        throw new AppError(`Workstation runtime did not become ready: ${ready.stderr || logs.stderr || logs.stdout}`, 'WORKSTATION_NOT_READY', 500);
+      }
+    }
+  }
+
+  async inspect(name: string): Promise<{ running: boolean; status: string }> {
+    const result = await runCommand('docker', ['inspect', '--format', '{{.State.Running}}|{{.State.Status}}', name], {
+      timeoutMs: 15_000,
+      maxOutputBytes: 10_000
+    });
+    if (result.exitCode !== 0) return { running: false, status: 'missing' };
+    const [running, status] = result.stdout.trim().split('|');
+    return { running: running === 'true', status: status ?? 'unknown' };
+  }
+
+  async start(name: string): Promise<void> {
+    const result = await runCommand('docker', ['start', name], { timeoutMs: 60_000, maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES });
+    if (result.exitCode !== 0) throw new AppError(`Could not start container: ${result.stderr}`, 'CONTAINER_START_FAILED');
+  }
+
+  async exec(name: string, command: string, timeoutMs: number, cwd = '/workspace'): Promise<CommandResult> {
+    const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1_000));
+    return await runCommand(
+      'docker',
+      ['exec', '--workdir', cwd, name, 'timeout', '--signal=TERM', '--kill-after=2s', `${timeoutSeconds}s`, 'bash', '-lc', command],
+      { timeoutMs: timeoutMs + 5_000, maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES }
+    );
+  }
+
+  async execArgv(name: string, executable: string, args: string[], timeoutMs: number, cwd = '/workspace'): Promise<CommandResult> {
+    const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1_000));
+    return await runCommand(
+      'docker',
+      ['exec', '--workdir', cwd, name, 'timeout', '--signal=TERM', '--kill-after=2s', `${timeoutSeconds}s`, executable, ...args],
+      { timeoutMs: timeoutMs + 5_000, maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES }
+    );
+  }
+
+  async execWithInput(name: string, executable: string, args: string[], input: string, timeoutMs: number, cwd = '/workspace'): Promise<CommandResult> {
+    const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1_000));
+    return await runCommand(
+      'docker',
+      ['exec', '-i', '--workdir', cwd, name, 'timeout', '--signal=TERM', '--kill-after=2s', `${timeoutSeconds}s`, executable, ...args],
+      { timeoutMs: timeoutMs + 5_000, maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES, input }
+    );
+  }
+
+  async remove(name: string): Promise<void> {
+    const result = await runCommand('docker', ['rm', '-f', name], { timeoutMs: 60_000, maxOutputBytes: this.cfg.MAX_OUTPUT_BYTES });
+    if (result.exitCode !== 0 && !result.stderr.includes('No such container')) {
+      throw new AppError(`Could not remove container: ${result.stderr}`, 'CONTAINER_REMOVE_FAILED');
+    }
+  }
+}
