@@ -82,6 +82,12 @@ for _ in {1..45}; do
     printf '\nCloud Sandbox MCP is running.\n'
     curl -fsS "http://localhost:${PORT}/healthz"
     printf '\n\nLocal MCP endpoint:\nhttp://localhost:%s/mcp/%s\n' "$PORT" "$MCP_PATH_SECRET"
+    if [[ "$(uname -s)" == "Darwin" ]] && grep -q '^COMPUTER_USE_ENABLED=true$' .env; then
+      node scripts/install-computer-use-host.mjs || {
+        echo 'Mac Computer Use LaunchAgent failed; controller remains running.' >&2
+        exit 1
+      }
+    fi
     exit 0
   fi
   if ! docker inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null | grep -q true; then

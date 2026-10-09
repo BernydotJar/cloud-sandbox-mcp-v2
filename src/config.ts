@@ -27,7 +27,10 @@ const envSchema = z.object({
   ENABLE_RUNTIME_RECREATE: z.string().default('true').transform(value => value === 'true'),
   GIT_AUTHOR_NAME: z.string().default('ChatGPT Sandbox Agent'),
   GIT_AUTHOR_EMAIL: z.string().email().default('chatgpt-sandbox@example.invalid'),
-  GITHUB_TOKEN: z.string().optional()
+  GITHUB_TOKEN: z.string().optional(),
+  COMPUTER_USE_ENABLED: booleanString,
+  COMPUTER_USE_BRIDGE_URL: z.string().default('http://host.docker.internal:9764'),
+  COMPUTER_USE_BRIDGE_TOKEN: z.string().optional()
 });
 
 const parsed = envSchema.parse(process.env);
@@ -35,6 +38,15 @@ const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
 const insecureSecrets = new Set(['development-secret-change-me', 'replace-with-a-long-random-value']);
 if (!loopbackHosts.has(parsed.BIND_HOST) && insecureSecrets.has(parsed.MCP_PATH_SECRET)) {
   throw new Error('MCP_PATH_SECRET is still a placeholder. Run ./scripts/bootstrap.sh, then recreate the service with ./scripts/setup.sh.');
+}
+if (parsed.COMPUTER_USE_ENABLED) {
+  if (!parsed.COMPUTER_USE_BRIDGE_TOKEN || parsed.COMPUTER_USE_BRIDGE_TOKEN.length < 32) {
+    throw new Error('COMPUTER_USE_ENABLED requires a separate COMPUTER_USE_BRIDGE_TOKEN (32+ chars).');
+  }
+  const bridge = new URL(parsed.COMPUTER_USE_BRIDGE_URL);
+  if (bridge.protocol !== 'http:' || bridge.username || bridge.password || bridge.pathname !== '/' || bridge.search || bridge.hash || !['host.docker.internal', '127.0.0.1', 'localhost'].includes(bridge.hostname)) {
+    throw new Error('COMPUTER_USE_BRIDGE_URL must use an approved local Docker host endpoint.');
+  }
 }
 const dataDir = path.resolve(parsed.MCP_DATA_DIR);
 const hostDataDir = path.resolve(parsed.HOST_DATA_DIR ?? parsed.MCP_DATA_DIR);

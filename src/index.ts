@@ -4,12 +4,14 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { config } from './config.js';
 import { createMcpServer } from './mcp/server.js';
 import { DockerRuntime } from './runtime/docker.js';
+import { ComputerUseService } from './services/computer-use-service.js';
 import { WorkspaceService } from './services/workspace-service.js';
 import { WorkspaceStore } from './store/workspace-store.js';
 
 const store = new WorkspaceStore(config.dataDir, config.hostDataDir);
 const docker = new DockerRuntime(config);
 const service = new WorkspaceService(config, store, docker);
+const computer = new ComputerUseService(config);
 await service.initialize();
 
 const app = createMcpExpressApp({ host: config.BIND_HOST, allowedHosts: config.allowedHosts });
@@ -18,7 +20,7 @@ app.get('/healthz', (_req: Request, res: Response) => {
 });
 
 app.post(config.mcpPath, async (req: Request, res: Response) => {
-  const server = createMcpServer(service);
+  const server = createMcpServer(service, computer);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on('close', () => {
     void transport.close();

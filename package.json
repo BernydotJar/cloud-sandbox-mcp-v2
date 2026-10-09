@@ -15,8 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "verify": "npm run validate:lock && npm run lint && npm run typecheck && npm test && npm run build",
-    "validate:lock": "node scripts/validate-lockfile.mjs"
+    "verify": "npm run validate:lock && npm run lint && npm run typecheck && npm test && npm run test:mac && npm run build",
+    "validate:lock": "node scripts/validate-lockfile.mjs",
+    "test:mac": "node --test mac-host/bridge.node-test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

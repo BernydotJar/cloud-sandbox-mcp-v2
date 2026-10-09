@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { WorkspaceService } from '../services/workspace-service.js';
+import { ComputerUseService } from '../services/computer-use-service.js';
 import { errorMessage } from '../utils/errors.js';
 
 function jsonResult(data: unknown, isError = false) {
@@ -18,7 +19,7 @@ async function safely(action: () => Promise<unknown>) {
   }
 }
 
-export function createMcpServer(service: WorkspaceService): McpServer {
+export function createMcpServer(service: WorkspaceService, computer?: ComputerUseService): McpServer {
   const server = new McpServer({ name: 'cloud-sandbox-mcp', version: '0.2.0' });
 
   server.registerTool('workspace_create', {
@@ -139,6 +140,66 @@ export function createMcpServer(service: WorkspaceService): McpServer {
     inputSchema: { workspace_id: z.uuid() },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
   }, async ({ workspace_id }) => await safely(() => service.destroy(workspace_id)));
+
+  if (computer) {
+    const browserSchema = z.enum(['chrome', 'edge']);
+    const targetSchema = {
+      browser: browserSchema,
+      window_index: z.number().int().min(1),
+      tab_index: z.number().int().min(1),
+      expected_url: z.string().url().max(2048)
+    };
+
+    server.registerTool('computer_use_status', {
+      title: 'Computer Use connectivity',
+      description: 'Inspect availability of the native macOS Computer Use bridge inside Cloud Sandbox MCP V2. Never discloses credentials.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async () => await safely(() => computer.status()));
+
+    server.registerTool('computer_use_state', {
+      title: 'Discover Chrome and Edge sessions',
+      description: 'Discover currently open native Mac Chrome/Edge windows and tabs with safe URLs (query strings and fragments removed). Browser and tab indices are dynamic.',
+      inputSchema: { browser: browserSchema.optional() },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async ({ browser }) => await safely(() => computer.state(browser)));
+
+    server.registerTool('computer_use_focus', {
+      title: 'Focus a Mac browser tab',
+      description: 'Focus a Chrome/Edge tab selected by fresh state discovery and verify its expected URL before acting. Does not submit a form.',
+      inputSchema: targetSchema,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async (target) => await safely(() => computer.focus(target)));
+
+    server.registerTool('computer_use_screenshot', {
+      title: 'Inspect Mac browser window screenshot',
+      description: 'Request a screenshot of a selected authenticated Mac browser window via the native macOS bridge. Requires macOS Screen Recording permission; never stores screenshots in execution logs.',
+      inputSchema: targetSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async (target) => {
+      try {
+        const screenshot = await computer.screenshot(target);
+        return { content: [{ type: 'image' as const, ...screenshot }] };
+      } catch (error) {
+        return jsonResult({ error: errorMessage(error) }, true);
+      }
+    });
+
+    server.registerTool('computer_use_action', {
+      title: 'Perform an approved Mac UI action',
+      description: 'Click, type or press a key in an authenticated Chrome/Edge tab. Native Mac approval is mandatory PER action; cannot be bypassed by model flags. Rechecks URL and tab identity immediately before acting. Never executes arbitrary JS, scripts or shell commands.',
+      inputSchema: {
+        ...targetSchema,
+        action: z.enum(['click', 'type_text', 'press_key']),
+        x: z.number().int().min(0).max(32768).optional(),
+        y: z.number().int().min(0).max(32768).optional(),
+        text: z.string().max(2000).optional(),
+        key: z.enum(['tab', 'escape', 'enter', 'space', 'backspace', 'up', 'down', 'left', 'right']).optional(),
+        reason: z.string().min(10).max(300)
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
+    }, async (input) => await safely(() => computer.action(input)));
+  }
 
   return server;
 }

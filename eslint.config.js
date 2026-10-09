@@ -6,6 +6,13 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    files: ['mac-host/**/*.mjs', 'scripts/*.mjs'],
+    languageOptions: {
+      globals: {process: 'readonly', console: 'readonly', URL: 'readonly',
+        Buffer: 'readonly', fetch: 'readonly'}
+    }
+  },
+  {
     files: ['**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',

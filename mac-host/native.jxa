@@ -1,0 +1,95 @@
+// Invoked only by the authenticated Cloud Sandbox macOS host service.
+// The script cannot execute caller-provided JavaScript or AppleScript.
+'use strict';
+
+function safeUrl(input) {
+  const raw = String(input || '').split('#')[0].split('?')[0];
+  const clean = raw.replace(/^(https?:\/\/)[^/@]*@/i, '$1');
+  const match = clean.match(/^(https?:\/\/[^/]+)(\/.*)?$/i);
+  return match ? (match[1] + (match[2] || '/')).slice(0, 2048) : '';
+}
+function fail(code) { return JSON.stringify({ok: false, error: code}); }
+function ok(data) { return JSON.stringify({ok: true, data: data}); }
+
+function run(argv) {
+  const operation = String(argv[0] || '');
+  const browser = String(argv[1] || '');
+  const apps = {chrome: 'Google Chrome', edge: 'Microsoft Edge'};
+  if (!Object.prototype.hasOwnProperty.call(apps, browser)) return fail('UNSUPPORTED_BROWSER');
+
+  try {
+    const app = Application(apps[browser]);
+    if (!app.running()) {
+      if (operation === 'state') return ok({browser: browser, running: false, windows: []});
+      return fail('BROWSER_NOT_RUNNING');
+    }
+    const windows = app.windows();
+    if (operation === 'state') {
+      return ok({browser: browser, running: true, windows: windows.map(function(w, i) {
+        const active = Number(w.activeTabIndex());
+        const tabs = w.tabs();
+        return {window_index: i + 1, tabs: tabs.map(function(t, j) {
+          return {tab_index: j + 1,
+                  active: active === j + 1,
+                  title: String(t.title() || '').slice(0, 300),
+                  url: safeUrl(t.url())};
+        })};
+      })});
+    }
+
+    const windowIndex = Number(argv[2]);
+    const tabIndex = Number(argv[3]);
+    const expected = String(argv[4] || '');
+    if (!(windowIndex > 0 && tabIndex > 0 && windowIndex <= windows.length)) return fail('STALE_WINDOW');
+    const target = windows[windowIndex - 1];
+    const tabs = target.tabs();
+    if (tabIndex > tabs.length) return fail('STALE_TAB');
+    if (safeUrl(tabs[tabIndex - 1].url()) !== expected) return fail('STALE_URL');
+
+    if (operation === 'inspect') {
+      return ok({browser: browser, window_index: windowIndex, tab_index: tabIndex, url: expected});
+    }
+    // Validate all references before changing the active window/tab.
+    target.activeTabIndex = tabIndex;
+    target.index = 1;
+    app.activate();
+    if (operation === 'focus') return ok({focused: true, browser: browser, url: expected});
+
+    const systems = Application('System Events');
+    const proc = systems.processes[apps[browser]];
+    if (!proc.exists()) return fail('ACCESSIBILITY_PROCESS_UNAVAILABLE');
+    if (operation === 'bounds') {
+      const win = proc.windows[0];
+      const p = win.position();
+      const s = win.size();
+      return ok({x: Number(p[0]), y: Number(p[1]), width: Number(s[0]), height: Number(s[1])});
+    }
+    if (operation === 'action') {
+      // Revalidate the visible selection immediately before the UI event.
+      const refreshed = app.windows();
+      const activeWindow = refreshed[0];
+      if (!activeWindow || safeUrl(activeWindow.activeTab().url()) !== expected) return fail('TARGET_CHANGED');
+      const action = String(argv[5] || '');
+      if (action === 'click') {
+        const x = Number(argv[6]), y = Number(argv[7]);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 32768 || y > 32768) return fail('INVALID_COORDINATES');
+        proc.click({at: [x, y]});
+      } else if (action === 'type_text') {
+        const value = String(argv[6] || '');
+        if (!value || value.length > 2000) return fail('INVALID_INPUT');
+        systems.keystroke(value);
+      } else if (action === 'press_key') {
+        const key = String(argv[6] || '');
+        const codes = {tab: 48, escape: 53, enter: 36, space: 49,
+                       backspace: 51, up: 126, down: 125, left: 123, right: 124};
+        if (!Object.prototype.hasOwnProperty.call(codes, key)) return fail('INVALID_KEY');
+        systems.keyCode(codes[key]);
+      } else return fail('INVALID_ACTION');
+      return ok({performed: true, action: action, browser: browser});
+    }
+    return fail('INVALID_OPERATION');
+  } catch (error) {
+    // Avoid propagating raw browser/OS error text which may contain private data.
+    return fail('MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR');
+  }
+}
