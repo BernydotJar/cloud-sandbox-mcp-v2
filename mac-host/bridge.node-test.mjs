@@ -157,3 +157,149 @@ test('legacy mode defaults to existing allowlist policy',async()=>{
   const response=await post('/v1/status');
   assert.equal(response.data.discovery_mode,'allowlist');
 });
+
+test('one local approval enables multiple Chrome and Edge actions in the same delegated session',async()=>{
+  let prompts=0;
+  const {post,calls}=await ready({
+    dynamicTabs:true,
+    approvalHandler:async()=>{prompts++;return true;}
+  });
+  const beginning=await post('/v1/session/begin',{
+    scope:'both',duration_minutes:20,max_actions:5,
+    purpose:'Navigate LUMA in Chrome and inspect Microsoft 365 in Edge'
+  });
+  assert.equal(beginning.status,200);
+  assert.equal(prompts,1);
+  const sid=beginning.data.session_id;
+  assert.match(sid,/^[0-9a-f]{48}$/);
+  for(const browser of ['chrome','edge','chrome']){
+    const response=await post('/v1/action',{
+      ...target,browser,expected_title:'Microsoft 365',
+      session_id:sid,action:'press_key',key:'tab',
+      reason:'Navigate to the next safe browser control'
+    });
+    assert.equal(response.status,200);
+    assert.equal(response.data.approval_mode,'delegated_session');
+  }
+  assert.equal(prompts,1);
+  assert.equal(calls.filter(x=>x.operation==='action').length,3);
+  const active=await post('/v1/session/status');
+  assert.equal(active.data.remaining_actions,2);
+  assert.equal(active.data.scope,'both');
+  const revoked=await post('/v1/session/end',{session_id:sid});
+  assert.equal(revoked.data.revoked,true);
+  const after=await post('/v1/action',{
+    ...target,expected_title:'Microsoft 365',
+    session_id:sid,action:'press_key',key:'tab',reason:'Attempt action after revocation'
+  });
+  assert.equal(after.error,'SESSION_NOT_ACTIVE');
+  assert.equal(prompts,1);
+});
+test('delegated session scope rejects a different browser, without prompting or clicking',async()=>{
+  let prompts=0;
+  const {post,calls}=await ready({dynamicTabs:true,approvalHandler:async()=>{
+    prompts++;return true;
+  }});
+  const r=await post('/v1/session/begin',{
+    scope:'chrome',duration_minutes:10,max_actions:3,purpose:'Inspect and navigate Chrome only'
+  });
+  const result=await post('/v1/action',{
+    ...target,browser:'edge',expected_title:'Microsoft 365',
+    session_id:r.data.session_id,action:'click',x:30,y:100,
+    reason:'Navigate the Edge license settings'
+  });
+  assert.equal(result.error,'SESSION_SCOPE_MISMATCH');
+  assert.equal(prompts,1);
+  assert.equal(calls.filter(x=>x.operation==='action').length,0);
+});
+test('session identifier never falls back to per-click approval if invalid',async()=>{
+  let prompts=0;
+  const {post,calls}=await ready({approvalHandler:async()=>{prompts++;return true;}});
+  const result=await post('/v1/action',{
+    ...target,session_id:'f'.repeat(48),action:'click',x:10,y:50,
+    reason:'Attempt a potentially unauthorized browser change'
+  });
+  assert.equal(result.error,'SESSION_NOT_ACTIVE');
+  assert.equal(prompts,0);
+  assert.equal(calls.filter(x=>x.operation==='action').length,0);
+});
+test('rejected delegated grant creates no session',async()=>{
+  const {post,calls}=await ready();
+  const granted=await post('/v1/session/begin',{
+    scope:'both',duration_minutes:20,max_actions:70,
+    purpose:'Navigate two browsers without modifying data'
+  });
+  assert.equal(granted.error,'USER_DENIED_SESSION');
+  const state=await post('/v1/session/status');
+  assert.equal(state.data.active,false);
+  assert.equal(calls.length,0);
+});
+test('no delegated grant retains the legacy one-approval-per-action policy',async()=>{
+  let prompts=0;
+  const {post}=await ready({approvalHandler:async()=>{prompts++;return true;}});
+  for(let i=0;i<2;i++){
+    const r=await post('/v1/action',{...target,action:'press_key',key:'tab',
+      reason:'Navigate Microsoft administrator interface'});
+    assert.equal(r.status,200);
+    assert.equal(r.data.approval_mode,'per_action');
+  }
+  assert.equal(prompts,2);
+});
+test('invalid delegated grant parameters are rejected before showing approval dialog',async()=>{
+  let prompts=0;
+  const {post}=await ready({approvalHandler:async()=>{prompts++;return true;}});
+  for(const patch of [{scope:'all_mac'},{duration_minutes:31},{max_actions:201},
+    {purpose:'short'}]) {
+    const result=await post('/v1/session/begin',{
+      scope:'both',duration_minutes:20,max_actions:120,
+      purpose:'Navigate Chrome and Edge for an explicit task',...patch
+    });
+    assert.equal(result.error,'INVALID_SESSION_REQUEST');
+  }
+  assert.equal(prompts,0);
+});
+
+test('revocation while an action is preparing cancels dispatch',async()=>{
+  const {createSessionStore}=await import('./autonomy-session.mjs');
+  const store=createSessionStore({randomId:()=> '9'.repeat(48)});
+  const audit=[];
+  const {post,calls}=await ready({
+    sessionStore:store,
+    approvalHandler:async()=>true,
+    auditHandler:async e=>{
+      audit.push(e);
+      if(e.outcome==='session_authorized')store.end();
+    }
+  });
+  const grant=await post('/v1/session/begin',{
+    scope:'edge',duration_minutes:20,max_actions:30,
+    purpose:'Inspect the Microsoft 365 page without changing licenses'
+  });
+  const action=await post('/v1/action',{
+    ...target,session_id:grant.data.session_id,
+    action:'press_key',key:'tab',
+    reason:'Navigate the Microsoft 365 administrative links'
+  });
+  assert.equal(action.error,'SESSION_NOT_ACTIVE');
+  assert.equal(calls.filter(c=>c.operation==='action').length,0);
+});
+test('only one delegated session can be active at once',async()=>{
+  let approvals=0;
+  const {post}=await ready({approvalHandler:async()=>{approvals++;return true;}});
+  const request={scope:'chrome',duration_minutes:20,max_actions:20,
+    purpose:'Navigate LUMA through Chrome without data changes'};
+  assert.equal((await post('/v1/session/begin',request)).status,200);
+  assert.equal((await post('/v1/session/begin',request)).error,'SESSION_ALREADY_ACTIVE');
+  assert.equal(approvals,1);
+});
+test('session audit never captures typed content',async()=>{
+  const audit=[];
+  const {post}=await ready({approvalHandler:async()=>true,auditHandler:async e=>audit.push(e)});
+  const grant=await post('/v1/session/begin',{scope:'both',duration_minutes:5,
+    max_actions:10,purpose:'Type test text into the designated form field'});
+  const typed='sensitive_test_input_visible_only_to_page';
+  const reply=await post('/v1/action',{...target,session_id:grant.data.session_id,
+    action:'type_text',text:typed,reason:'Fill the temporary authorized test field'});
+  assert.equal(reply.status,200);
+  assert.equal(JSON.stringify(audit).includes(typed),false);
+});

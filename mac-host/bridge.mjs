@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { createSessionStore } from './autonomy-session.mjs';
 
 const exec = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -98,7 +99,8 @@ async function capture(bounds) {
 export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    nativeHandler = native,
                                    approvalHandler = approve, captureHandler = capture,
-                                   auditHandler = async () => {}, platform = process.platform}) {
+                                   auditHandler = async () => {}, platform = process.platform,
+                                   sessionStore = createSessionStore()}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
@@ -112,7 +114,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       reply(res, 403, {ok:false,error:'UNAUTHORIZED'}); return;
     }
     if (req.method !== 'POST' ||
-        !['/v1/status','/v1/state','/v1/focus','/v1/action','/v1/screenshot'].includes(req.url)) {
+        !['/v1/status','/v1/state','/v1/focus','/v1/action','/v1/screenshot',
+          '/v1/session/begin','/v1/session/status','/v1/session/end'].includes(req.url)) {
       reply(res, 404, {ok:false,error:'UNKNOWN_METHOD'}); return;
     }
     try {
@@ -129,8 +132,52 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         reply(res, 200, {ok:true,data:{backend:'macos-automation',
           browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size,
           discovery_mode:dynamicTabs ? 'all_web_tabs' : 'allowlist',
-          title_identity_required:dynamicTabs}});
+          title_identity_required:dynamicTabs,
+          approval_modes:['per_action','delegated_session'],
+          delegated_session:sessionStore.status()}});
         return;
+      }
+      if (req.url === '/v1/session/status') {
+        reply(res,200,{ok:true,data:sessionStore.status()}); return;
+      }
+      if (req.url === '/v1/session/end') {
+        const result=sessionStore.end(input.session_id);
+        try {await auditHandler({action:'session_end',outcome:'revoked'});}catch{ /* Revocation must not depend on audit availability. */ }
+        reply(res,200,{ok:true,data:result}); return;
+      }
+      if (req.url === '/v1/session/begin') {
+        if (busy) throw new Error('COMPUTER_BUSY');
+        if (sessionStore.status().active) throw new Error('SESSION_ALREADY_ACTIVE');
+        if (!['chrome','edge','both'].includes(input.scope) ||
+            !Number.isInteger(input.duration_minutes) || input.duration_minutes < 1 ||
+            input.duration_minutes > 30 ||
+            !Number.isInteger(input.max_actions) || input.max_actions < 1 ||
+            input.max_actions > 200 ||
+            typeof input.purpose !== 'string' || input.purpose.length < 10 ||
+            input.purpose.length > 300) throw new Error('INVALID_SESSION_REQUEST');
+        busy=true;
+        try {
+          const request = input.scope === 'both' ? 'Chrome AND Edge' : input.scope;
+          const prompt = 'Cloud Sandbox requests a temporary delegated Computer Use session.\n' +
+            'TASK: ' + input.purpose.replace(/\p{Cc}+/gu,' ').replace(/\s+/g,' ').slice(0,300) + '\n' +
+            'BROWSERS: ' + request + '\n' +
+            'DURATION: ' + input.duration_minutes + ' minutes\n' +
+            'MAXIMUM CLICKS/KEY EVENTS: ' + input.max_actions + '\n\n' +
+            'After approving this ONCE, the agent can click, type, and submit on these ' +
+            'browser tabs WITHOUT another Mac prompt until the session expires, ' +
+            'runs out of actions, or is revoked. This includes potentially important ' +
+            'settings and transactions; the browser driver cannot distinguish them.\n' +
+            'Only approve for the task you actually requested. You can STOP the session ' +
+            'at any time through computer_use_session_end or the local stop command.';
+          if (!await approvalHandler(prompt)) throw new Error('USER_DENIED_SESSION');
+          const session=sessionStore.begin(input);
+          let auditSaved=true;
+          try {await auditHandler({action:'session_begin',scope:input.scope,
+            outcome:'approved',duration_minutes:input.duration_minutes,
+            max_actions:input.max_actions});}catch{auditSaved=false;}
+          reply(res,200,{ok:true,data:{...session,audit_receipt:auditSaved?'saved':'unavailable'}});
+          return;
+        } finally {busy=false;}
       }
       if (req.url === '/v1/state') {
         const selection = input.browser ? [input.browser] : ['chrome','edge'];
@@ -200,12 +247,21 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             'This can submit forms or change accounts. Confirm the intended effect before approving.';
           const audit = {browser:input.browser,origin:new URL(input.expected_url).origin,
             action:input.action};
-          if (!await approvalHandler(prompt)) {
-            await auditHandler({...audit,outcome:'denied'});
-            throw new Error('USER_DENIED_ACTION');
+          const usesSession=input.session_id!==undefined;
+          if(usesSession) sessionStore.authorize(input.session_id,input.browser);
+          if (!usesSession) {
+            if (!await approvalHandler(prompt)) {
+              await auditHandler({...audit,outcome:'denied'});
+              throw new Error('USER_DENIED_ACTION');
+            }
           }
-          await auditHandler({...audit,outcome:'approved'});
-          // Native JXA checks target identity again AFTER the local approval.
+          await auditHandler({...audit,outcome:usesSession?'session_authorized':'approved',
+            approval_mode:usesSession?'delegated_session':'per_action'});
+          // The second session check happens immediately before dispatch so a
+          // local revoke or expiry while inspecting a tab fails closed.
+          const delegated=usesSession ?
+            sessionStore.authorize(input.session_id,input.browser,{consume:true}) : null;
+          // Native JXA independently verifies title+URL just before the OS event.
           let result;
           try {
             result = await nativeHandler('action',...args,input.action,...eventArguments);
@@ -218,7 +274,10 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           catch { auditSaved = false; }
           // An event was dispatched. Do not return a retryable error solely due to
           // an evidence-write failure: doing so could duplicate a real-world action.
-          reply(res,200,{ok:true,data:{...result,audit_receipt:auditSaved ? 'saved' : 'unavailable'}});
+          reply(res,200,{ok:true,data:{...result,
+            approval_mode:usesSession?'delegated_session':'per_action',
+            ...(delegated?{remaining_session_actions:delegated.remaining_actions}:{}),
+            audit_receipt:auditSaved ? 'saved' : 'unavailable'}});
           return;
         }
       } finally { busy = false; }
@@ -229,7 +288,9 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'INVALID_COORDINATES','INVALID_BODY','INVALID_BROWSER','USER_DENIED_ACTION','REQUEST_TOO_LARGE',
         'STALE_WINDOW','STALE_TAB','STALE_URL','TARGET_CHANGED','BROWSER_NOT_RUNNING',
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',
-        'STALE_TITLE']);
+        'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
+        'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
+        'COMPUTER_BUSY']);
       reply(res,400,{ok:false,error:allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
     }
   });
@@ -261,7 +322,7 @@ export async function startBridge(options = {}) {
   if (environment.COMPUTER_USE_ENABLED !== 'true') throw new Error('COMPUTER_USE_NOT_ENABLED');
   const list = (environment.COMPUTER_USE_ALLOWED_ORIGINS || '').split(',').map(x=>x.trim()).filter(Boolean);
   // An explicit local operator opt-in unlocks dynamic Chrome/Edge tab discovery.
-  // Every write action still requires a native per-action approval dialog.
+  // Delegated sessions still require one native approval when they begin.
   const dynamicTabs = environment.COMPUTER_USE_DYNAMIC_TABS === 'true';
   const server = createBridgeServer({
     token: environment.COMPUTER_USE_BRIDGE_TOKEN, allowedOrigins: new Set(list),

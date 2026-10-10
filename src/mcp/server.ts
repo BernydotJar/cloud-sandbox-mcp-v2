@@ -147,8 +147,35 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
       browser: browserSchema,
       window_index: z.number().int().min(1),
       tab_index: z.number().int().min(1),
-      expected_url: z.string().url().max(2048)
+      expected_url: z.string().url().max(2048),
+      expected_title: z.string().min(1).max(300).optional()
     };
+
+    server.registerTool('computer_use_session_begin', {
+      title: 'Authorize a temporary Mac task session',
+      description: 'Request ONE local macOS approval for a time-limited, action-budgeted delegated Chrome/Edge session. Subsequent clicks and typing with session_id require no further local approvals until expiration, revocation or exhaustion. This can operate on sensitive pages; obtain clear user task instructions before requesting.',
+      inputSchema: {
+        scope: z.enum(['chrome','edge','both']),
+        duration_minutes: z.number().int().min(1).max(30).default(20),
+        max_actions: z.number().int().min(1).max(200).default(120),
+        purpose: z.string().min(10).max(300)
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+    }, async (input) => await safely(() => computer.beginSession(input)));
+
+    server.registerTool('computer_use_session_status', {
+      title: 'Check delegated Computer Use session',
+      description: 'Read the current macOS session scope, expiry and remaining action budget. Does not return the session token.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async () => await safely(() => computer.sessionStatus()));
+
+    server.registerTool('computer_use_session_end', {
+      title: 'Stop delegated Mac control',
+      description: 'Revoke the current delegated Computer Use session immediately. Use at task completion, cancellation or whenever user requests stop. The local operator can also restart the host bridge to revoke.',
+      inputSchema: { session_id: z.string().regex(/^[a-f0-9]{48}$/).optional() },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }, async ({ session_id }) => await safely(() => computer.endSession(session_id)));
 
     server.registerTool('computer_use_status', {
       title: 'Computer Use connectivity',
@@ -187,7 +214,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_action', {
       title: 'Perform an approved Mac UI action',
-      description: 'Click, type or press a key in an authenticated Chrome/Edge tab. Native Mac approval is mandatory PER action; cannot be bypassed by model flags. Rechecks URL and tab identity immediately before acting. Never executes arbitrary JS, scripts or shell commands.',
+      description: 'Click, type or press a key in an authenticated Chrome/Edge tab. Pass session_id from an approved computer_use_session_begin grant on EVERY action for uninterrupted delegated execution. Without session_id, Mac approval is required per action. Rechecks URL and tab identity immediately before acting. Never executes arbitrary JS, scripts or shell commands.',
       inputSchema: {
         ...targetSchema,
         action: z.enum(['click', 'type_text', 'press_key']),
@@ -195,7 +222,8 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
         y: z.number().int().min(0).max(32768).optional(),
         text: z.string().max(2000).optional(),
         key: z.enum(['tab', 'escape', 'enter', 'space', 'backspace', 'up', 'down', 'left', 'right']).optional(),
-        reason: z.string().min(10).max(300)
+        reason: z.string().min(10).max(300),
+        session_id: z.string().regex(/^[a-f0-9]{48}$/).optional()
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
     }, async (input) => await safely(() => computer.action(input)));
