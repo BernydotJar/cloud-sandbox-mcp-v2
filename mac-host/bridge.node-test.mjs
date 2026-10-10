@@ -92,3 +92,28 @@ test('audit stores only safe event metadata, never typed input',async()=>{
   assert.deepEqual(events.map(x=>x.outcome),['approved','performed']);
   assert.equal(JSON.stringify(events).includes(secretText),false);
 });
+test('state skips blank, loading and unsupported browser tabs without failing discovery',async()=>{
+  const {post}=await ready({nativeHandler:async operation=>{
+    if(operation==='state') return {running:true,windows:[{window_index:1,tabs:[
+      {tab_index:1,title:'New tab',url:''},
+      {tab_index:2,title:'Edge internal',url:'edge://newtab/'},
+      {tab_index:3,title:'Loading',url:undefined},
+      {tab_index:4,title:'Private site',url:'https://private.example/path?token=abc'},
+      {tab_index:5,title:'Allowed site',url:'https://admin.microsoft.com/users?private=123#x'}
+    ]}]};
+    throw Error('Unexpected native operation');
+  }});
+  const r=await post('/v1/state',{browser:'edge'});
+  assert.equal(r.ok,true);
+  assert.equal(r.data.browsers[0].running,true);
+  assert.deepEqual(r.data.browsers[0].windows[0].tabs.map(t=>t.tab_index),[5]);
+  assert.equal(r.data.browsers[0].windows[0].tabs[0].url,'https://admin.microsoft.com/users');
+});
+test('state classifies native macOS Automation denial without exposing error detail',async()=>{
+  const {post}=await ready({nativeHandler:async()=>{throw Error('MAC_AUTOMATION_PERMISSION_DENIED');}});
+  const r=await post('/v1/state',{browser:'edge'});
+  assert.equal(r.ok,true);
+  assert.deepEqual(r.data.browsers[0],{
+    browser:'edge',running:null,windows:[],error:'MAC_AUTOMATION_PERMISSION_DENIED'
+  });
+});

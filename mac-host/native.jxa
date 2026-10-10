@@ -31,13 +31,20 @@ function run(argv) {
     const windows = app.windows();
     if (operation === 'state') {
       return ok({browser: browser, running: true, windows: windows.map(function(w, i) {
-        const active = Number(w.activeTabIndex());
+        let active = -1;
+        try { active = Number(w.activeTabIndex()); } catch (_) { /* Unknown active tab. */ }
+        // Access to the window itself still requires macOS Automation authorization.
+        // A single loading or stale tab must not abort the full discovery pass.
         const tabs = w.tabs();
         return {window_index: i + 1, tabs: tabs.map(function(t, j) {
-          return {tab_index: j + 1,
-                  active: active === j + 1,
-                  title: String(t.title() || '').slice(0, 300),
-                  url: safeUrl(t.url())};
+          try {
+            return {tab_index: j + 1,
+                    active: active === j + 1,
+                    title: String(t.title() || '').slice(0, 300),
+                    url: safeUrl(t.url())};
+          } catch (_) {
+            return {tab_index: j + 1, active: false, title: '', url: ''};
+          }
         })};
       })});
     }
@@ -94,7 +101,12 @@ function run(argv) {
     }
     return fail('INVALID_OPERATION');
   } catch (error) {
-    // Avoid propagating raw browser/OS error text which may contain private data.
+    // AppleEvents' -1743 means the invoking GUI process lacks Automation permission.
+    // Do not expose the raw OS error, which may reveal a URL or window title.
+    const code = Number(error && error.number);
+    if (code === -1743 || String(error && error.message).indexOf('-1743') >= 0) {
+      return fail('MAC_AUTOMATION_PERMISSION_DENIED');
+    }
     return fail('MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR');
   }
 }

@@ -19,6 +19,12 @@ export function safeUrl(value) {
     return u.origin + u.pathname;
   } catch { return ''; }
 }
+export function isAllowlistedTabUrl(value, origins) {
+  const cleaned = safeUrl(value);
+  if (!cleaned) return false;
+  try { return origins.has(new URL(cleaned).origin); }
+  catch { return false; }
+}
 export function allowedPeer(ip) {
   const x = String(ip || '').replace(/^::ffff:/,'');
   return x === '::1' || x === '127.0.0.1' || /^192\.168\.(64|65)\.\d+$/.test(x);
@@ -120,18 +126,23 @@ export function createBridgeServer({token, allowedOrigins, nativeHandler = nativ
         for (const b of selection) {
           try {
             const state = await nativeHandler('state',b);
-            const windows = (state.windows || []).map(w => ({
+            const windows = (Array.isArray(state.windows) ? state.windows : []).map(w => ({
               window_index: w.window_index,
-              tabs: (w.tabs || []).filter(t => allowedOrigins.has(new URL(t.url).origin)).map(t => ({
-                tab_index: t.tab_index,
-                active: Boolean(t.active),
-                title: String(t.title || '').slice(0,300),
-                url: safeUrl(t.url)
-              }))
+              tabs: (Array.isArray(w.tabs) ? w.tabs : [])
+                .filter(t => t && isAllowlistedTabUrl(t.url, allowedOrigins)).map(t => ({
+                  tab_index: t.tab_index,
+                  active: Boolean(t.active),
+                  title: String(t.title || '').slice(0,300),
+                  url: safeUrl(t.url)
+                }))
             })).filter(w => w.tabs.length > 0);
             discovered.push({browser:b,running:Boolean(state.running),windows});
-          } catch {
-            discovered.push({browser:b,running:null,windows:[],error:'DISCOVERY_UNAVAILABLE'});
+          } catch (error) {
+            const code = error?.message === 'MAC_AUTOMATION_PERMISSION_DENIED' ?
+              'MAC_AUTOMATION_PERMISSION_DENIED' :
+              error?.message === 'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR' ?
+              'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR' : 'DISCOVERY_UNAVAILABLE';
+            discovered.push({browser:b,running:null,windows:[],error:code});
           }
         }
         reply(res, 200, {ok:true,data:{browsers:discovered}}); return;
