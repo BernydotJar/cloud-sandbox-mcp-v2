@@ -117,3 +117,43 @@ test('state classifies native macOS Automation denial without exposing error det
     browser:'edge',running:null,windows:[],error:'MAC_AUTOMATION_PERMISSION_DENIED'
   });
 });
+
+test('dynamic discovery includes web tabs across origins',async()=>{
+  const {post}=await ready({dynamicTabs:true});
+  const result=await post('/v1/state',{browser:'edge'});
+  assert.equal(result.ok,true);
+  const tabs=result.data.browsers[0].windows[0].tabs;
+  assert.equal(tabs.length,2);
+  assert.equal(tabs[0].title,'Personal');
+  assert.equal(tabs[0].url,'https://private.invalid/');
+});
+test('dynamic mode requires fresh title for tab selection',async()=>{
+  const {post,calls}=await ready({dynamicTabs:true});
+  const base={...target,tab_index:1,expected_url:'https://private.invalid/'};
+  const denied=await post('/v1/focus',base);
+  assert.equal(denied.error,'EXPECTED_TITLE_REQUIRED');
+  assert.equal(calls.length,0);
+  const selected=await post('/v1/focus',{...base,expected_title:'Personal'});
+  assert.equal(selected.status,200);
+  assert.deepEqual(calls[0].args,['edge','1','1','https://private.invalid/','Personal']);
+});
+test('dynamic mode still blocks writes without local consent',async()=>{
+  const {post,calls}=await ready({dynamicTabs:true});
+  const response=await post('/v1/action',{
+    ...target,expected_title:'Microsoft 365',action:'press_key',key:'tab',
+    reason:'Move focus through navigation links'});
+  assert.equal(response.error,'USER_DENIED_ACTION');
+  assert.deepEqual(calls.map(x=>x.operation),['inspect']);
+});
+test('dynamic mode rejects internal pages',async()=>{
+  const {post,calls}=await ready({dynamicTabs:true});
+  const response=await post('/v1/focus',{
+    ...target,expected_title:'New Tab',expected_url:'edge://newtab/'});
+  assert.equal(response.status,400);
+  assert.equal(calls.length,0);
+});
+test('legacy mode defaults to existing allowlist policy',async()=>{
+  const {post}=await ready();
+  const response=await post('/v1/status');
+  assert.equal(response.data.discovery_mode,'allowlist');
+});

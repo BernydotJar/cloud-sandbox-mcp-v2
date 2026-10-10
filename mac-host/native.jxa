@@ -52,11 +52,15 @@ function run(argv) {
     const windowIndex = Number(argv[2]);
     const tabIndex = Number(argv[3]);
     const expected = String(argv[4] || '');
+    const expectedTitle = String(argv[5] || '');
     if (!(windowIndex > 0 && tabIndex > 0 && windowIndex <= windows.length)) return fail('STALE_WINDOW');
     const target = windows[windowIndex - 1];
     const tabs = target.tabs();
     if (tabIndex > tabs.length) return fail('STALE_TAB');
     if (safeUrl(tabs[tabIndex - 1].url()) !== expected) return fail('STALE_URL');
+    if (expectedTitle && String(tabs[tabIndex - 1].title() || '') !== expectedTitle) {
+      return fail('STALE_TITLE');
+    }
 
     if (operation === 'inspect') {
       return ok({browser: browser, window_index: windowIndex, tab_index: tabIndex, url: expected});
@@ -81,17 +85,20 @@ function run(argv) {
       const refreshed = app.windows();
       const activeWindow = refreshed[0];
       if (!activeWindow || safeUrl(activeWindow.activeTab().url()) !== expected) return fail('TARGET_CHANGED');
-      const action = String(argv[5] || '');
+      if (expectedTitle && String(activeWindow.activeTab().title() || '') !== expectedTitle) {
+        return fail('TARGET_CHANGED');
+      }
+      const action = String(argv[6] || '');
       if (action === 'click') {
-        const x = Number(argv[6]), y = Number(argv[7]);
+        const x = Number(argv[7]), y = Number(argv[8]);
         if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 32768 || y > 32768) return fail('INVALID_COORDINATES');
         proc.click({at: [x, y]});
       } else if (action === 'type_text') {
-        const value = String(argv[6] || '');
+        const value = String(argv[7] || '');
         if (!value || value.length > 2000) return fail('INVALID_INPUT');
         systems.keystroke(value);
       } else if (action === 'press_key') {
-        const key = String(argv[6] || '');
+        const key = String(argv[7] || '');
         const codes = {tab: 48, escape: 53, enter: 36, space: 49,
                        backspace: 51, up: 126, down: 125, left: 123, right: 124};
         if (!Object.prototype.hasOwnProperty.call(codes, key)) return fail('INVALID_KEY');

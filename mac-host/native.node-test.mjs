@@ -32,3 +32,13 @@ test('native Edge discovery produces a distinct macOS Automation permission deni
   assert.equal(result.ok,false);
   assert.equal(result.error,'MAC_AUTOMATION_PERMISSION_DENIED');
 });
+test('native checks exact tab title where multiple tabs share a URL',()=>{
+  const browser={running:()=>true,windows:()=>[{activeTabIndex:()=>1,tabs:()=>[
+    {title:()=> 'Licencias',url:()=> 'https://admin.cloud.microsoft/'},
+    {title:()=> 'Dominios',url:()=> 'https://admin.cloud.microsoft/'}
+  ]}]};
+  const match=invoke(browser,['inspect','edge','1','1','https://admin.cloud.microsoft/','Licencias']);
+  assert.equal(match.ok,true);
+  const stale=invoke(browser,['inspect','edge','1','2','https://admin.cloud.microsoft/','Licencias']);
+  assert.equal(stale.error,'STALE_TITLE');
+});

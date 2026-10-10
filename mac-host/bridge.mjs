@@ -43,12 +43,21 @@ async function native(op, ...args) {
   if (result.ok !== true) throw new Error(result.error || 'NATIVE_FAILED');
   return result.data;
 }
-function verifyTarget(t, origins) {
+function verifyTarget(t, origins, dynamicTabs) {
   if (!browsers.has(t.browser) || !Number.isInteger(t.window_index) ||
       !Number.isInteger(t.tab_index) || t.window_index < 1 || t.tab_index < 1 ||
       typeof t.expected_url !== 'string' || safeUrl(t.expected_url) !== t.expected_url ||
-      !origins.has(new URL(t.expected_url).origin)) throw new Error('INVALID_TARGET');
-  return [t.browser, String(t.window_index), String(t.tab_index), t.expected_url];
+      (!dynamicTabs && !origins.has(new URL(t.expected_url).origin))) throw new Error('INVALID_TARGET');
+  // In dynamic discovery, identical safe URLs may belong to different tabs.
+  // Bind actions to the freshly observed title as well as index and URL.
+  if (dynamicTabs && (typeof t.expected_title !== 'string' ||
+      !t.expected_title.length || t.expected_title.length > 300)) {
+    throw new Error('EXPECTED_TITLE_REQUIRED');
+  }
+  if (t.expected_title !== undefined && (typeof t.expected_title !== 'string' ||
+      t.expected_title.length > 300)) throw new Error('INVALID_TARGET');
+  return [t.browser, String(t.window_index), String(t.tab_index),
+    t.expected_url, t.expected_title || ''];
 }
 function reply(res, status, data) {
   res.writeHead(status, {'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'});
@@ -86,11 +95,13 @@ async function capture(bounds) {
 }
 
 /** Injectable native/approval handlers make safety gates testable without a Mac. */
-export function createBridgeServer({token, allowedOrigins, nativeHandler = native,
+export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
+                                   nativeHandler = native,
                                    approvalHandler = approve, captureHandler = capture,
                                    auditHandler = async () => {}, platform = process.platform}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
+  if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
   if (!(allowedOrigins instanceof Set) || !allowedOrigins.size ||
       [...allowedOrigins].some(v => !v.startsWith('https://') || new URL(v).origin !== v)) {
     throw new Error('EXPLICIT_HTTPS_ALLOWLIST_REQUIRED');
@@ -116,7 +127,9 @@ export function createBridgeServer({token, allowedOrigins, nativeHandler = nativ
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('INVALID_BODY');
       if (req.url === '/v1/status') {
         reply(res, 200, {ok:true,data:{backend:'macos-automation',
-          browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size}});
+          browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size,
+          discovery_mode:dynamicTabs ? 'all_web_tabs' : 'allowlist',
+          title_identity_required:dynamicTabs}});
         return;
       }
       if (req.url === '/v1/state') {
@@ -129,7 +142,8 @@ export function createBridgeServer({token, allowedOrigins, nativeHandler = nativ
             const windows = (Array.isArray(state.windows) ? state.windows : []).map(w => ({
               window_index: w.window_index,
               tabs: (Array.isArray(w.tabs) ? w.tabs : [])
-                .filter(t => t && isAllowlistedTabUrl(t.url, allowedOrigins)).map(t => ({
+                .filter(t => t && (dynamicTabs ? Boolean(safeUrl(t.url)) :
+                                isAllowlistedTabUrl(t.url, allowedOrigins))).map(t => ({
                   tab_index: t.tab_index,
                   active: Boolean(t.active),
                   title: String(t.title || '').slice(0,300),
@@ -147,7 +161,7 @@ export function createBridgeServer({token, allowedOrigins, nativeHandler = nativ
         }
         reply(res, 200, {ok:true,data:{browsers:discovered}}); return;
       }
-      const args = verifyTarget(input,allowedOrigins);
+      const args = verifyTarget(input,allowedOrigins,dynamicTabs);
       if (busy) { reply(res,409,{ok:false,error:'COMPUTER_BUSY'}); return; }
       busy = true;
       try {
@@ -214,7 +228,8 @@ export function createBridgeServer({token, allowedOrigins, nativeHandler = nativ
       const allowedErrors = new Set(['INVALID_TARGET','INVALID_ACTION','INVALID_TEXT','INVALID_KEY',
         'INVALID_COORDINATES','INVALID_BODY','INVALID_BROWSER','USER_DENIED_ACTION','REQUEST_TOO_LARGE',
         'STALE_WINDOW','STALE_TAB','STALE_URL','TARGET_CHANGED','BROWSER_NOT_RUNNING',
-        'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR']);
+        'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',
+        'STALE_TITLE']);
       reply(res,400,{ok:false,error:allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
     }
   });
@@ -245,9 +260,12 @@ export async function startBridge(options = {}) {
   const environment = {...parseDotEnv(await fs.readFile(source,'utf8')),...process.env};
   if (environment.COMPUTER_USE_ENABLED !== 'true') throw new Error('COMPUTER_USE_NOT_ENABLED');
   const list = (environment.COMPUTER_USE_ALLOWED_ORIGINS || '').split(',').map(x=>x.trim()).filter(Boolean);
+  // An explicit local operator opt-in unlocks dynamic Chrome/Edge tab discovery.
+  // Every write action still requires a native per-action approval dialog.
+  const dynamicTabs = environment.COMPUTER_USE_DYNAMIC_TABS === 'true';
   const server = createBridgeServer({
     token: environment.COMPUTER_USE_BRIDGE_TOKEN, allowedOrigins: new Set(list),
-    auditHandler: appendAudit
+    dynamicTabs, auditHandler: appendAudit
   });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';
   const port = Number(environment.COMPUTER_USE_BRIDGE_PORT || '9764');
