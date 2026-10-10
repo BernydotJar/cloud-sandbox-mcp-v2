@@ -3,10 +3,15 @@
 'use strict';
 
 function safeUrl(input) {
-  const raw = String(input || '').split('#')[0].split('?')[0];
-  const clean = raw.replace(/^(https?:\/\/)[^/@]*@/i, '$1');
-  const match = clean.match(/^(https?:\/\/[^/]+)(\/.*)?$/i);
-  return match ? (match[1] + (match[2] || '/')).slice(0, 2048) : '';
+  const t = String(input || '').split('#')[0].split('?')[0];
+  const low = t.toLowerCase();
+  const proto = low.startsWith('https://') ? 'https://' : low.startsWith('http://') ? 'http://' : '';
+  if (!proto) return '';
+  const rem = t.slice(proto.length);
+  const slash = rem.indexOf('/');
+  const authority = slash < 0 ? rem : rem.slice(0,slash);
+  if (!authority || authority.includes('@') || authority.includes(' ')) return '';
+  return (proto + authority.toLowerCase() + (slash < 0 ? '/' : rem.slice(slash))).slice(0,2048);
 }
 function fail(code) { return JSON.stringify({ok: false, error: code}); }
 function ok(data) { return JSON.stringify({ok: true, data: data}); }

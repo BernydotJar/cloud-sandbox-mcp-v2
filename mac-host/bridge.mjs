@@ -230,7 +230,7 @@ async function appendAudit(record) {
 }
 
 export async function startBridge(options = {}) {
-  const source = options.envFile || path.join(here,'../.env');
+  const source = options.envFile || process.env.COMPUTER_USE_ENV_FILE || path.join(here,'../.env');
   const environment = {...parseDotEnv(await fs.readFile(source,'utf8')),...process.env};
   if (environment.COMPUTER_USE_ENABLED !== 'true') throw new Error('COMPUTER_USE_NOT_ENABLED');
   const list = (environment.COMPUTER_USE_ALLOWED_ORIGINS || '').split(',').map(x=>x.trim()).filter(Boolean);
