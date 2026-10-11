@@ -24,7 +24,7 @@ export class BrowserRuntime {
   }
   status() {
     return { version: '2.0.0', ...this.pool.status(), metrics: { ...this.pool.metrics, ...this.metrics },
-      native_fallback: 'explicit_only', replay_guarantee: 'live_process_session_only',
+      native_fallback: 'automatic_tab_discovery', replay_guarantee: 'live_process_session_only',
       capabilities: ['persistent_tabs', 'aria_snapshot', 'role', 'label', 'test_id', 'screenshot', 'session_authorization'] };
   }
   async discover(input) {
@@ -177,12 +177,23 @@ export class BrowserRuntime {
   async close() { await this.pool.close(); this.hmacKey.fill(0); }
 }
 
+/**
+ * Zero-configuration discovery: prefer existing running browser channels.
+ * Manually configured loopback endpoints still take precedence; opting out
+ * of automatic channel discovery remains possible for managed deployments.
+ * Browser attachment is lazy: nothing launches or connects at service startup.
+ */
 export function providersFromEnvironment(environment) {
   const result = {};
+  const auto = environment.COMPUTER_USE_BROWSER_AUTO_ATTACH !== 'false';
+  const channels = { chrome: 'chrome', edge: 'msedge' };
   for (const browser of ['chrome', 'edge']) {
-    const endpoint = environment['COMPUTER_USE_' + browser.toUpperCase() + '_ENDPOINT'];
+    const prefix = 'COMPUTER_USE_' + browser.toUpperCase() + '_';
+    const explicit = environment[prefix + 'ENDPOINT'];
+    const endpoint = explicit || (auto ? channels[browser] : undefined);
     if (!endpoint) continue;
-    result[browser] = { endpoint, protocol: environment['COMPUTER_USE_' + browser.toUpperCase() + '_PROTOCOL'] || 'cdp' };
+    result[browser] = { endpoint, protocol: explicit
+      ? environment[prefix + 'PROTOCOL'] || 'cdp' : 'cdp' };
   }
   return result;
 }

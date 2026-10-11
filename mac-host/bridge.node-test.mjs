@@ -303,3 +303,108 @@ test('session audit never captures typed content',async()=>{
   assert.equal(reply.status,200);
   assert.equal(JSON.stringify(audit).includes(typed),false);
 });
+
+test('browser_tabs transparently returns native targets if CDP cannot attach',async()=>{
+ const {post,calls}=await ready({
+   enableBrowserRuntime:true,dynamicTabs:true,
+   browserProviders:{chrome:{endpoint:'chrome',protocol:'cdp'}},
+   // Force a transport failure without launching any browser.
+   browserAudit:async()=>{},
+ });
+ const r=await post('/v2/browser/tabs',{browser:'chrome'});
+ assert.equal(r.status,200);
+ assert.equal(r.data.provider,'native');
+ assert.equal(r.data.semantic_available,false);
+ assert.equal(r.data.running,true);
+ assert.equal(r.data.tabs.length,2);
+ assert.equal(r.data.tabs[0].title,'Personal');
+ assert.equal(r.data.tabs[0].native_target.expected_url,'https://private.invalid/');
+ assert.equal(r.data.tabs[1].native_target.expected_title,'Microsoft 365');
+ assert.equal(r.data.tabs[0].tab_ref,undefined);
+ assert(calls.some(c=>c.operation==='state'));
+});
+test('fallback never returns unsafe schemes, blank titles or disallowed origins',async()=>{
+ const {post}=await ready({
+   dynamicTabs:false,enableBrowserRuntime:true,
+   browserProviders:{edge:{endpoint:'msedge',protocol:'cdp'}}
+ });
+ const r=await post('/v2/browser/tabs',{browser:'edge',title:'Microsoft',exact:false});
+ assert.equal(r.status,200);
+ assert.equal(r.data.provider,'native');
+ assert.equal(r.data.tabs.length,1);
+ assert.equal(r.data.tabs[0].url,'https://admin.microsoft.com/');
+});
+test('fallback reports closed browser without pretending a persistent provider exists',async()=>{
+ const {post}=await ready({
+   dynamicTabs:true,enableBrowserRuntime:true,
+   browserProviders:{chrome:{endpoint:'chrome',protocol:'cdp'}},
+   nativeHandler:async(op)=>{
+     if(op==='state')return {running:false,windows:[]};
+     throw Error('Unexpected driver call');
+   }
+ });
+ const r=await post('/v2/browser/tabs',{browser:'chrome'});
+ assert.equal(r.status,200);
+ assert.equal(r.data.running,false);
+ assert.equal(r.data.launch_available,true);
+ assert.equal(r.data.tabs.length,0);
+});
+test('opening an already running browser is idempotent and never calls macOS open',async()=>{
+ const launches=[];
+ const {post}=await ready({
+   enableBrowserRuntime:true,
+   launchBrowserHandler:async name=>launches.push(name)
+ });
+ const r=await post('/v2/browser/open',{browser:'chrome',reason:'Open Chrome for my app testing'});
+ assert.equal(r.status,200);
+ assert.equal(r.data.already_running,true);
+ assert.equal(r.data.launched,false);
+ assert.deepEqual(launches,[]);
+});
+test('only explicit browser_open launches a whitelisted app and verifies it is running',async()=>{
+ const launches=[];
+ let running=false;
+ const audit=[];
+ const {post,calls}=await ready({
+   enableBrowserRuntime:true,
+   browserAudit:async evt=>audit.push(evt),
+   nativeHandler:async(op)=>{
+     calls.push({operation:op});
+     if(op==='state')return {running,windows:[]};
+     throw Error('Unknown action');
+   },
+   launchBrowserHandler:async name=>{launches.push(name);running=true;}
+ });
+ const r=await post('/v2/browser/open',{browser:'edge',reason:'Use Edge for the Microsoft administration page'});
+ assert.equal(r.status,200);
+ assert.equal(r.data.launched,true);
+ assert.deepEqual(launches,['edge']);
+ assert.deepEqual(audit.map(e=>e.outcome),['intent','launched']);
+ assert(calls.some(c=>c.operation==='state'));
+});
+test('invalid browser_open requests cannot launch an arbitrary executable, URL or script',async()=>{
+ const launches=[];
+ const {post}=await ready({
+   enableBrowserRuntime:true,launchBrowserHandler:async name=>launches.push(name)
+ });
+ for(const input of [
+   {browser:'safari',reason:'Open a third party application'},
+   {browser:'chrome',reason:'short'},
+   {browser:'edge',reason:'Open a browser safely',url:'https://test.invalid/',shell:'id'}
+ ]){
+   const r=await post('/v2/browser/open',input);
+   assert.equal(r.status,400);
+   assert.equal(r.error,'INVALID_RUNTIME_REQUEST');
+ }
+ assert.deepEqual(launches,[]);
+});
+test('native fallback is not used to bypass an invalid target request',async()=>{
+ const {post,calls}=await ready({
+   dynamicTabs:true,enableBrowserRuntime:true,
+   browserProviders:{chrome:{endpoint:'chrome',protocol:'cdp'}}
+ });
+ const r=await post('/v2/browser/tabs',{browser:'chrome',exact:'not_boolean'});
+ assert.equal(r.status,400);
+ assert.equal(r.error,'INVALID_RUNTIME_REQUEST');
+ assert.equal(calls.filter(c=>c.operation==='state').length,0);
+});

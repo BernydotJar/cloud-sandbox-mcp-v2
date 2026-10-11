@@ -77,7 +77,7 @@ export class ComputerUseService {
     return this.request('/v1/session/end', session_id ? { session_id } : {});
   }
 
-  async browserRuntime(operation: 'status' | 'tabs' | 'inspect' | 'screenshot' | 'action', input: Record<string, unknown>) {
+  async browserRuntime(operation: 'status' | 'tabs' | 'inspect' | 'screenshot' | 'action' | 'open', input: Record<string, unknown>) {
     return this.request('/v2/browser/' + operation, input);
   }
 

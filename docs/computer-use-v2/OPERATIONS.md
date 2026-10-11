@@ -6,6 +6,31 @@ A persistent browser adapter inside the existing native Mac bridge. The existing
 
 The runtime attaches to an operator-provisioned CDP or Playwright WebSocket endpoint. It does not launch a browser, create a context, read cookies/storage, copy profiles, scan ports, or close user tabs. CDP uses noDefaults:true so it does not apply Playwright's default download/media/focus overrides to a daily-driver profile. The native computer_use_* path remains available explicitly. An uncertain semantic action must not be retried as a native coordinate click.
 
+## Automatic browser routing (current local Mac implementation)
+
+The agent, not the user, now selects the browser driver. Browser Runtime automatically
+registers local running Chrome and Edge channels when no explicit provider endpoints
+are configured. Discovery remains lazy and does not launch or restart browsers.
+
+Browser tab discovery returns provider=persistent and opaque semantic tab references
+when the existing channel is attachable. Otherwise, on an unavailable transport ONLY,
+it uses the already-authorized native Mac discovery path and returns provider=native
+with the exact native title, safe URL and temporary indices. It never invents an ARIA
+snapshot or upgrades native coordinates to semantic selectors.
+
+If a browser is closed and the user asked for browser work, the browser_open tool
+can start only the installed Chrome or Edge app, using its existing profile, with
+no URL supplied to the launcher. Next, browser_tabs retries discovery.
+
+Manual provider .env keys documented below are optional advanced overrides, not a
+normal onboarding step. Native Computer Use retains its scoped task-session
+consent, fresh target identity checks, action-budget limits and auditing.
+
+For the one-command additive upgrade to the currently deployed Mac runtime, see
+deploy/browser-auto/README.md. It keeps 28 existing tools and adds browser_open
+for 29 total. The four-file installer has a real Mac acceptance gate, distinct from
+its hermetic simulation tests.
+
 ## Provisioning existing authenticated Chrome/Edge sessions
 
 The user's existing tabs and logins are a hard constraint, not disposable test profiles. Chrome 136+ ignores remote-debugging flags against the default user data directory. Do not try to enable CDP by restarting that profile, copying it, disabling encryption, or exposing a raw debug port publicly.

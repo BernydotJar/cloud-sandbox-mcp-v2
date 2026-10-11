@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createSessionStore } from './autonomy-session.mjs';
 import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runtime.mjs';
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
@@ -16,6 +17,48 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const nativeFile = path.join(here, 'native.jxa');
 const browsers = new Set(['chrome', 'edge']);
 const keys = new Set(['tab','escape','enter','space','backspace','up','down','left','right']);
+const launchBundles = Object.freeze({ chrome:'com.google.Chrome', edge:'com.microsoft.edgemac' });
+const attachFallbackCodes = new Set(['BROWSER_PROVIDER_NOT_CONFIGURED','BROWSER_ATTACH_FAILED',
+  'BROWSER_ATTACH_COOLDOWN','BROWSER_ENDPOINT_UNAVAILABLE','PLAYWRIGHT_DEPENDENCY_UNAVAILABLE']);
+
+async function launchBrowser(name) {
+  if (!Object.hasOwn(launchBundles,name)) throw new Error('INVALID_BROWSER');
+  // -b selects a fixed installed bundle ID. No user-supplied paths, URLs, flags,
+  // shells, new profiles, or WebSocket debugging ports.
+  try {
+    await exec('/usr/bin/open',['-b',launchBundles[name]],{timeout:15000,maxBuffer:2000});
+  }catch { throw new Error('BROWSER_APP_UNAVAILABLE'); }
+}
+
+export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, origins) {
+  const titleFilter=input.title;
+  const exact=input.exact!==false;
+  const tabs=[];
+  if(state?.running)for(const window of (state.windows||[])) {
+    for(const tab of (window.tabs||[])) {
+      const url=safeUrl(tab.url);
+      if(!url || (!dynamicTabs && !isAllowlistedTabUrl(url,origins)))continue;
+      const title=String(tab.title||'').slice(0,300);
+      if(!title || !Number.isInteger(window.window_index) || !Number.isInteger(tab.tab_index))
+        continue;
+      if(titleFilter && (exact?title!==titleFilter:
+        !title.toLocaleLowerCase().includes(titleFilter.toLocaleLowerCase())))continue;
+      tabs.push({title,url,active:Boolean(tab.active),
+        native_target:{browser,window_index:window.window_index,tab_index:tab.tab_index,
+          expected_title:title,expected_url:url}});
+      if(tabs.length>=256)break;
+    }
+    if(tabs.length>=256)break;
+  }
+  return {
+    browser,provider:'native',semantic_available:false,
+    fallback_reason:'PERSISTENT_BROWSER_UNAVAILABLE',
+    running:Boolean(state?.running),launch_available:!state?.running,
+    tabs,
+    next_step:state?.running?'Use computer_use_screenshot and computer_use_action with native_target':
+      'Call browser_open to launch the existing browser profile'
+  };
+}
 
 export function safeUrl(value) {
   try {
@@ -105,7 +148,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    approvalHandler = approve, captureHandler = capture,
                                    auditHandler = async () => {}, platform = process.platform,
                                    sessionStore = createSessionStore(), browserProviders = {},
-                                   enableBrowserRuntime = false, browserAudit = auditHandler}) {
+                                   enableBrowserRuntime = false, browserAudit = auditHandler,
+                                   launchBrowserHandler = launchBrowser}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
@@ -124,7 +168,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         !['/v1/status','/v1/state','/v1/focus','/v1/action','/v1/screenshot',
           '/v1/session/begin','/v1/session/status','/v1/session/end',
           '/v2/browser/status','/v2/browser/tabs','/v2/browser/inspect',
-          '/v2/browser/screenshot','/v2/browser/action'].includes(req.url)) {
+          '/v2/browser/screenshot','/v2/browser/action','/v2/browser/open'].includes(req.url)) {
       reply(res, 404, {ok:false,error:'UNKNOWN_METHOD'}); return;
     }
     try {
@@ -143,13 +187,58 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             {enabled:false, version:'2.0.0', native_fallback:'explicit_only'}}); return;
         }
         if (!runtime) throw new RuntimeFault('BROWSER_RUNTIME_DISABLED');
+        if (req.url === '/v2/browser/open') {
+          if (Object.keys(input).some(k=>!['browser','reason'].includes(k)) ||
+              !browsers.has(input.browser) || typeof input.reason!=='string' ||
+              input.reason.length<10 || input.reason.length>300)
+            throw new RuntimeFault('INVALID_RUNTIME_REQUEST');
+          if (busy)throw new RuntimeFault('COMPUTER_BUSY');
+          busy=true;
+          try {
+            const before=await nativeHandler('state',input.browser);
+            if (before?.running){
+              reply(res,200,{ok:true,data:{browser:input.browser,already_running:true,
+                launched:false,next_step:'browser_tabs'}});return;
+            }
+            try{await browserAudit({event:'browser_open',browser:input.browser,
+              outcome:'intent'});}catch{throw new RuntimeFault('AUDIT_UNAVAILABLE');}
+            await launchBrowserHandler(input.browser);
+            let running=false;
+            for(let attempt=0;attempt<16;attempt++){
+              const current=await nativeHandler('state',input.browser);
+              if(current?.running){running=true;break;}
+              await sleep(400);
+            }
+            const launched={browser:input.browser,launched:running,
+              next_step:running?'browser_tabs':'retry browser_tabs after the browser finishes opening'};
+            try{await browserAudit({event:'browser_open',browser:input.browser,
+              outcome:running?'launched':'pending'});}catch{ /* An attempted launch must not be retried solely for failed audit. */ }
+            reply(res,200,{ok:true,data:launched});return;
+          }finally{busy=false;}
+        }
         let result;
         if (req.url === '/v2/browser/action') {
           // One writer across BOTH backends: a semantic mutation must not race a native UI event.
           if (busy) throw new RuntimeFault('COMPUTER_BUSY');
           busy=true;
           try { result=await runtime.perform(input); } finally { busy=false; }
-        } else if (req.url === '/v2/browser/tabs') result=await runtime.discover(input);
+        } else if (req.url === '/v2/browser/tabs') {
+          try {
+            result=await runtime.discover(input);
+            result.provider='persistent';
+            result.semantic_available=true;
+          } catch(error) {
+            // Downgrade ONLY temporary/unavailable transport failures.
+            // Never bypass a denied target, invalid request or stale revision.
+            if(!attachFallbackCodes.has(error?.message))throw error;
+            if(!browsers.has(input.browser) || (input.title!==undefined &&
+              (typeof input.title!=='string'||input.title.length<1||input.title.length>300)) ||
+              (input.exact!==undefined && typeof input.exact!=='boolean'))
+              throw new RuntimeFault('INVALID_RUNTIME_REQUEST');
+            const nativeState=await nativeHandler('state',input.browser);
+            result=nativeDiscoveryFallback(input.browser,nativeState,input,dynamicTabs,allowedOrigins);
+          }
+        }
         else if (req.url === '/v2/browser/inspect') result=await runtime.inspect(input);
         else result=await runtime.screenshot(input);
         reply(res,200,{ok:true,data:result}); return;
@@ -316,7 +405,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',
         'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
         'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
-        'COMPUTER_BUSY']);
+        'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE']);
       reply(res,400,{ok:false,error:error instanceof RuntimeFault ? error.message :
         allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
     }

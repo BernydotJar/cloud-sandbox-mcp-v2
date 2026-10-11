@@ -26,7 +26,7 @@ describe('persistent browser MCP surface', () => {
     const f = await clientFixture();
     try {
       const names = new Set((await f.client.listTools()).tools.map(t => t.name));
-      for (const name of ['browser_runtime_status', 'browser_tabs', 'browser_inspect', 'browser_screenshot', 'browser_action',
+      for (const name of ['browser_runtime_status', 'browser_tabs', 'browser_open', 'browser_inspect', 'browser_screenshot', 'browser_action',
         'computer_use_state', 'computer_use_action', 'computer_use_session_begin', 'computer_use_session_end', 'workspace_exec']) expect(names.has(name)).toBe(true);
     } finally { await f.close(); }
   });
@@ -62,6 +62,24 @@ describe('persistent browser MCP surface', () => {
       expect(f.calls).toEqual([{ operation: 'action', input: args }]);
     } finally { await f.close(); }
   });
+  it('browser_open is explicit and only permits fixed Chrome/Edge choices', async () => {
+    const f = await clientFixture();
+    try {
+      const opened = await f.client.callTool({name:'browser_open',arguments:{
+        browser:'chrome', reason:'Use the existing Chrome app for UI testing'
+      }});
+      expect(opened.isError).not.toBe(true);
+      expect(f.calls).toEqual([{operation:'open', input:{
+        browser:'chrome',reason:'Use the existing Chrome app for UI testing'
+      }}]);
+      const invalid = await f.client.callTool({name:'browser_open',arguments:{
+        browser:'safari', reason:'Attempt to launch another arbitrary application'
+      }});
+      expect(invalid.isError).toBe(true);
+      expect(f.calls).toHaveLength(1);
+    }finally{await f.close();}
+  });
+
   it('non-PNG screenshot data is never returned as an MCP image', async () => {
     const f = await clientFixture();
     try {

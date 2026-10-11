@@ -259,3 +259,24 @@ test('channel endpoints allow only canonical existing browser identities', () =>
   assert.equal(validateEndpoint('chrome','cdp','chrome').channel,'chrome');
   assert.equal(validateEndpoint('msedge','cdp','edge').channel,'msedge');
 });
+
+test('unconfigured runtime automatically chooses local existing Chrome and Edge channels',async()=>{
+  const {providersFromEnvironment}=await import('./runtime.mjs');
+  assert.deepEqual(providersFromEnvironment({}),{
+    chrome:{endpoint:'chrome',protocol:'cdp'},
+    edge:{endpoint:'msedge',protocol:'cdp'}
+  });
+  assert.deepEqual(providersFromEnvironment({COMPUTER_USE_BROWSER_AUTO_ATTACH:'false'}),{});
+});
+test('explicit local Playwright endpoints override automatic channels without silently rewriting them',async()=>{
+  const {providersFromEnvironment}=await import('./runtime.mjs');
+  assert.deepEqual(providersFromEnvironment({
+    COMPUTER_USE_CHROME_ENDPOINT:'http://127.0.0.1:9222',
+    COMPUTER_USE_CHROME_PROTOCOL:'cdp',
+    COMPUTER_USE_EDGE_ENDPOINT:'ws://127.0.0.1:4050/agent',
+    COMPUTER_USE_EDGE_PROTOCOL:'playwright'
+  }),{
+    chrome:{endpoint:'http://127.0.0.1:9222',protocol:'cdp'},
+    edge:{endpoint:'ws://127.0.0.1:4050/agent',protocol:'playwright'}
+  });
+});
