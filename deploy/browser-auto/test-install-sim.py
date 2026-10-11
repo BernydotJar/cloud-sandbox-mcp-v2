@@ -184,6 +184,14 @@ await import('file://'+process.env.MOCK_SCRIPT);
     print('AUTO_SIM_IDEMPOTENT_REINSTALL_PASS')
 
     for key in target:shutil.copyfile(original[key],target[key])
+    # An optional previous channel upgrade may have patched ONLY connection-pool.
+    shutil.copyfile(changed['connection-pool.mjs'],target['connection-pool.mjs'])
+    code,out=run('--install')
+    assert code==0 and 'AUTO_BROWSER_READY' in out,out
+    new_integrity()
+    print('AUTO_SIM_OLDER_CHANNEL_ONLY_ADDON_UPGRADE_PASS')
+
+    for key in target:shutil.copyfile(original[key],target[key])
     code,out=run('--install',fail=True)
     assert code==2 and 'ROLLBACK_VERIFIED' in out,out
     old_integrity()

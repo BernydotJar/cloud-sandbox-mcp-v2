@@ -131,9 +131,10 @@ async function main(){
   run('/bin/launchctl',['print',launchLabel],15000);
 
   let changed=0;
+  const alreadyPatched=[];
   for(const [key,dest] of Object.entries(files)){
     const hash=safeHash(dest);
-    if(hash===assets[key].sha256)continue;
+    if(hash===assets[key].sha256){alreadyPatched.push(key);continue;}
     if(!assets[key].allowed_previous.includes(hash))
       throw Error('CUSTOM_CODE_DRIFT_'+key.replace(/[^a-z]/g,'_').toUpperCase());
     changed++;
@@ -147,7 +148,11 @@ async function main(){
     log('ALREADY_INSTALLED: verified 29 tools and both automatic browser channels.');
     return;
   }
-  if(changed!==Object.keys(files).length)
+  // The optional earlier channel-only enhancement updates just the pool.
+  // Accept exactly that known state, but refuse other half-finished upgrades.
+  const priorChannelOnly=changed===3 && alreadyPatched.length===1 &&
+    alreadyPatched[0]==='connection-pool.mjs';
+  if(changed!==Object.keys(files).length && !priorChannelOnly)
     throw Error('PARTIALLY_INSTALLED_RUNTIME_REQUIRES_RECONCILIATION');
   const devMain=JSON.parse(run('docker',['inspect','cloud-sandbox-dev-main'],20000))[0];
   if(!devMain?.State?.Running)throw Error('DEV_MAIN_MUST_BE_RUNNING');
