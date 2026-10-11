@@ -1,6 +1,17 @@
 import { RuntimeFault, fail, browserName } from './contracts.mjs';
 
-export function validateEndpoint(value, protocol = 'cdp') {
+// Playwright 1.64+ can resolve a running Chromium channel through that
+// profile's DevToolsActivePort file after the operator explicitly enables
+// chrome://inspect/#remote-debugging. Unlike numeric CDP URLs, the runtime
+// never needs to discover, allocate, or publish a debugging port.
+const LOCAL_CHANNEL = Object.freeze({ chrome: 'chrome', edge: 'msedge' });
+export function validateEndpoint(value, protocol = 'cdp', browser) {
+  if (value === 'chrome' || value === 'msedge') {
+    if (protocol !== 'cdp' || (browser !== undefined && LOCAL_CHANNEL[browser] !== value)) {
+      fail('BROWSER_CHANNEL_MISMATCH');
+    }
+    return { channel: value, href: value };
+  }
   let u;
   try { u = new URL(value); } catch { fail('INVALID_BROWSER_ENDPOINT'); }
   if (!['cdp', 'playwright'].includes(protocol) ||
@@ -16,6 +27,7 @@ export function validateEndpoint(value, protocol = 'cdp') {
 
 export async function resolveEndpoint(endpoint, protocol, fetcher = fetch) {
   const original = validateEndpoint(endpoint, protocol);
+  if (original.channel) return original.channel;
   if (original.protocol === 'ws:') return original.href;
   const response = await fetcher(new URL('/json/version', original), {
     signal: AbortSignal.timeout(5000), redirect: 'error', headers: { accept: 'application/json' }
@@ -68,7 +80,7 @@ export class ConnectionPool {
       browserName(name);
       if (!config || Object.keys(config).some(k => !['endpoint', 'protocol'].includes(k))) fail('INVALID_PROVIDER_CONFIG');
       const protocol = config.protocol || 'cdp';
-      validateEndpoint(config.endpoint, protocol);
+      validateEndpoint(config.endpoint, protocol, name);
       this.providers.set(name, { endpoint: config.endpoint, protocol });
       this.slots.set(name, { epoch: 0, connection: null, pending: null, retryAt: 0 });
     }

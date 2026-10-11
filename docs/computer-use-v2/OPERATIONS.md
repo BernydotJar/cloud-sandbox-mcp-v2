@@ -20,7 +20,7 @@ Provisioned endpoints belong to the private controller .env, never tool argument
     COMPUTER_USE_EDGE_ENDPOINT=<operator-verified numeric-loopback endpoint>
     COMPUTER_USE_EDGE_PROTOCOL=playwright
 
-The protocol is cdp or playwright. Numeric 127.0.0.1 / ::1 and a nonprivileged explicit port are required. HTTP CDP metadata may not redirect the WebSocket to a different host or port. Native Playwright client/server major-minor versions must match (this build pins 1.64.0). No domains need registration when existing dynamic discovery is enabled. Endpoint absence is reported as BROWSER_PROVIDER_NOT_CONFIGURED, not simulated readiness.
+The protocol is cdp or playwright. For explicit endpoint URLs, numeric 127.0.0.1 / ::1 and a nonprivileged port are required. HTTP CDP metadata cannot redirect to a different host/port. Browser Runtime V2.1 additionally supports existing Chrome/Edge channels: COMPUTER_USE_CHROME_ENDPOINT=chrome and COMPUTER_USE_EDGE_ENDPOINT=msedge, both using PROTOCOL=cdp. Channel identities are bound to their browsers. Playwright resolves them locally from the original profile DevToolsActivePort, without launching browsers or opening manually configured ports. Both running browsers must allow remote debugging for this instance through chrome://inspect/#remote-debugging. The operator bootstrap with identity matching, private backups and rollback is in deploy/browser-channel-providers/. Playwright protocol client/server versions must match; this project pins 1.64.0. No domains need registration when dynamic discovery is enabled. Missing providers remain BROWSER_PROVIDER_NOT_CONFIGURED, not simulated readiness.
 
 References:
 - https://developer.chrome.com/blog/remote-debugging-port

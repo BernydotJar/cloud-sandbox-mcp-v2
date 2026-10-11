@@ -219,3 +219,43 @@ test('request receipts are bounded per valid task rather than exhausting the pro
   assert.equal(f.runtime.requests.size,1);
   assert.equal(f.page.calls.length,2);
 });
+
+test('Playwright local channels attach to existing Chrome and Edge without numeric ports', async () => {
+  const seen=[];
+  const chromium=async (config,name)=>{
+    seen.push({browser:name,endpoint:await resolveEndpoint(config.endpoint,config.protocol,()=>{
+      throw Error('Network probe must not run for local channel names');
+    })});
+    return new FakeConnection();
+  };
+  const pool=new ConnectionPool({
+    providers:{
+      chrome:{endpoint:'chrome',protocol:'cdp'},
+      edge:{endpoint:'msedge',protocol:'cdp'}
+    },
+    connect:chromium
+  });
+  const first=await pool.get('chrome');
+  const second=await pool.get('edge');
+  assert(first.connection.isConnected());
+  assert(second.connection.isConnected());
+  assert.deepEqual(seen,[{browser:'chrome',endpoint:'chrome'},{browser:'edge',endpoint:'msedge'}]);
+  assert.equal(pool.status().metrics.connections,2);
+  await pool.close();
+});
+test('browser channel cross-attachment and non-CDP transport are denied', () => {
+  for(const item of [
+    {chrome:{endpoint:'msedge',protocol:'cdp'}},
+    {edge:{endpoint:'chrome',protocol:'cdp'}},
+    {chrome:{endpoint:'chrome',protocol:'playwright'}},
+    {edge:{endpoint:'msedge',protocol:'playwright'}}
+  ])assert.throws(()=>new ConnectionPool({providers:item}),/BROWSER_CHANNEL_MISMATCH/);
+});
+test('channel endpoints allow only canonical existing browser identities', () => {
+  for(const value of ['chrome-beta','msedge-dev','chromium','firefox','google-chrome',
+      'chrome://inspect','chrome;rm -rf','chrome.local','msedge?x=y']){
+    assert.throws(()=>validateEndpoint(value,'cdp'),/BROWSER_ENDPOINT/);
+  }
+  assert.equal(validateEndpoint('chrome','cdp','chrome').channel,'chrome');
+  assert.equal(validateEndpoint('msedge','cdp','edge').channel,'msedge');
+});
