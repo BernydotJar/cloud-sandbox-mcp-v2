@@ -1,3 +1,4 @@
+/* global process, Buffer */
 import fs from 'node:fs';
 import {pathToFileURL} from 'node:url';
 

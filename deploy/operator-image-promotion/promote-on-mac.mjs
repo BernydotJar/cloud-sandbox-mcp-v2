@@ -1,3 +1,4 @@
+/* global process, setTimeout, fetch, AbortSignal, Buffer, URL */
 /**
  * Strict image-only promotion for the EXISTING cloud-sandbox-mcp Docker Compose service.
  * A permanent additive override preserves the full original Compose service definition.
@@ -318,7 +319,7 @@ async function execute(){
         receipt.state='rolled_back';
         await fsp.writeFile(path.join(backup,'receipt.json'),JSON.stringify(receipt,null,2),{mode:0o600});
         log('AUTOMATIC_ROLLBACK_VERIFIED: prior controller image restored.');
-      }catch(rollbackError){
+      }catch{ /* Original image rollback will be logged below. */
         receipt.state='rollback_requires_operator';
         await fsp.writeFile(path.join(backup,'receipt.json'),JSON.stringify(receipt,null,2),{mode:0o600});
         log('ROLLBACK_INCOMPLETE: stop and inspect the MCP controller.');

@@ -1,3 +1,4 @@
+/* global console */
 import {createMcpServer} from '/app/dist/mcp/server.js';
 import {ComputerUseService} from '/app/dist/services/computer-use-service.js';
 import {config} from '/app/dist/config.js';

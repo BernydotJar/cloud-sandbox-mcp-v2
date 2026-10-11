@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  overlayFor,comparableConfig,confirmOnlyImageChanged,verifyControllerMetadata,
+  overlayFor,confirmOnlyImageChanged,verifyControllerMetadata,
   ORIGINAL_IMAGE,V2_IMAGE,V2_TAG,BASE_TAG
 } from './promotion-core.mjs';
 
@@ -36,7 +36,7 @@ test('any network, env, mount, restart, build or other-service drift is rejected
 });
 test('invalid image reference cannot be promoted or rendered',()=>{
   assert.throws(()=>overlayFor('ubuntu:latest'),/IMAGE_NOT_RELEASE_APPROVED/);
-  assert.match(overlayFor(V2_TAG),/services:\n  mcp:\n    image: cloud-sandbox/);
+  assert.match(overlayFor(V2_TAG),/services:\n {2}mcp:\n {4}image: cloud-sandbox/);
   assert.throws(()=>confirmOnlyImageChanged(base,base,V2_TAG),/TARGET_IMAGE_OVERRIDE_MISSING/);
   assert.match(ORIGINAL_IMAGE,/^sha256:/);
   assert.match(V2_IMAGE,/^sha256:/);

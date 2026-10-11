@@ -1,3 +1,4 @@
+/* global console */
 import fs from 'node:fs';
 import {createMcpServer} from '/app/dist/mcp/server.js';
 import {ComputerUseService} from '/app/dist/services/computer-use-service.js';
