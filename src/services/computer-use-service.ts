@@ -77,12 +77,16 @@ export class ComputerUseService {
     return this.request('/v1/session/end', session_id ? { session_id } : {});
   }
 
+  async browserRuntime(operation: 'status' | 'tabs' | 'inspect' | 'screenshot' | 'action', input: Record<string, unknown>) {
+    return this.request('/v2/browser/' + operation, input);
+  }
+
   private async request(path: string, body: unknown): Promise<unknown> {
     if (!this.config.COMPUTER_USE_ENABLED || !this.config.COMPUTER_USE_BRIDGE_TOKEN) {
       throw new Error('Native computer use disabled by operator.');
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), (path === '/v1/action' || path === '/v1/session/begin') ? 90_000 : 20_000);
+    const timeout = setTimeout(() => controller.abort(), (path === '/v1/action' || path === '/v1/session/begin') ? 90_000 : path.startsWith('/v2/browser/') ? 45_000 : 20_000);
     try {
       const response = await fetch(new URL(path, this.config.COMPUTER_USE_BRIDGE_URL), {
         method: 'POST',

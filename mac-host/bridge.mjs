@@ -6,6 +6,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createSessionStore } from './autonomy-session.mjs';
+import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runtime.mjs';
+import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
+import { RuntimeFault } from './browser-runtime/contracts.mjs';
+import os from 'node:os';
 
 const exec = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -100,7 +104,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    nativeHandler = native,
                                    approvalHandler = approve, captureHandler = capture,
                                    auditHandler = async () => {}, platform = process.platform,
-                                   sessionStore = createSessionStore()}) {
+                                   sessionStore = createSessionStore(), browserProviders = {},
+                                   enableBrowserRuntime = false, browserAudit = auditHandler}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
@@ -108,14 +113,18 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       [...allowedOrigins].some(v => !v.startsWith('https://') || new URL(v).origin !== v)) {
     throw new Error('EXPLICIT_HTTPS_ALLOWLIST_REQUIRED');
   }
+  const runtime = enableBrowserRuntime ? new BrowserRuntime({ providers: browserProviders,
+    sessionStore, audit: browserAudit, dynamicTabs, allowedOrigins }) : null;
   let busy = false;
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (!allowedPeer(req.socket.remoteAddress) || !authorized(req.headers.authorization, token)) {
       reply(res, 403, {ok:false,error:'UNAUTHORIZED'}); return;
     }
     if (req.method !== 'POST' ||
         !['/v1/status','/v1/state','/v1/focus','/v1/action','/v1/screenshot',
-          '/v1/session/begin','/v1/session/status','/v1/session/end'].includes(req.url)) {
+          '/v1/session/begin','/v1/session/status','/v1/session/end',
+          '/v2/browser/status','/v2/browser/tabs','/v2/browser/inspect',
+          '/v2/browser/screenshot','/v2/browser/action'].includes(req.url)) {
       reply(res, 404, {ok:false,error:'UNKNOWN_METHOD'}); return;
     }
     try {
@@ -128,6 +137,23 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       }
       const input = JSON.parse(Buffer.concat(buffers).toString('utf8'));
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('INVALID_BODY');
+      if (req.url.startsWith('/v2/browser/')) {
+        if (req.url === '/v2/browser/status') {
+          reply(res, 200, {ok:true, data:runtime ? {enabled:true,...runtime.status()} :
+            {enabled:false, version:'2.0.0', native_fallback:'explicit_only'}}); return;
+        }
+        if (!runtime) throw new RuntimeFault('BROWSER_RUNTIME_DISABLED');
+        let result;
+        if (req.url === '/v2/browser/action') {
+          // One writer across BOTH backends: a semantic mutation must not race a native UI event.
+          if (busy) throw new RuntimeFault('COMPUTER_BUSY');
+          busy=true;
+          try { result=await runtime.perform(input); } finally { busy=false; }
+        } else if (req.url === '/v2/browser/tabs') result=await runtime.discover(input);
+        else if (req.url === '/v2/browser/inspect') result=await runtime.inspect(input);
+        else result=await runtime.screenshot(input);
+        reply(res,200,{ok:true,data:result}); return;
+      }
       if (req.url === '/v1/status') {
         reply(res, 200, {ok:true,data:{backend:'macos-automation',
           browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size,
@@ -291,9 +317,12 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
         'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
         'COMPUTER_BUSY']);
-      reply(res,400,{ok:false,error:allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
+      reply(res,400,{ok:false,error:error instanceof RuntimeFault ? error.message :
+        allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
     }
   });
+  server.once('close', () => { if (runtime) void runtime.close().catch(() => {}); });
+  return server;
 }
 
 function parseDotEnv(raw) {
@@ -324,10 +353,16 @@ export async function startBridge(options = {}) {
   // An explicit local operator opt-in unlocks dynamic Chrome/Edge tab discovery.
   // Delegated sessions still require one native approval when they begin.
   const dynamicTabs = environment.COMPUTER_USE_DYNAMIC_TABS === 'true';
+  const enableBrowserRuntime = environment.COMPUTER_USE_BROWSER_V2 === 'true';
+  const ledger = enableBrowserRuntime ? new AuditLedger(path.join(os.homedir(),
+    'Library','Application Support','LCH','CloudSandboxComputerUse','audit-v2')) : null;
   const server = createBridgeServer({
     token: environment.COMPUTER_USE_BRIDGE_TOKEN, allowedOrigins: new Set(list),
-    dynamicTabs, auditHandler: appendAudit
+    dynamicTabs, auditHandler: appendAudit, enableBrowserRuntime,
+    browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
+    browserAudit: event => ledger.append(event)
   });
+  server.once('close', () => { if (ledger) void ledger.close().catch(() => {}); });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';
   const port = Number(environment.COMPUTER_USE_BRIDGE_PORT || '9764');
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('INVALID_PORT');

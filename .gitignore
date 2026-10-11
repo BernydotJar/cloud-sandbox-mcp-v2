@@ -38,3 +38,6 @@ coverage/
 # Editors
 .vscode/
 .idea/
+
+# Versioned release output is generated outside the checkout
+release-browser-v2/

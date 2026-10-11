@@ -1,0 +1,33 @@
+name: Browser Runtime V2
+on:
+  push:
+    branches: [main, 'feat/computer-use-runtime-v2']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: browser-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies, no install scripts
+        run: npm ci --ignore-scripts --no-fund --no-audit
+      - name: Isolated Chromium fixture dependencies
+        run: npx --no-install playwright-core install --with-deps chromium
+      - name: Source, native compatibility and real-browser checks
+        run: npm run verify:v2
+      - name: Production dependency advisory gate
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Confirm no generated files changed tracked source
+        run: git diff --exit-code

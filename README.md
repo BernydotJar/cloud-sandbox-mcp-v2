@@ -142,3 +142,12 @@ For an initial **read-only smoke test**: call `computer_use_status`, then `compu
 Set `COMPUTER_USE_ENABLED=false` in `.env`, recreate the controller, then unload the Mac LaunchAgent using `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.lch.cloud-sandbox.computer-use.plist`. The Linux workspace and other MCP tools remain independent.
 
 The host UI smoke test cannot run in a Linux-only CI environment. Mac Automation permissions and tab AppleScript compatibility must be checked on the real Mac.
+
+
+## Computer Use Runtime V2
+
+This branch adds persistent, attach-only Chrome/Edge providers (CDP or native Playwright protocol), opaque tab handles, exact role/label/test-id actions, revision checks, delegated sessions, bounded replay suppression, and private structured audit receipts. Native Computer Use remains operational when the persistent provider is not configured.
+
+See [implementation contract](docs/computer-use-v2/SPEC.md), [operator runbook](docs/computer-use-v2/OPERATIONS.md), and [readiness review](docs/computer-use-v2/READINESS.md). Isolated real-browser checks run with `npm run verify:v2` on Linux; no logged-in Mac profile is used.
+
+A clean release is built with `node scripts/build-browser-runtime-release.mjs /new/output/directory` and verified using `node scripts/verify-browser-runtime-release.mjs /same/output/directory`. Its customized registry preserves 23 existing tools and adds 5 (28 total). Operator preflight is mandatory; the release does not automatically provision the browser extension/debugging endpoint or silently retain old controller-image dependencies.

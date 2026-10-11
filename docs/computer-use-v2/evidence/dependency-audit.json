@@ -1,0 +1,28 @@
+{
+  "checked_at_utc": "2026-10-11T01:11:02.269Z",
+  "command": "npm audit --omit=dev",
+  "environment": "repository working tree; not the live Mac controller image",
+  "before": {
+    "info": 0,
+    "low": 0,
+    "moderate": 3,
+    "high": 3,
+    "critical": 1,
+    "total": 7
+  },
+  "after": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "patched_source_dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "express": "5.3.0",
+    "playwright-core": "1.64.0",
+    "zod": "4.1.12"
+  },
+  "interpretation": "Advisory scan result only; not proof of exploitability or absence of all vulnerabilities."
+}

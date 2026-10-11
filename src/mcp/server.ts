@@ -1,3 +1,4 @@
+import { registerBrowserRuntimeTools } from './browser-runtime-tools.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { WorkspaceService } from '../services/workspace-service.js';
@@ -142,6 +143,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
   }, async ({ workspace_id }) => await safely(() => service.destroy(workspace_id)));
 
   if (computer) {
+    registerBrowserRuntimeTools(server, computer);
     const browserSchema = z.enum(['chrome', 'edge']);
     const targetSchema = {
       browser: browserSchema,

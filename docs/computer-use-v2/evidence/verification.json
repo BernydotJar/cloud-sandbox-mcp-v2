@@ -1,0 +1,26 @@
+{
+  "checked_at_utc": "2026-10-11T01:11:02.270Z",
+  "project_id": "4451d54b-4994-4eab-afe6-ec6e654ad7f4",
+  "source_branch": "feat/computer-use-runtime-v2",
+  "project_verify": {
+    "check": "verify:v2",
+    "success": true,
+    "exitCode": 0
+  },
+  "unit_integration_tests": {
+    "node": 74,
+    "vitest": 26,
+    "total": 100
+  },
+  "real_isolated_browser_checks": 13,
+  "custom_registry": {
+    "baseline": 23,
+    "with_runtime_v2": 28,
+    "existing_definitions_unchanged": 23
+  },
+  "release_review_files_verified": 129,
+  "production_mac_deployment": "NOT_EXECUTED",
+  "production_mac_provider_pairing": "NOT_VERIFIED",
+  "remote_ci": "NOT_RUN",
+  "external_independent_review": "NOT_RUN"
+}

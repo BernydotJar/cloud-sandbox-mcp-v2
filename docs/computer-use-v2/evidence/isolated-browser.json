@@ -1,0 +1,26 @@
+{
+  "environment": "isolated Linux Chromium; NOT user Chrome/Edge",
+  "checks": [
+    "real_cdp_attach",
+    "real_aria_snapshot",
+    "semantic_click_and_replay_suppression",
+    "semantic_fill_and_select",
+    "protected_input_denied",
+    "cdp_screenshot_in_memory",
+    "persistent_connection_reused_30_times",
+    "full_url_navigation_revision_guard",
+    "reconnect_invalidates_refs_without_closing_tabs",
+    "revocation_denies_next_dispatch",
+    "audit_excludes_content_and_session_capability",
+    "playwright_protocol_attach_and_existing_tab_inspection",
+    "real_mcp_http_bridge_semantic_action_and_image"
+  ],
+  "benchmark": {
+    "cold_attach_and_discovery_ms": 19.43,
+    "warm_discovery_samples": 30,
+    "warm_p50_ms": 0.54,
+    "warm_p95_ms": 0.8,
+    "attach_count_before_disconnect": 1
+  },
+  "result": "PASS"
+}
