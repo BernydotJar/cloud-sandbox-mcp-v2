@@ -21,6 +21,7 @@ assert.equal(Object.keys(manifest.controller_dependencies).length, 8);
 const seen = new Set();
 for (const item of manifest.files) {
   assert(!seen.has(item.path)); seen.add(item.path);
+  assert(!/\.(?:ttf|otf|woff2?)$/i.test(item.path), 'Unexpected non-runtime visual asset');
   assert(!path.isAbsolute(item.path) && !item.path.split('/').includes('..'));
   const bytes = await fs.readFile(path.join(release, item.path));
   assert.equal(hash(bytes), item.sha256, item.path);

@@ -33,6 +33,7 @@ for (const name of ['contracts.mjs', 'connection-pool.mjs', 'tab-registry.mjs', 
 async function collect(directory, prefix) {
   for (const entry of (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
     if (entry.isSymbolicLink()) throw Error('RELEASE_SYMLINK_DENIED');
+    if (/\.(?:ttf|otf|woff2?)$/i.test(entry.name)) continue; // Unused visual-tool assets are not part of the headless runtime distribution.
     if (entry.isDirectory()) await collect(path.join(directory, entry.name), prefix + '/' + entry.name);
     else if (entry.isFile()) await add(prefix + '/' + entry.name, path.join(directory, entry.name));
   }

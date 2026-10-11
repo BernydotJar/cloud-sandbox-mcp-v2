@@ -17,7 +17,7 @@ The implementation is an additive extension of the existing control plane, not a
 | Real isolated Chromium | CDP + native Playwright protocol + full MCP-to-HTTP bridge chain | 13 explicit checks PASS |
 | Connection reuse | 30 consecutive discoveries on one existing connection | PASS |
 | Customized release registry | Original 23 definitions compared structurally; 5 additions | 28 tools, no existing definition changed |
-| Release integrity | 129 staged files, manifest hashes, syntax, Linux Mac-only installer guard | PASS on review bundle |
+| Release integrity | 126 staged files, manifest hashes, syntax, Linux Mac-only installer guard | PASS on review bundle |
 | Production dependencies | npm audit --omit=dev after targeted upgrades | 0 advisories reported at verification time |
 
 The unit/integration total is 100 tests (74 Node + 26 Vitest). The 13 real-browser checks and release-registry verification are additional acceptance checks, not additional Vitest cases. No network CI run or independent external reviewer is claimed: the GitHub Actions workflow is prepared in source and has not been pushed or executed remotely.
