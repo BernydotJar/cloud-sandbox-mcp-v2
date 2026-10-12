@@ -1,0 +1,270 @@
+{
+  "schema_version": "graph-harness.project.v1",
+  "project_id": "cloud-sandbox-computer-use-enterprise-20261012",
+  "mode": "SHIP",
+  "gate_definitions": [
+    {
+      "id": "executor_integrity",
+      "required_evidence_kinds": [
+        "executor_smoke",
+        "worktree_isolation",
+        "capability_denial"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "browser_host",
+      "required_evidence_kinds": [
+        "isolated_browser",
+        "mac_chrome_acceptance",
+        "mac_edge_acceptance"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "security",
+      "required_evidence_kinds": [
+        "security_review",
+        "abuse_regressions",
+        "identity_boundary"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "offscreen_qa",
+      "required_evidence_kinds": [
+        "headless_e2e",
+        "interaction_coverage",
+        "noninterference"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "operations",
+      "required_evidence_kinds": [
+        "dependency_scan",
+        "signed_bundle",
+        "rollback_drill",
+        "audit_retention"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "independent",
+      "required_evidence_kinds": [
+        "independent_adversarial",
+        "release_candidate_retest"
+      ],
+      "blocking": true
+    },
+    {
+      "id": "release",
+      "required_evidence_kinds": [
+        "human_release_approval",
+        "mac_release_receipt",
+        "post_release_smoke"
+      ],
+      "blocking": true
+    }
+  ],
+  "nodes": [
+    {
+      "id": "CUE-101",
+      "kind": "engineering_task",
+      "title": "Agent adapters, scheduling and per-worktree isolation",
+      "status": "spec_ready",
+      "depends_on": [],
+      "capability": "agent_orchestration",
+      "gates": {
+        "done": [
+          "executor_integrity"
+        ]
+      },
+      "allowed_paths": [
+        "src/agent-orchestration/**",
+        "scripts/agent-orchestration/**",
+        "tests/agent-orchestration/**"
+      ],
+      "metadata": {
+        "owner_role": "Agent A - orchestration",
+        "priority": "P0",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "executor_integrity"
+      }
+    },
+    {
+      "id": "CUE-201",
+      "kind": "engineering_task",
+      "title": "Mac Chrome and Edge persistent-browser reliability",
+      "status": "spec_ready",
+      "depends_on": [],
+      "capability": "browser_runtime",
+      "gates": {
+        "done": [
+          "browser_host"
+        ]
+      },
+      "allowed_paths": [
+        "mac-host/browser-runtime/**",
+        "tests/browser-runtime/**",
+        "docs/computer-use-v2/browser-acceptance/**"
+      ],
+      "metadata": {
+        "owner_role": "Agent B - browser/CDP",
+        "priority": "P0",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "browser_host"
+      }
+    },
+    {
+      "id": "CUE-301",
+      "kind": "engineering_task",
+      "title": "Identity, scoped approvals, authorization and threat controls",
+      "status": "spec_ready",
+      "depends_on": [],
+      "capability": "security_engineering",
+      "gates": {
+        "done": [
+          "security"
+        ]
+      },
+      "allowed_paths": [
+        "mac-host/autonomy-session.mjs",
+        "mac-host/bridge.mjs",
+        "src/services/computer-use-service.ts",
+        "tests/computer-use-service.test.ts",
+        "docs/computer-use-v2/security/**"
+      ],
+      "metadata": {
+        "owner_role": "Agent C - security",
+        "priority": "P0",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "security"
+      }
+    },
+    {
+      "id": "CUE-401",
+      "kind": "engineering_task",
+      "title": "Isolated offscreen Playwright testing platform",
+      "status": "spec_ready",
+      "depends_on": [],
+      "capability": "qa_automation",
+      "gates": {
+        "done": [
+          "offscreen_qa"
+        ]
+      },
+      "allowed_paths": [
+        "scripts/offscreen-qa/**",
+        "tests/offscreen-qa/**",
+        "docs/computer-use-v2/qa/**"
+      ],
+      "metadata": {
+        "owner_role": "Agent D - SDET",
+        "priority": "P0",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "offscreen_qa"
+      }
+    },
+    {
+      "id": "CUE-501",
+      "kind": "engineering_task",
+      "title": "Release/SRE, audit lifecycle and supply chain hardening",
+      "status": "spec_ready",
+      "depends_on": [],
+      "capability": "sre_release",
+      "gates": {
+        "done": [
+          "operations"
+        ]
+      },
+      "allowed_paths": [
+        "deploy/**",
+        ".github/workflows/**",
+        "scripts/verify-browser-runtime-release.mjs",
+        "docs/computer-use-v2/operations/**"
+      ],
+      "metadata": {
+        "owner_role": "Agent E - SRE",
+        "priority": "P0",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "operations"
+      }
+    },
+    {
+      "id": "CUE-601",
+      "kind": "engineering_task",
+      "title": "Independent adversarial and integration verification",
+      "status": "spec_ready",
+      "depends_on": [
+        "CUE-101",
+        "CUE-201",
+        "CUE-301",
+        "CUE-401",
+        "CUE-501"
+      ],
+      "capability": "independent_verification",
+      "gates": {
+        "done": [
+          "independent"
+        ]
+      },
+      "allowed_paths": [
+        "docs/computer-use-v2/independent-qa/**",
+        "graph/computer-use-enterprise/evidence/**"
+      ],
+      "metadata": {
+        "owner_role": "Independent verifier",
+        "priority": "P0",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "independent"
+      }
+    },
+    {
+      "id": "CUE-701",
+      "kind": "engineering_task",
+      "title": "Human-approved enterprise release acceptance",
+      "status": "spec_ready",
+      "depends_on": [
+        "CUE-601"
+      ],
+      "capability": "release_governance",
+      "gates": {
+        "done": [
+          "release"
+        ]
+      },
+      "allowed_paths": [
+        "docs/computer-use-v2/release-acceptance/**",
+        "graph/computer-use-enterprise/evidence/**"
+      ],
+      "metadata": {
+        "owner_role": "SA + human release owner",
+        "priority": "P1",
+        "mode": "SHIP",
+        "approval": "pending_explicit_scope_signoff",
+        "external_effects": "deny_until_authorized",
+        "agent_runtime": "not_yet_provisioned",
+        "evidence_contract": "release"
+      }
+    }
+  ]
+}
