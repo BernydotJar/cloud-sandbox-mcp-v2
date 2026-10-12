@@ -1,0 +1,25 @@
+{
+  "schema": "cloud-sandbox.enterprise-evidence.v1",
+  "recorded_date": "2026-10-12",
+  "environment": "real existing Mac Chrome and Edge using connected Cloud Sandbox tools",
+  "read_only": true,
+  "mac_actions_dispatched": 0,
+  "session_active": false,
+  "chrome": {
+    "tab_discovery": "persistent CDP success",
+    "inspection": "NATIVE_UNAVAILABLE",
+    "semantic_acceptance": "BLOCKED"
+  },
+  "edge": {
+    "tab_discovery": "persistent CDP success",
+    "inspection": "OK",
+    "content_omitted": true,
+    "aria_characters": 15622,
+    "semantic_acceptance": "PARTIAL: read-only only"
+  },
+  "limits": [
+    "No sensitive title, URL, page text or screenshot content retained.",
+    "Current Mac bridge predates source-only inspection fallback and diagnostic counters.",
+    "Neither product action consent nor host release has been exercised."
+  ]
+}

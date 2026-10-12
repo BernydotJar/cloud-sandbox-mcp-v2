@@ -1,6 +1,6 @@
 # Graph Harness SHIP Control — Computer Use Enterprise
 
-Status: ARCHITECTURE PREPARED / AWAITING EXPLICIT SCOPE APPROVAL.
+Status: SOURCE HARDENING COMMITTED / MAC ENTERPRISE PROMOTION ON HOLD.
 Date: 2026-10-12. Repository: BernydotJar/cloud-sandbox-mcp-v2, branch feat/computer-use-runtime-v2.
 Current source baseline: 7fa8318. Graph Harness pinned runtime: f8bb28ec0933f54df5ff2e0d2c06a731471ec47e.
 
@@ -16,7 +16,7 @@ A single ChatGPT-driven Solution Architect agent is actively implementing
 source changes through Cloud Sandbox V2. This is a valid *one-agent fallback*,
 not evidence that Claude/Codex/Gemini subagents launched.
 
-Current source-only increments (must be committed and rechecked before release):
+Source-only increments committed in `7764c31` and locally rechecked (Mac release not executed):
 - safe per-provider attach failure codes, cooldown and retry diagnostics;
 - sanitized inspection and screenshot result counters;
 - strict write origin allowlist for persistent CDP AND native Mac actions,
@@ -29,6 +29,27 @@ Current source-only increments (must be committed and rechecked before release):
 The current real Mac Chrome/Edge blockers have NOT been certified or solved by
 source unit tests; no host files, profiles, bridges, tokens or browsers were
 mutated to run these checks.
+
+## SHIP checkpoint 2026-10-12
+
+Graph state has 43 valid SHA-256 chained events and four tracked evidence artifacts.
+- CUE-401 (`offscreen_qa`): DONE after the 25-iteration real Chromium mechanics test and a PASS evidence gate. This does NOT mark Chessy/LUMA product-specific E2E complete.
+- CUE-201: BLOCKED. Edge read-only persistent CDP attachment and ARIA read worked on the Mac, but Chrome's live `browser_inspect` still returned `NATIVE_UNAVAILABLE`. New source handling was not deployed.
+- CUE-301: BLOCKED. Strict domain-write policy exists and has source tests, but has not been enabled on Mac; multi-operator RBAC and independent red-team review remain.
+- CUE-501: BLOCKED. Source-only unsigned candidate from `7764c31` verifies 126 files, 23 preserved tools + 6 new browser tools = 29. Image parity, signature, active 29-tool Mac rebase and rollback drill remain.
+- CUE-101: BLOCKED because no dedicated Claude/Codex/Gemini CLI exists in the workstation; the user authorized one ChatGPT autonomous agent as a fallback.
+- CUE-601 and CUE-701: independent verification and human release approval have not started.
+
+The 29-tool source candidate was built from clean committed code in the remote
+workstation at `/tmp/cu-enterprise-7764c31-candidate`. Its manifest SHA-256 is
+`c77ef161dc7b5a20022292fe565ad5d3ee364103669600ab5b21b4e66ccbea79`.
+It is NOT a signed or deployed Mac release. The legacy original V2 installer
+must not be run on the now-upgraded 29-tool live Mac baseline.
+A separate `deploy/browser-hardening/` 29-to-29 promotion candidate is now
+implemented with pinned predecessor hashes, clean-source provenance, an
+explicit new output directory, 29-to-29 rollback semantics and a deterministic
+mocked Mac install/rollback test. This path is not yet deployed, signed, or
+tested against the actual Mac host.
 
 ## Current capability
 

@@ -125,10 +125,16 @@ uninstallable manifest.
 **Do not run the original V2 installer against the currently upgraded
 29-tool Mac baseline.** Its old baseline fingerprints do not match the
 browser-auto overlay and it must refuse with `LIVE_CODE_DRIFT_REBASE_REQUIRED`.
-A dedicated release rebase/promotion path that preserves the active 29
-contracts, verifies Mac host dependency parity and includes a rollback
-drill is still required. CI candidate verification is source-only and
-does not authorize a host promotion.
+The new `deploy/browser-hardening/` provides a separate,
+hash-pinned **29-to-29** code-only updater, immutable artifact builder and
+read-only verifier. The original 28-to-29 release and its backup are preserved.
+The simulated 29-to-29 installer passed read-only preflight, active task denial,
+idempotent install, unrelated code drift rejection and rollback with 29
+tools preserved; this is NOT an actual Mac drill. Controller image parity,
+operator signature, host acceptance and any necessary independently authorized
+maintenance window remain required. CI candidate verification is source-only and does not authorize host
+promotion. The new updater refuses Mac mutations without an explicit local
+`--install` command; the test runs only mocked macOS/Docker workflows.
 
 Produce an immutable bundle only from clean version control:
 
@@ -151,7 +157,7 @@ Only after prerequisites and maintenance coordination:
 
     node /absolute/release-directory/install.mjs --install
 
-The --install invocation is deployment authorization. It backs up touched files and .env privately, stops/restarts the existing Mac bridge, copies verified code and the pinned Playwright package, and recreates ONLY the existing mcp service with --no-deps --no-build. dev-main and user browsers are not restarted. It verifies 28 tools and the V2 bridge status. Missing provider endpoints remain an explicit pending functional gate.
+The --install invocation is deployment authorization. It backs up touched files and .env privately, stops/restarts the existing Mac bridge, copies verified code and the pinned Playwright package, and recreates ONLY the existing mcp service with --no-deps --no-build. dev-main and user browsers are not restarted. The updated verifier expects 29 tools and the V2 bridge status, but the legacy installer's baseline fingerprint check will HOLD on the existing 29-tool browser-auto Mac overlay. Do not use this legacy installer for host promotion without an approved rebase, identity preflight and rollback drill. Missing provider endpoints remain an explicit pending functional gate.
 
 On a failure it attempts rollback of the touched code/.env and removal of new files, then verifies the original bridge responds. The operator backup includes restore.json and exact original bytes; preserve it. Automated rollback has not yet been exercised on the user's Mac. Installation requires a maintenance window: checking an active-session flag is not a global distributed lock against another operator starting work between checks.
 

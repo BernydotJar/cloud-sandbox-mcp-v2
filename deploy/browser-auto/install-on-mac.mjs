@@ -94,7 +94,10 @@ async function main(){
   if(sha(manifestBytes)!==expectedManifestHash)throw Error('MANIFEST_INTEGRITY_ERROR');
   const manifest=JSON.parse(manifestBytes);
   const assets=manifest.assets;
-  if(manifest.schema!=='browser-auto-release.v1'||Object.keys(assets).length!==4)
+  if(manifest.schema!=='browser-auto-release.v1'||Object.keys(assets).length!==4 ||
+     !((manifest.tools_before===28 || manifest.tools_before===29) && manifest.tools_after===29) ||
+     ['bridge.mjs','runtime.mjs','connection-pool.mjs','browser-runtime-tools.js']
+       .some(key => !Object.hasOwn(assets,key)))
     throw Error('INVALID_AUTO_RELEASE_MANIFEST');
   for(const [key,item] of Object.entries(assets)){
     if(!/^[a-z-]+\.m?js$/.test(key)||safeHash(path.join(release,key))!==item.sha256)
@@ -150,7 +153,8 @@ async function main(){
   }
   // The optional earlier channel-only enhancement updates just the pool.
   // Accept exactly that known state, but refuse other half-finished upgrades.
-  const priorChannelOnly=changed===3 && alreadyPatched.length===1 &&
+  const priorChannelOnly=manifest.tools_before===28 &&
+    changed===3 && alreadyPatched.length===1 &&
     alreadyPatched[0]==='connection-pool.mjs';
   if(changed!==Object.keys(files).length && !priorChannelOnly)
     throw Error('PARTIALLY_INSTALLED_RUNTIME_REQUIRES_RECONCILIATION');
@@ -212,7 +216,7 @@ async function main(){
       run('/bin/launchctl',['kickstart','-k',launchLabel],30000);
       await waitForBridge(token);
       run('docker',['restart','cloud-sandbox-mcp'],120000);
-      await verifyController(28);
+      await verifyController(manifest.tools_before);
     }catch{recovered=false;}
     log(recovered?'ROLLBACK_VERIFIED':'ROLLBACK_INCOMPLETE; backup is preserved.');
     if(!recovered)log('BACKUP='+backupDir);

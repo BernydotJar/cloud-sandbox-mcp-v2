@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='auto-browser-release-test-') as td:
     (base/'fake-timers.mjs').write_text('export const setTimeout=async()=>{};\n')
     manifest={
         'schema':'browser-auto-release.v1','source_commit':'simulation',
-        'assets':{
+        'tools_before':28,'tools_after':29,'assets':{
             key:{
                 'sha256':digest((base/key).read_bytes()),
                 'allowed_previous':[digest(original[key].read_bytes())]

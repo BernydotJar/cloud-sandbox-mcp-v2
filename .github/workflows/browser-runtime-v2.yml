@@ -37,5 +37,9 @@ jobs:
         run: |
           node scripts/build-browser-runtime-release.mjs "$RUNNER_TEMP/computer-use-browser-release"
           node scripts/verify-browser-runtime-release.mjs "$RUNNER_TEMP/computer-use-browser-release"
+      - name: Verify separate 29-to-29 hardening release without installing on Mac
+        run: |
+          node deploy/browser-hardening/build-release.mjs "$RUNNER_TEMP/computer-use-29-hardening"
+          node deploy/browser-hardening/verify-release.mjs "$RUNNER_TEMP/computer-use-29-hardening"
       - name: Confirm no generated files changed tracked source
         run: git diff --exit-code
