@@ -19,8 +19,9 @@
     "validate:lock": "node scripts/validate-lockfile.mjs",
     "test:mac": "node --test mac-host/*.node-test.mjs mac-host/browser-runtime/*.node-test.mjs deploy/browser-channel-providers/*.node-test.mjs",
     "test:browser:e2e": "CUA_BROWSER_E2E=1 node mac-host/browser-runtime/browser-e2e.mjs",
+    "test:qa:offscreen": "CUA_OFFSCREEN_QA=1 node scripts/offscreen-qa/smoke.mjs",
     "test:browser:auto:installer": "python3 deploy/browser-auto/test-install-sim.py",
-    "verify:v2": "npm run verify && npm run test:browser:e2e"
+    "verify:v2": "npm run verify && npm run test:browser:e2e && npm run test:qa:offscreen"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

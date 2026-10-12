@@ -91,11 +91,14 @@ async function native(op, ...args) {
   if (result.ok !== true) throw new Error(result.error || 'NATIVE_FAILED');
   return result.data;
 }
-function verifyTarget(t, origins, dynamicTabs) {
+function verifyTarget(t, origins, dynamicTabs, restrictMutation = false) {
   if (!browsers.has(t.browser) || !Number.isInteger(t.window_index) ||
       !Number.isInteger(t.tab_index) || t.window_index < 1 || t.tab_index < 1 ||
       typeof t.expected_url !== 'string' || safeUrl(t.expected_url) !== t.expected_url ||
       (!dynamicTabs && !origins.has(new URL(t.expected_url).origin))) throw new Error('INVALID_TARGET');
+  if (restrictMutation && !origins.has(new URL(t.expected_url).origin)) {
+    throw new Error('MUTATION_ORIGIN_DENIED');
+  }
   // In dynamic discovery, identical safe URLs may belong to different tabs.
   // Bind actions to the freshly observed title as well as index and URL.
   if (dynamicTabs && (typeof t.expected_title !== 'string' ||
@@ -144,7 +147,7 @@ async function capture(bounds) {
 
 /** Injectable native/approval handlers make safety gates testable without a Mac. */
 export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
-                                   nativeHandler = native,
+                                   restrictBrowserWrites = false, nativeHandler = native,
                                    approvalHandler = approve, captureHandler = capture,
                                    auditHandler = async () => {}, platform = process.platform,
                                    sessionStore = createSessionStore(), browserProviders = {},
@@ -153,12 +156,14 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
+  if (typeof restrictBrowserWrites !== 'boolean') throw new Error('INVALID_MUTATION_POLICY');
   if (!(allowedOrigins instanceof Set) || !allowedOrigins.size ||
       [...allowedOrigins].some(v => !v.startsWith('https://') || new URL(v).origin !== v)) {
     throw new Error('EXPLICIT_HTTPS_ALLOWLIST_REQUIRED');
   }
   const runtime = enableBrowserRuntime ? new BrowserRuntime({ providers: browserProviders,
-    sessionStore, audit: browserAudit, dynamicTabs, allowedOrigins }) : null;
+    sessionStore, audit: browserAudit, dynamicTabs, allowedOrigins,
+    restrictMutationsToAllowlist: restrictBrowserWrites }) : null;
   let busy = false;
   const server = http.createServer(async (req, res) => {
     if (!allowedPeer(req.socket.remoteAddress) || !authorized(req.headers.authorization, token)) {
@@ -248,6 +253,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size,
           discovery_mode:dynamicTabs ? 'all_web_tabs' : 'allowlist',
           title_identity_required:dynamicTabs,
+          mutation_policy:restrictBrowserWrites?'allowlist_only':'session_scoped',
           approval_modes:['per_action','delegated_session'],
           delegated_session:sessionStore.status()}});
         return;
@@ -323,7 +329,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         }
         reply(res, 200, {ok:true,data:{browsers:discovered}}); return;
       }
-      const args = verifyTarget(input,allowedOrigins,dynamicTabs);
+      const args = verifyTarget(input,allowedOrigins,dynamicTabs,
+        req.url === '/v1/action' && restrictBrowserWrites);
       if (busy) { reply(res,409,{ok:false,error:'COMPUTER_BUSY'}); return; }
       busy = true;
       try {
@@ -405,7 +412,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',
         'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
         'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
-        'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE']);
+        'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE','MUTATION_ORIGIN_DENIED']);
       reply(res,400,{ok:false,error:error instanceof RuntimeFault ? error.message :
         allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
     }
@@ -442,12 +449,17 @@ export async function startBridge(options = {}) {
   // An explicit local operator opt-in unlocks dynamic Chrome/Edge tab discovery.
   // Delegated sessions still require one native approval when they begin.
   const dynamicTabs = environment.COMPUTER_USE_DYNAMIC_TABS === 'true';
+  const mutationPolicyFlag = environment.COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY;
+  if (mutationPolicyFlag !== undefined && !['true','false'].includes(mutationPolicyFlag)) {
+    throw new Error('INVALID_MUTATION_POLICY');
+  }
+  const restrictBrowserWrites = mutationPolicyFlag === 'true';
   const enableBrowserRuntime = environment.COMPUTER_USE_BROWSER_V2 === 'true';
   const ledger = enableBrowserRuntime ? new AuditLedger(path.join(os.homedir(),
     'Library','Application Support','LCH','CloudSandboxComputerUse','audit-v2')) : null;
   const server = createBridgeServer({
     token: environment.COMPUTER_USE_BRIDGE_TOKEN, allowedOrigins: new Set(list),
-    dynamicTabs, auditHandler: appendAudit, enableBrowserRuntime,
+    dynamicTabs, restrictBrowserWrites, auditHandler: appendAudit, enableBrowserRuntime,
     browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
     browserAudit: event => ledger.append(event)
   });

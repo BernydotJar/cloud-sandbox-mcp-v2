@@ -120,6 +120,117 @@ test('navigation during a fallback read is detected instead of returning stale t
   await assert.rejects(f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref }), /STALE_PAGE_REVISION/);
   await f.runtime.close();
 });
+
+test('connection status exposes only typed attach diagnostics and resets after recovery', async () => {
+  let time = 5000, attempts = 0;
+  const pool = new ConnectionPool({
+    providers: { edge: { endpoint: 'msedge' } }, now: () => time,
+    connect: async () => {
+      attempts++;
+      if (attempts === 1) throw Error('DO_NOT_LEAK_PRIVATE_USER_PATH');
+      return new FakeConnection();
+    }
+  });
+  await assert.rejects(pool.get('edge'), /BROWSER_ATTACH_FAILED/);
+  let provider = pool.status().providers[0];
+  assert.equal(provider.connected, false);
+  assert.equal(provider.attach_failure_code, 'BROWSER_ATTACH_FAILED');
+  assert.equal(provider.failed_attach_attempts, 1);
+  assert.equal(provider.retry_after_ms, 1500);
+  assert(!JSON.stringify(pool.status()).includes('DO_NOT_LEAK_PRIVATE_USER_PATH'));
+  time += 1499;
+  await assert.rejects(pool.get('edge'), /BROWSER_ATTACH_COOLDOWN/);
+  assert.equal(attempts, 1);
+  time++;
+  const recovered = await pool.get('edge');
+  assert.equal(recovered.connection.isConnected(), true);
+  provider = pool.status().providers[0];
+  assert.equal(provider.connected, true);
+  assert.equal(provider.attach_failure_code, null);
+  assert.equal(provider.retry_after_ms, 0);
+  assert.equal(provider.failed_attach_attempts, 1);
+  await pool.close();
+  assert.equal(pool.status().providers[0].attach_failure_code, 'BROWSER_DISCONNECTED');
+});
+
+test('inspection counters distinguish ARIA, non-semantic fallback and unavailable title', async () => {
+  const f = fixture();
+  const tab = (await f.runtime.discover({ browser: 'chrome' })).tabs[0];
+  const first = await f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref });
+  assert.equal(first.inspection_mode, 'aria');
+  f.page.ariaError = true;
+  const second = await f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref });
+  assert.equal(second.inspection_mode, 'text_fallback');
+  f.page.title = async () => { throw Error('DO_NOT_LEAK_PRIVATE_TITLE'); };
+  await assert.rejects(f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref }),
+    error => error.message === 'BROWSER_INSPECT_UNAVAILABLE');
+  const counters = f.runtime.status().metrics;
+  assert.equal(counters.inspections_aria, 1);
+  assert.equal(counters.inspections_text_fallback, 1);
+  assert.equal(counters.inspections_unavailable, 1);
+  assert(!JSON.stringify(f.runtime.status()).includes('DO_NOT_LEAK_PRIVATE_TITLE'));
+});
+
+test('screenshot errors and invalid binary data produce safe typed errors and counters', async () => {
+  const f = fixture();
+  const tab = (await f.runtime.discover({ browser: 'chrome' })).tabs[0];
+  f.page.screenshot = async () => { throw Error('DO_NOT_LEAK_PRIVATE_PAGE_CONTENT'); };
+  await assert.rejects(f.runtime.screenshot({ browser: 'chrome', tab_ref: tab.tab_ref }),
+    error => error.message === 'BROWSER_SCREENSHOT_UNAVAILABLE');
+  f.page.screenshot = async () => Buffer.from('not a PNG file');
+  await assert.rejects(f.runtime.screenshot({ browser: 'chrome', tab_ref: tab.tab_ref }),
+    error => error.message === 'INVALID_RUNTIME_SCREENSHOT');
+  f.page.screenshot = async () => Buffer.from('89504e470d0a1a0a00000000', 'hex');
+  const actual = await f.runtime.screenshot({ browser: 'chrome', tab_ref: tab.tab_ref });
+  assert.equal(actual.mime_type, 'image/png');
+  assert.equal(f.runtime.status().metrics.screenshots_unavailable, 2);
+  assert.equal(f.runtime.status().metrics.screenshots_ok, 1);
+  assert(!JSON.stringify(f.runtime.status()).includes('DO_NOT_LEAK_PRIVATE_PAGE_CONTENT'));
+});
+
+
+test('strict write-origin allowlist denies semantic mutations even after dynamic read-only discovery', async () => {
+  const f = fixture({
+    dynamicTabs: true,
+    restrictMutationsToAllowlist: true,
+    allowedOrigins: new Set(['https://admin.example'])
+  });
+  const input = await actionFor(f);
+  assert.equal(f.runtime.status().mutation_policy, 'allowlist_only');
+  const budget = f.sessionStore.status().remaining_actions;
+  await assert.rejects(f.runtime.perform(input), /MUTATION_ORIGIN_DENIED/);
+  assert.equal(f.page.calls.length, 0);
+  assert.equal(f.events.length, 0);
+  assert.equal(f.sessionStore.status().remaining_actions, budget);
+
+  const approved = fixture({
+    dynamicTabs: true,
+    restrictMutationsToAllowlist: true,
+    allowedOrigins: new Set(['https://luma.example'])
+  });
+  const allowed = await actionFor(approved);
+  assert.equal((await approved.runtime.perform(allowed)).outcome, 'dispatched');
+  assert.equal(approved.page.calls.length, 1);
+});
+test('an action on an origin outside strict allowlist stays denied after navigation', async () => {
+  const f = fixture({
+    dynamicTabs: true,
+    restrictMutationsToAllowlist: true,
+    allowedOrigins: new Set(['https://luma.example'])
+  });
+  const input = await actionFor(f);
+  f.runtime.audit = async () => { f.page.navigate('https://external.example/private'); };
+  await assert.rejects(f.runtime.perform(input), /STALE_PAGE_REVISION/);
+  assert.equal(f.page.calls.length, 0);
+});
+test('strict write-origin policy without any allowlist fails closed at construction', () => {
+  assert.throws(() => fixture({
+    dynamicTabs: true,
+    restrictMutationsToAllowlist: true,
+    allowedOrigins: new Set()
+  }), /MUTATION_ALLOWLIST_REQUIRED/);
+});
+
 test('full URL fragment/query navigation invalidates the prior revision despite sanitized output', async () => {
   const f = fixture(); const input = await actionFor(f);
   f.page.navigate('https://luma.example/learn?tenant=another#settings');

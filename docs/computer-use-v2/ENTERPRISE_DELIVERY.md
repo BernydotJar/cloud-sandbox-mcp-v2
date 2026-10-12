@@ -10,6 +10,26 @@ Five non-overlapping implementation lanes (A-E) shorten the critical path; one i
 
 Read specs/computer-use-enterprise/{requirements,design,tasks}.md for acceptance criteria and graph/computer-use-enterprise/project.json for executable DAG edges.
 
+## Current autonomous engineering execution
+
+A single ChatGPT-driven Solution Architect agent is actively implementing
+source changes through Cloud Sandbox V2. This is a valid *one-agent fallback*,
+not evidence that Claude/Codex/Gemini subagents launched.
+
+Current source-only increments (must be committed and rechecked before release):
+- safe per-provider attach failure codes, cooldown and retry diagnostics;
+- sanitized inspection and screenshot result counters;
+- strict write origin allowlist for persistent CDP AND native Mac actions,
+  behind \`COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=true\` so the currently
+  deployed host is not silently reconfigured;
+- 25 isolated Chromium gesture iterations (13 desktop mouse drag, 12 mobile
+  touch drag), keyboard and ARIA checks with no Mac application focus;
+- a reproducible \`npm run test:qa:offscreen\` gate in \`verify:v2\` and CI.
+
+The current real Mac Chrome/Edge blockers have NOT been certified or solved by
+source unit tests; no host files, profiles, bridges, tokens or browsers were
+mutated to run these checks.
+
 ## Current capability
 
 - Git worktree isolation and five independent deterministic tooling tracks can be created in one shared workstation. No extra containers are required.

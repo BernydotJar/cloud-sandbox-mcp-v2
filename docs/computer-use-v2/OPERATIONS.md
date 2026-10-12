@@ -66,6 +66,42 @@ References:
 
 A navigation revision tracks document navigation and the full URL (including private query/fragment differences without exposing them). It does not certify that every DOM element is unchanged. Strict unique locators and Playwright actionability checks are the second guard. The current release does not support explicit frame selection or arbitrary browser dialogs; stop and use a separately authorized supported path when those are required.
 
+## Source-level diagnostic counters and strict mutation-origin policy
+
+The latest source runtime adds per-provider content-free status diagnostics:
+\`attach_failure_code\`, \`failed_attach_attempts\`, and \`retry_after_ms\`.
+The host also exposes counters for ARIA success, explicitly non-semantic text
+fallback, unavailable inspection, successful screenshots and failed screenshots.
+Only controlled error codes and counters are exposed; never attach exception
+messages, page content, local paths, session tokens or raw URLs to telemetry.
+These fields require a new authorized host deployment; they are not present
+on the old live bridge.
+
+For a hardened single-owner deployment with dynamic read-only discovery,
+the release operator can explicitly enable:
+
+\`\`\`dotenv
+COMPUTER_USE_DYNAMIC_TABS=true
+COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=true
+COMPUTER_USE_ALLOWED_ORIGINS=https://approved.example,https://another-approved.example
+\`\`\`
+
+Any misspelled value other than literal `true` or `false` blocks bridge
+startup instead of silently disabling the requested hardening.
+
+The new setting preserves read-only discovery of HTTP(S) tabs while rejecting
+BOTH persistent semantic mutations and native Mac actions targeting origins
+outside the preconfigured HTTPS allowlist. Valid delegated-session authority
+does not override the origin denial. It is **opt-in for compatibility** and
+MUST be enabled/reviewed in the enterprise host rollout where origin-scoped
+writes are required. Origin restrictions do not authorize purchases, admin
+changes or form submission: separate business authorization is mandatory.
+
+The source rejects a strict mutation policy with an empty allowlist, rechecks
+origin immediately before dispatch, and reports \`MUTATION_ORIGIN_DENIED\` without
+consuming a session action budget. The browser can still navigate between
+checks; navigation revisions and business-outcome verification remain relevant.
+
 ## Privacy and audit
 
 ARIA snapshots can contain password values in Playwright. Tests reproduced this; this runtime removes textbox/searchbox/spinbutton values and their multiline subtrees before returning a snapshot. Obvious token strings and URL query/fragment values are also removed. This is best-effort redaction, not a comprehensive DLP or PII guarantee. Other visible text and screenshots can contain personal data; request only pages relevant to the task. Screenshots mask detected password, credit-card and data-private elements and are returned in memory, not written to evidence logs.
@@ -79,6 +115,20 @@ The current ledger caps at 10MB per process and fails closed on capacity/write f
 The baseline source dependency scan found 7 vulnerable production packages; the branch lockfile was remediated and the verification scan reported zero. This does not prove exploitable paths or absence of all vulnerabilities. A controller code overlay DOES NOT replace dependencies baked into its Docker image. The release manifest therefore records eight tested controller package versions, and install.mjs refuses activation on an older dependency image.
 
 The controller-dependencies directory contains the exact package.json/package-lock.json and a dependency-only Dockerfile. In a maintenance window, an operator can build a new image FROM the exact existing controller image digest/immutable ID, run the locked dependency installation, review an SBOM/audit, and update ONLY the current mcp service image while preserving its compose.override.yaml, /app/dist mount, network, volumes and all other configuration. The installer does not perform this image migration automatically. Keep the previous image digest for rollback. Never rebuild from the historical upstream setup.sh or replace the customized controller/workstation topology.
+
+The original 28-tool Browser Runtime V2 bundle is obsolete after the
+automatic `browser_open` upgrade. The current source and CI verify
+**29 tools: 23 preserved + 6 browser tools**, including `browser_open`.
+The release builder now refuses dirty source instead of emitting an
+uninstallable manifest.
+
+**Do not run the original V2 installer against the currently upgraded
+29-tool Mac baseline.** Its old baseline fingerprints do not match the
+browser-auto overlay and it must refuse with `LIVE_CODE_DRIFT_REBASE_REQUIRED`.
+A dedicated release rebase/promotion path that preserves the active 29
+contracts, verifies Mac host dependency parity and includes a rollback
+drill is still required. CI candidate verification is source-only and
+does not authorize a host promotion.
 
 Produce an immutable bundle only from clean version control:
 

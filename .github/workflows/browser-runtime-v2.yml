@@ -25,9 +25,17 @@ jobs:
         run: npm ci --ignore-scripts --no-fund --no-audit
       - name: Isolated Chromium fixture dependencies
         run: npx --no-install playwright-core install --with-deps chromium
-      - name: Source, native compatibility and real-browser checks
+      - name: Source, native compatibility, real Chromium and 25-context offscreen gesture checks
         run: npm run verify:v2
       - name: Production dependency advisory gate
         run: npm audit --omit=dev --audit-level=moderate
+      - name: CycloneDX dependency SBOM (unpublished CI evidence)
+        run: |
+          npm sbom --sbom-format=cyclonedx > "$RUNNER_TEMP/browser-runtime.cdx.json"
+          sha256sum "$RUNNER_TEMP/browser-runtime.cdx.json"
+      - name: Validate 29-tool hash-pinned release candidate without touching Mac
+        run: |
+          node scripts/build-browser-runtime-release.mjs "$RUNNER_TEMP/computer-use-browser-release"
+          node scripts/verify-browser-runtime-release.mjs "$RUNNER_TEMP/computer-use-browser-release"
       - name: Confirm no generated files changed tracked source
         run: git diff --exit-code

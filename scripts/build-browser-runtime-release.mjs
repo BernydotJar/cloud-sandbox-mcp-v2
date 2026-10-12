@@ -10,6 +10,7 @@ const sha = data => crypto.createHash('sha256').update(data).digest('hex');
 const git = args => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
 const commit = git(['rev-parse', 'HEAD']);
 const dirty = Boolean(git(['status', '--porcelain']));
+if (dirty) throw Error('CLEAN_COMMITTED_SOURCE_REQUIRED');
 const baselineDir = path.join(repo, 'deploy/baselines/task-sessions');
 const baseline = JSON.parse(await fs.readFile(path.join(baselineDir, 'manifest.json'), 'utf8'));
 for (const [file, hash] of Object.entries(baseline.files)) {
@@ -62,7 +63,7 @@ for (const [name, bytes] of [...writes].sort(([a], [b]) => a.localeCompare(b))) 
 }
 const manifest = { schema: 'cloud-sandbox.browser-runtime-release.v2', version: '2.0.0', source_commit: commit,
   source_dirty: dirty, playwright_core: packageInfo.version, baseline: baseline.files,
-  expected_tool_count: 28, controller_dependencies: controllerDependencies, files,
+  expected_tool_count: 29, controller_dependencies: controllerDependencies, files,
   note: 'Hashes ensure integrity relative to this manifest, not publisher identity. Review/sign in the operator release pipeline.' };
 const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
 await fs.writeFile(path.join(output, 'manifest.json'), manifestBytes, { mode: 0o600, flag: 'wx' });

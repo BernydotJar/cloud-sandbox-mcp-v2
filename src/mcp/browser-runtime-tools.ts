@@ -20,7 +20,7 @@ async function safe(work: () => Promise<unknown>) {
 /** Additive registry extension. The Mac host, not a per-request MCP server, owns connections. */
 export function registerBrowserRuntimeTools(server: McpServer, computer: ComputerUseService): void {
   server.registerTool('browser_runtime_status', {
-    description: 'Read Browser Runtime availability and metrics without connecting or launching. Chrome/Edge channels are discovered automatically; if CDP is unavailable, tab discovery falls back to the existing native Mac bridge.',
+    description: 'Read Browser Runtime availability, bounded connection retry diagnostics and content-free inspection/screenshot counters without connecting or launching. Chrome/Edge channels are discovered automatically; if CDP is unavailable, tab discovery falls back to the existing native Mac bridge.',
     inputSchema: {}, annotations: read
   }, () => safe(() => computer.browserRuntime('status', {})));
   server.registerTool('browser_tabs', {

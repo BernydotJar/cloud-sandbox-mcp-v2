@@ -152,6 +152,31 @@ test('dynamic mode rejects internal pages',async()=>{
   assert.equal(response.status,400);
   assert.equal(calls.length,0);
 });
+
+test('strict write allowlist blocks native delegated actions on dynamically discovered origins', async () => {
+  let prompts = 0;
+  const {post, calls} = await ready({
+    dynamicTabs: true, restrictBrowserWrites: true,
+    approvalHandler: async () => { prompts++; return true; }
+  });
+  const status = await post('/v1/status');
+  assert.equal(status.data.mutation_policy, 'allowlist_only');
+  const denied = await post('/v1/action', {
+    ...target, expected_url: 'https://private.invalid/', expected_title: 'Personal',
+    action: 'press_key', key: 'tab', reason: 'Inspect an unrelated but visible tab'
+  });
+  assert.equal(denied.error, 'MUTATION_ORIGIN_DENIED');
+  assert.equal(prompts, 0);
+  assert.equal(calls.length, 0);
+  const allowed = await post('/v1/action', {
+    ...target, expected_title: 'Microsoft 365',
+    action: 'press_key', key: 'tab', reason: 'Navigate an approved origin only'
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal(prompts, 1);
+  assert.deepEqual(calls.map(c => c.operation), ['inspect', 'action']);
+});
+
 test('legacy mode defaults to existing allowlist policy',async()=>{
   const {post}=await ready();
   const response=await post('/v1/status');

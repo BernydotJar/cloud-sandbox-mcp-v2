@@ -43,6 +43,26 @@ The new inspection contract tries ARIA first, returning inspection_mode=aria, se
 
 A versioned host release and actual Mac verification are still needed. Do not hotpatch the running bridge during QA.
 
+## Reproducible isolated browser-gesture gate
+
+The Computer Use V2 repository now exposes a disposable, Linux-only Chromium
+infrastructure smoke that exercises actual pointer drags, mobile CDP touch
+gestures, semantic names, keyboard input, browser-context isolation and in-memory
+PNG screenshots. Each run uses a brand-new Playwright browser context and an
+ephemeral test profile. No daily Mac browser is attached, launched or touched.
+
+```sh
+npm run test:qa:offscreen
+# Override the default 25 independent contexts only when diagnosing:
+CUA_OFFSCREEN_ITERATIONS=3 npm run test:qa:offscreen
+```
+
+This gate tests the browser automation **mechanics**, not the quality of Chessy,
+LUMA, or any other application. Those products still need their own isolated
+Playwright scenarios and functional assertions, including real multi-step
+lessons, authentication, and persistence. The 25-run result is not an SLA
+or a guarantee against production browser flakiness.
+
 ## Gates required before claiming full readiness
 
 1. Offscreen suite exercises keyboard, drag/drop, touch, desktop/mobile viewport, accessibility and evidence without Mac focus.

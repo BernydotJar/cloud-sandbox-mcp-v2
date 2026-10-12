@@ -57,6 +57,7 @@ try {
   if (sha(manifestBytes) !== (await fs.readFile(path.join(release, 'manifest.sha256'), 'utf8')).trim()) stop('RELEASE_MANIFEST_HASH_MISMATCH');
   const manifest = JSON.parse(manifestBytes);
   if (manifest.schema !== 'cloud-sandbox.browser-runtime-release.v2' || manifest.source_dirty) stop('UNREVIEWED_OR_DIRTY_RELEASE');
+  if (manifest.expected_tool_count !== 29) stop('REGISTRY_CONTRACT_DOWNGRADE_DENIED');
   for (const file of manifest.files) {
     if (!safePath(file.path) || await fileHash(path.join(release, file.path)) !== file.sha256) stop('RELEASE_FILE_HASH_MISMATCH');
   }
@@ -144,7 +145,7 @@ console.log(JSON.stringify({ready:mismatch.length===0,mismatch}));
   const { validateEndpoint } = await import('./host/browser-runtime/connection-pool.mjs');
   const providers = providersFromEnvironment(environment);
   for (const config of Object.values(providers)) validateEndpoint(config.endpoint, config.protocol);
-  log(dependencyGate.ready ? 'PREFLIGHT_PASS; 23 existing tools preserved, 5 additive browser tools.' : 'PREFLIGHT_HOLD: upgrade the existing controller dependency image before activation.');
+  log(dependencyGate.ready ? 'PREFLIGHT_PASS; 23 existing tools preserved, 6 additive browser tools.' : 'PREFLIGHT_HOLD: upgrade the existing controller dependency image before activation.');
   log('Configured persistent providers: ' + (Object.keys(providers).join(', ') || 'NONE; native fallback remains available.'));
   log('No browser launch, profile copying, port enabling, or domain registration will occur.');
   if (mode === '--inspect') process.exit(dependencyGate.ready ? 0 : 2);
@@ -215,14 +216,15 @@ const [a,b]=InMemoryTransport.createLinkedPair();
 try {
  await server.connect(b);await client.connect(a);
  const names=(await client.listTools()).tools.map(t=>t.name);
- if(names.length!==28 || !names.includes('project_register') || !names.includes('browser_action')) process.exitCode=2;
+ if(names.length!==29 || !names.includes('project_register') ||
+    !names.includes('browser_action') || !names.includes('browser_open')) process.exitCode=2;
  const r=await client.callTool({name:'browser_runtime_status',arguments:{}});
  if(r.isError || !JSON.parse(r.content[0].text).enabled) process.exitCode=3;
- if(!process.exitCode) console.log('REGISTRY_28_AND_BRIDGE_V2_PASS');
+ if(!process.exitCode) console.log('REGISTRY_29_AND_BRIDGE_V2_PASS');
 } finally {await client.close();await server.close();}
 `;
   const verified = command('docker', ['exec', 'cloud-sandbox-mcp', 'node', '--input-type=module', '-e', registryCheck]);
-  if (!verified.includes('REGISTRY_28_AND_BRIDGE_V2_PASS')) stop('LIVE_REGISTRY_VERIFICATION_FAILED');
+  if (!verified.includes('REGISTRY_29_AND_BRIDGE_V2_PASS')) stop('LIVE_REGISTRY_VERIFICATION_FAILED');
   rollback = null;
   log('INSTALLED; only existing Mac bridge and MCP controller restarted. dev-main and user browsers were not restarted.');
   log('Refresh Cloud Sandbox MCP action discovery. Persistent provider readiness must be tested separately with browser_runtime_status and browser_tabs.');

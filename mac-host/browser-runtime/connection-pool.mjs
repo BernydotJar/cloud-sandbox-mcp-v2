@@ -82,7 +82,8 @@ export class ConnectionPool {
       const protocol = config.protocol || 'cdp';
       validateEndpoint(config.endpoint, protocol, name);
       this.providers.set(name, { endpoint: config.endpoint, protocol });
-      this.slots.set(name, { epoch: 0, connection: null, pending: null, retryAt: 0 });
+      this.slots.set(name, { epoch: 0, connection: null, pending: null, retryAt: 0,
+        lastFailureCode: null, failedAttempts: 0 });
     }
   }
   async get(name) {
@@ -104,16 +105,21 @@ export class ConnectionPool {
         if (this.closed) { await connection.close(); fail('RUNTIME_STOPPED'); }
         slot.epoch++;
         slot.connection = connection;
+        slot.retryAt = 0;
+        slot.lastFailureCode = null;
         this.metrics.connections++;
         connection.once('disconnected', () => {
           if (slot.connection !== connection) return;
           slot.connection = null;
           this.metrics.disconnects++;
+          slot.lastFailureCode = 'BROWSER_DISCONNECTED';
           this.onInvalidated(name, slot.epoch);
         });
         return { connection, epoch: slot.epoch };
       } catch (error) {
         this.metrics.failures++;
+        slot.lastFailureCode = error instanceof RuntimeFault ? error.message : 'BROWSER_ATTACH_FAILED';
+        slot.failedAttempts++;
         slot.retryAt = this.now() + 1500;
         throw error instanceof RuntimeFault ? error : new RuntimeFault('BROWSER_ATTACH_FAILED');
       } finally { slot.pending = null; }
@@ -121,11 +127,14 @@ export class ConnectionPool {
     return slot.pending;
   }
   status() {
-    return { providers: [...this.providers].map(([name, config]) => ({
-      browser: name, protocol: config.protocol, configured: true,
-      connected: Boolean(this.slots.get(name).connection?.isConnected()),
-      epoch: this.slots.get(name).epoch
-    })), metrics: { ...this.metrics } };
+    return { providers: [...this.providers].map(([name, config]) => {
+      const slot = this.slots.get(name);
+      return { browser: name, protocol: config.protocol, configured: true,
+        connected: Boolean(slot.connection?.isConnected()), epoch: slot.epoch,
+        attach_failure_code: slot.lastFailureCode,
+        failed_attach_attempts: slot.failedAttempts,
+        retry_after_ms: Math.max(0, slot.retryAt - this.now()) };
+    }), metrics: { ...this.metrics } };
   }
   async close() {
     this.closed = true;

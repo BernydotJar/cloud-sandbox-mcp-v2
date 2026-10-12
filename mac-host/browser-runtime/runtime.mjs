@@ -6,11 +6,17 @@ import { RuntimeFault, fail, browserName, object, boundedText, targetRequest, va
 const TIMEOUT = 5000;
 export class BrowserRuntime {
   constructor({ providers = {}, sessionStore, audit, allowedOrigins = new Set(), dynamicTabs = false,
-    connect, now = () => Date.now(), maxRequests = 1024 } = {}) {
+    restrictMutationsToAllowlist = false, connect, now = () => Date.now(), maxRequests = 1024 } = {}) {
     if (!sessionStore || typeof audit !== 'function') fail('RUNTIME_DEPENDENCIES_REQUIRED');
+    if (typeof restrictMutationsToAllowlist !== 'boolean' ||
+      !(allowedOrigins instanceof Set) ||
+      (restrictMutationsToAllowlist && !allowedOrigins.size)) fail('MUTATION_ALLOWLIST_REQUIRED');
     this.sessions = sessionStore;
     this.audit = audit;
     this.allowed = url => Boolean(webUrl(url)) && (dynamicTabs || allowedOrigins.has(new URL(url).origin));
+    this.mutationAllowed = url => Boolean(webUrl(url)) &&
+      (!restrictMutationsToAllowlist || allowedOrigins.has(new URL(url).origin));
+    this.restrictMutationsToAllowlist = restrictMutationsToAllowlist;
     this.now = now;
     this.tabs = new TabRegistry({ now });
     this.pool = new ConnectionPool({ providers, connect, now,
@@ -20,10 +26,13 @@ export class BrowserRuntime {
     this.maxRequests = maxRequests;
     this.busy = new Set();
     this.hmacKey = crypto.randomBytes(32);
-    this.metrics = { actions: 0, uncertain: 0, replays: 0, rejected: 0, total_action_ms: 0 };
+    this.metrics = { actions: 0, uncertain: 0, replays: 0, rejected: 0, total_action_ms: 0,
+      inspections_aria: 0, inspections_text_fallback: 0, inspections_unavailable: 0,
+      screenshots_ok: 0, screenshots_unavailable: 0 };
   }
   status() {
     return { version: '2.0.0', ...this.pool.status(), metrics: { ...this.pool.metrics, ...this.metrics },
+      mutation_policy: this.restrictMutationsToAllowlist ? 'allowlist_only' : 'session_scoped',
       native_fallback: 'automatic_tab_discovery', replay_guarantee: 'live_process_session_only',
       capabilities: ['persistent_tabs', 'aria_snapshot', 'role', 'label', 'test_id', 'screenshot', 'session_authorization'] };
   }
@@ -60,7 +69,9 @@ export class BrowserRuntime {
     targetRequest(input);
     const r = await this.resolve(input);
     const revision = r.revision;
-    const title = await r.page.title();
+    let title;
+    try { title = await r.page.title(); }
+    catch { this.metrics.inspections_unavailable++; fail('BROWSER_INSPECT_UNAVAILABLE'); }
     let content;
     let inspectionMode = 'aria';
     try {
@@ -71,12 +82,17 @@ export class BrowserRuntime {
       try {
         content = await r.page.locator('body').innerText({ timeout: TIMEOUT });
         inspectionMode = 'text_fallback';
-      } catch { fail('BROWSER_INSPECT_UNAVAILABLE'); }
+      } catch { this.metrics.inspections_unavailable++; fail('BROWSER_INSPECT_UNAVAILABLE'); }
     }
-    if (typeof content !== 'string') fail('BROWSER_INSPECT_UNAVAILABLE');
+    if (typeof content !== 'string') {
+      this.metrics.inspections_unavailable++;
+      fail('BROWSER_INSPECT_UNAVAILABLE');
+    }
     this.tabs.refresh(r);
     if (r.page.isClosed() || revision !== r.revision) fail('STALE_PAGE_REVISION');
     r.inspectedAt = this.now();
+    if (inspectionMode === 'aria') this.metrics.inspections_aria++;
+    else this.metrics.inspections_text_fallback++;
     const scrubbed = scrubContent(content).slice(0, 24000);
     return { ...this.tabs.describe(r, title),
       inspection_mode: inspectionMode, semantic_available: inspectionMode === 'aria',
@@ -89,11 +105,22 @@ export class BrowserRuntime {
     targetRequest(input);
     const r = await this.resolve(input);
     const revision = r.revision;
-    const png = await r.page.screenshot({ type: 'png', fullPage: false, timeout: TIMEOUT,
-      mask: [r.page.locator('input[type="password"],input[autocomplete^="cc-"],[data-private]')] });
+    let png;
+    try {
+      png = await r.page.screenshot({ type: 'png', fullPage: false, timeout: TIMEOUT,
+        mask: [r.page.locator('input[type="password"],input[autocomplete^="cc-"],[data-private]')] });
+    } catch {
+      this.metrics.screenshots_unavailable++;
+      fail('BROWSER_SCREENSHOT_UNAVAILABLE');
+    }
     this.tabs.refresh(r);
     if (revision !== r.revision) fail('STALE_PAGE_REVISION');
-    if (png.length > 8_000_000 || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') fail('INVALID_RUNTIME_SCREENSHOT');
+    if (!Buffer.isBuffer(png) || png.length > 8_000_000 ||
+      png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+      this.metrics.screenshots_unavailable++;
+      fail('INVALID_RUNTIME_SCREENSHOT');
+    }
+    this.metrics.screenshots_ok++;
     return { mime_type: 'image/png', base64: png.toString('base64'), revision: r.revision, tab_ref: r.ref };
   }
   authorize(input, consume = false) {
@@ -144,6 +171,7 @@ export class BrowserRuntime {
       this.authorize(input);
       const r = await this.resolve(input);
       if (r.revision !== input.expected_revision) fail('STALE_PAGE_REVISION');
+      if (!this.mutationAllowed(r.rawUrl)) fail('MUTATION_ORIGIN_DENIED');
       const spec = input.locator;
       const locator = spec.by === 'role' ? r.page.getByRole(spec.role, { name: spec.name, exact: true })
         : spec.by === 'label' ? r.page.getByLabel(spec.name, { exact: true }) : r.page.getByTestId(spec.name);
@@ -157,6 +185,7 @@ export class BrowserRuntime {
       catch { fail('AUDIT_UNAVAILABLE'); }
       this.tabs.refresh(r);
       if (r.revision !== input.expected_revision || !this.allowed(r.rawUrl) || r.page.isClosed()) fail('STALE_PAGE_REVISION');
+      if (!this.mutationAllowed(r.rawUrl)) fail('MUTATION_ORIGIN_DENIED');
       const delegation = this.authorize(input, true);
       dispatched = true;
       if (input.action === 'click') await locator.click({ timeout: TIMEOUT });

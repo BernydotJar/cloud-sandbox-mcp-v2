@@ -15,7 +15,8 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 assert.equal(hash(manifestBytes), (await fs.readFile(path.join(release, 'manifest.sha256'), 'utf8')).trim());
 const manifest = JSON.parse(manifestBytes);
 assert.equal(manifest.schema, 'cloud-sandbox.browser-runtime-release.v2');
-assert.equal(manifest.expected_tool_count, 28);
+assert.equal(manifest.source_dirty, false, 'A dirty source release must be rejected');
+assert.equal(manifest.expected_tool_count, 29);
 assert.equal(manifest.playwright_core, '1.64.0');
 assert.equal(Object.keys(manifest.controller_dependencies).length, 8);
 const seen = new Set();
@@ -57,9 +58,9 @@ try {
   const oldTools = await registry(path.join(temp, 'baseline'), computer);
   const tools = await registry(path.join(temp, 'candidate'), computer);
   assert.equal(oldTools.length, 23);
-  assert.equal(tools.length, 28);
+  assert.equal(tools.length, 29);
   for (const old of oldTools) assert.deepEqual(tools.find(t => t.name === old.name), old, 'Changed existing contract: ' + old.name);
-  for (const name of ['browser_runtime_status', 'browser_tabs', 'browser_inspect', 'browser_screenshot', 'browser_action']) {
+  for (const name of ['browser_runtime_status', 'browser_tabs', 'browser_open', 'browser_inspect', 'browser_screenshot', 'browser_action']) {
     assert(tools.some(t => t.name === name));
   }
   if (process.platform === 'linux') {
