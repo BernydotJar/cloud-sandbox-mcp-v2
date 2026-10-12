@@ -1,0 +1,40 @@
+{
+  "schema": "cloud-sandbox.enterprise-evidence.v1",
+  "recorded_date": "2026-10-12",
+  "source_commit": "8ad357a513e2cbf04b4169724104acf5d5f83ff2",
+  "source_location": "/workspace/projects/cloud-sandbox-mcp-v2",
+  "runtime": "Cloud Sandbox dev-main isolated Linux; no Mac restart/reconfiguration",
+  "delta_bundle": {
+    "kind": "29-to-29 code-only Mac hardening overlay",
+    "path": "/tmp/cu-enterprise-hardening-8ad357a-29to29",
+    "manifest_sha256": "4faf9b5b9de11c14f6e8922c6108ec59368a1d969a8e5198f964f8f5640a0b14",
+    "assets": 4,
+    "tools_before": 29,
+    "tools_after": 29,
+    "source_commit": "8ad357a513e2cbf04b4169724104acf5d5f83ff2",
+    "source_baseline_commit": "2b23a01167630245b1d2bcdcdfe3faa3d7177f06",
+    "installer_sha256": "97521d09c10f0b67b0cd70991a3949771fd20c5410b1e26796dd8773115d718e",
+    "readme_sha256": "7b962a72bfa0aa1778621a4d79064ea9446daa0f8662f74f63af745e340a2c23",
+    "result": "PASS source verifier"
+  },
+  "regression": {
+    "tests": "npm run verify:v2",
+    "result": "PASS",
+    "node_mac_tests": 101,
+    "chromium_cdp_checks": 13,
+    "offscreen_iterations": 25,
+    "legacy_28_to_29_simulation": "PASS",
+    "new_29_to_29_simulated_preflight_active_session_install_idempotent_drift_rollback": "PASS",
+    "tampered_installer_detection": "PASS",
+    "dependency_scan": "0 reported vulnerabilities (local npm audit)"
+  },
+  "remaining": {
+    "mac_installed": false,
+    "remote_ci_executed": false,
+    "independent_verifier": false,
+    "business_action_approved": false,
+    "signed_release": false,
+    "live_mac_rollback": false,
+    "full_multi_tenant_rbac": false
+  }
+}
