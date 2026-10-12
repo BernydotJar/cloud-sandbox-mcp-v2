@@ -6,6 +6,7 @@ export class FakePage extends EventEmitter {
   constructor(url = 'https://luma.example/learn', title = 'LUMA') {
     super(); this.urlValue = url; this.titleValue = title; this.closed = false;
     this.frame = {}; this.calls = []; this.nodes = new Map(); this.aria = '- button "Start"';
+    this.text = 'Learner dashboard'; this.ariaError = false; this.textError = false;
   }
   url() { return this.urlValue; }
   async title() { return this.titleValue; }
@@ -13,7 +14,10 @@ export class FakePage extends EventEmitter {
   mainFrame() { return this.frame; }
   navigate(url) { this.urlValue = url; this.emit('framenavigated', this.frame); }
   closeTab() { this.closed = true; this.emit('close'); }
-  locator() { return { ariaSnapshot: async () => this.aria }; }
+  locator() { return {
+    ariaSnapshot: async () => { if (this.ariaError) throw Error('Private snapshot error'); return this.aria; },
+    innerText: async () => { if (this.textError) throw Error('Private DOM read error'); return this.text; }
+  }; }
   getByRole(role, { name, exact }) { if (!exact) throw Error('Expected exact locator'); return this.node(name, role); }
   getByLabel(name) { return this.node(name); }
   getByTestId(name) { return this.node(name); }

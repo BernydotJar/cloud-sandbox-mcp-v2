@@ -65,6 +65,8 @@ try {
   const tab = first.tabs[0];
   evidence.checks.push('real_cdp_attach');
   const observed = await runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref });
+  assert.equal(observed.inspection_mode, 'aria');
+  assert.equal(observed.semantic_available, true);
   assert(observed.aria.includes('Start'));
   assert(!observed.aria.includes('sensitive-password-fixture'));
   evidence.checks.push('real_aria_snapshot');

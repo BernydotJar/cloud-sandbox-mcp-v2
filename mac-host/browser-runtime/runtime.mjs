@@ -61,12 +61,27 @@ export class BrowserRuntime {
     const r = await this.resolve(input);
     const revision = r.revision;
     const title = await r.page.title();
-    const aria = await r.page.locator('body').ariaSnapshot({ timeout: TIMEOUT });
+    let content;
+    let inspectionMode = 'aria';
+    try {
+      content = await r.page.locator('body').ariaSnapshot({ timeout: TIMEOUT });
+    } catch {
+      // An attached browser can remain available when its ARIA snapshot fails.
+      // Never present ordinary text as semantic accessibility information.
+      try {
+        content = await r.page.locator('body').innerText({ timeout: TIMEOUT });
+        inspectionMode = 'text_fallback';
+      } catch { fail('BROWSER_INSPECT_UNAVAILABLE'); }
+    }
+    if (typeof content !== 'string') fail('BROWSER_INSPECT_UNAVAILABLE');
     this.tabs.refresh(r);
     if (r.page.isClosed() || revision !== r.revision) fail('STALE_PAGE_REVISION');
     r.inspectedAt = this.now();
-    return { ...this.tabs.describe(r, title), aria: scrubContent(aria).slice(0, 24000),
-      truncated: aria.length > 24000, content_is_untrusted: true,
+    const scrubbed = scrubContent(content).slice(0, 24000);
+    return { ...this.tabs.describe(r, title),
+      inspection_mode: inspectionMode, semantic_available: inspectionMode === 'aria',
+      ...(inspectionMode === 'aria' ? { aria: scrubbed } : { page_text: scrubbed }),
+      truncated: content.length > 24000, content_is_untrusted: true,
       privacy: 'Page content may contain personal data; token/URL redaction is best-effort, not comprehensive.',
       revision_covers: 'document_navigation_and_full_url_changes' };
   }

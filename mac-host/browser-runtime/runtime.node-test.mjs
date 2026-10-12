@@ -79,6 +79,47 @@ test('closed and expired references fail safely', async () => {
   const g = fixture(); const next = await actionFor(g); g.advance(16 * 60000);
   await assert.rejects(g.runtime.inspect({ browser: 'chrome', tab_ref: next.tab_ref }), /STALE_TAB/);
 });
+test('failed ARIA on an attached tab returns explicitly non-semantic text without native UI', async () => {
+  const f = fixture();
+  f.page.ariaError = true;
+  f.page.text = 'Learner dashboard\n- textbox "Password": sensitive-fixture-value';
+  const tab = (await f.runtime.discover({ browser: 'chrome' })).tabs[0];
+  const output = await f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref });
+  assert.equal(output.inspection_mode, 'text_fallback');
+  assert.equal(output.semantic_available, false);
+  assert.equal(output.aria, undefined);
+  assert(output.page_text.includes('Learner dashboard'));
+  assert(!output.page_text.includes('sensitive-fixture-value'));
+  assert.equal(f.page.calls.length, 0);
+  await f.runtime.close();
+});
+test('failed ARIA and failed text return a safe specific code without private diagnostics', async () => {
+  const f = fixture();
+  f.page.ariaError = true;
+  f.page.textError = true;
+  const tab = (await f.runtime.discover({ browser: 'chrome' })).tabs[0];
+  await assert.rejects(
+    f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref }),
+    error => error.message === 'BROWSER_INSPECT_UNAVAILABLE'
+  );
+  assert.equal(f.page.calls.length, 0);
+  await f.runtime.close();
+});
+test('navigation during a fallback read is detected instead of returning stale text', async () => {
+  const f = fixture();
+  f.page.ariaError = true;
+  const originalLocator = f.page.locator.bind(f.page);
+  f.page.locator = () => ({
+    ...originalLocator(),
+    innerText: async () => {
+      f.page.navigate('https://luma.example/other');
+      return 'Old page text';
+    }
+  });
+  const tab = (await f.runtime.discover({ browser: 'chrome' })).tabs[0];
+  await assert.rejects(f.runtime.inspect({ browser: 'chrome', tab_ref: tab.tab_ref }), /STALE_PAGE_REVISION/);
+  await f.runtime.close();
+});
 test('full URL fragment/query navigation invalidates the prior revision despite sanitized output', async () => {
   const f = fixture(); const input = await actionFor(f);
   f.page.navigate('https://luma.example/learn?tenant=another#settings');

@@ -19,6 +19,10 @@ When using this MCP server:
 12. If the capability is disabled or the user denies a native prompt, stop the UI portion safely; do not fallback to an unapproved control path.
 
 
+## Background-first application QA
+
+When a task is to test a project UI rather than operate the user's existing authenticated browser, use isolated Playwright/Chromium headless inside dev-main via workspace_exec. Never attach to a user's Mac Chrome/Edge for routine Chessy-style tests or drive the physical macOS mouse for local web QA. Preserve real evidence; use an independent checkout/evidence output when another agent is actively editing a repository. Read docs/computer-use-v2/OFFSCREEN_QA.md for routing and current live acceptance gates. An inspection_mode=text_fallback response is not an ARIA snapshot and must not be interpreted as semantic actionability.
+
 ## Persistent Browser Runtime V2
 
 13. Read docs/computer-use-v2/SPEC.md and OPERATIONS.md before changing the native bridge or deploying. Preserve the known customized 23-tool controller; assemble the additive release rather than replacing /app/dist with the upstream registry.
