@@ -140,6 +140,9 @@ try {
   const wireToken = 'isolated-browser-test-token-not-production-123456789';
   const hostBridge = createBridgeServer({token:wireToken,allowedOrigins:new Set(['https://fixture.example']),
     dynamicTabs:true,platform:'darwin',sessionStore:wireSessions,enableBrowserRuntime:true,
+    // The production default is intentionally native-first; this isolated CDP E2E
+    // must explicitly opt in to the persistent provider.
+    browserRouting:'prefer_persistent',
     browserProviders:{chrome:{endpoint,protocol:'cdp'}},
     nativeHandler:async()=>{throw Error('Native fallback must not be invoked');},
     auditHandler:async()=>({recorded:true})});
