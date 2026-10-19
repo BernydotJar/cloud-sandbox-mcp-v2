@@ -121,7 +121,7 @@ accent.layer?.backgroundColor = NSColor.systemPink.withAlphaComponent(0.84).cgCo
 accent.layer?.cornerRadius = 1.5
 glass.addSubview(accent)
 
-let mascot = AkiraMascot(frame: NSRect(x: 13, y: 13, width: 68, height: 64))
+private let mascot = AkiraMascot(frame: NSRect(x: 13, y: 13, width: 68, height: 64))
 glass.addSubview(mascot)
 
 let heading = NSTextField(labelWithString: "Bridge listo ✨")
