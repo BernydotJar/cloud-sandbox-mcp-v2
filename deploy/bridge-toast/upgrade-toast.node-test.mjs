@@ -196,3 +196,23 @@ test('trusted notice patch supports installed per-browser and legacy scalar rout
   assert(authorized.includes('COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=true'));
   assert.equal(upgradeTrustedNoticeEnvSource(authorized,{enabled:true}),authorized);
 });
+
+test('terminal and shared agent policy reinforce the live Mac Bridge contract without assuming an unverified CLI alias',()=>{
+  const {readFileSync}=fs;
+  const doc=readFileSync(path.resolve(here,'../../docs/computer-use-v2/TERMINAL_SANDBOX_CONTRACT.md'),'utf8');
+  const guide=readFileSync(path.resolve(here,'../../AGENTS.md'),'utf8');
+  const registered=readFileSync(path.resolve(here,'../../src/mcp/server.ts'),'utf8');
+  for(const term of [
+    'computer_use_status',
+    'trusted_delegation_notice.enabled',
+    'unlimited_actions',
+    'remaining_actions=null',
+    '20-second',
+    'sandbox -c'
+  ]) assert(doc.includes(term),'Missing Terminal Bridge contract: '+term);
+  assert(doc.includes('do not define its implementation or flags'));
+  assert(doc.includes('not machine-learning') || doc.includes('not machine-learning'));
+  assert(guide.includes('TERMINAL_SANDBOX_CONTRACT.md'));
+  assert(guide.includes('unlimited_actions=true'));
+  assert(registered.includes('unlimited actions without modal approval'));
+});

@@ -16,7 +16,7 @@ When using this MCP server:
 9. For EVERY ordinary web task (navigation, forms, third-party apps, UI QA and E2E), use the existing workstation in /workspace/projects and an isolated Playwright Chromium headless browser via workspace_exec. The browser must not take foreground focus on macOS. Existing Chessy-style offscreen QA is the reference pattern; docs/computer-use-v2/OFFSCREEN_QA.md documents the smoke gate. Chrome/Edge on the Mac, browser_tabs, host CDP and computer_use_* are NOT the default path.
 10. Maintain separate access-controlled persistent headless profiles per site/account only when needed. Never import cookies or secrets from personal Mac Chrome/Edge. On auth_required, provide a scoped one-time login handoff and recheck the persisted profile after login; do not label an anonymous page successful. Do not bypass CAPTCHA, MFA or login protection. No authentication session is magically shared from Mac to Linux.
 11. Use role/label/testid selectors, verified navigation, trace/screenshot artifacts, bounded timeouts and audited workflow results. Do not re-dispatch actions with uncertain effects, especially uploads/purchases/publishing. Never change another project's profile.
-12. When the user requests REUSING AN ALREADY-AUTHENTICATED MAC SESSION (including via sandbox -c), browser_tabs and the Mac bridge are the requested workflow: prefer persistent CDP/Playwright, use exact session tab identity, and avoid foreground focus. Request bounded delegated permission before mutations. Native Computer Use is a last resort, not a background solution. Do not copy cookies or silently export tokens.
+12. When the user requests REUSING AN ALREADY-AUTHENTICATED MAC SESSION (including a terminal client verified to use this MCP), browser_tabs and the Mac bridge are the requested workflow: prefer persistent CDP/Playwright, use exact session tab identity, and avoid foreground focus. Request bounded delegated permission before mutations. Native Computer Use is a last resort, not a background solution. Do not copy cookies or silently export tokens.
 
 ## Background-first application QA
 
@@ -24,7 +24,7 @@ Test project UIs using isolated Playwright/Chromium headless inside dev-main. Do
 
 ## Persistent Browser Runtime V2
 
-13. Read docs/computer-use-v2/SPEC.md and OPERATIONS.md before changing the native bridge or deploying. Preserve the known customized 23-tool controller; assemble the additive release rather than replacing /app/dist with the upstream registry.
+13. Read docs/computer-use-v2/SPEC.md and OPERATIONS.md before changing the native bridge or deploying. Preserve the installed customized controller/tool inventory; stage additive changes and verify version/schema before promotion.
 14. For explicitly requested Mac session reuse, prefer browser_tabs and browser_inspect for an already-provisioned persistent provider. Use exact semantic locators, current tab_ref/revision, and an existing user-approved task session. No extra local prompt is required per in-session action. Never reuse another agent's delegation.
 15. Endpoint provisioning is an operator task. Do not scan ports, restart the user's Chrome/Edge profile, copy authenticated browser data, expose raw CDP, or claim the browser extension is installed without evidence.
 16. For browser_action send a unique request_id. Duplicate requests within the active grant may return a receipt; uncertain dispatches must be independently inspected, never automatically replayed or converted into native clicks.
@@ -35,8 +35,8 @@ Test project UIs using isolated Playwright/Chromium headless inside dev-main. Do
 ## Browser automation acceptance
 
 19. P0 Playwright headless in dev-main for ordinary tasks; P1 Playwright persistent attached via authenticated Mac bridge WHEN user explicitly requests existing Mac session reuse; P2 native macOS Computer Use only for foreground interaction explicitly approved by user. Playwright may use CDP internally to control its OWN isolated Chromium.
-20. A login redirect in isolated Chromium is an authentication boundary, not a Playwright failure. If user requested existing Mac login, STOP retrying headless login and use the MAC bridge attach-only provider if available. If provider=native, do not claim background automation: disclose the missing semantic CDP attach and require the separate Mac debugging enablement with browser permission. Never export cookies/passwords/MFA to Linux.
-21. Keep the Mac bridge/browser runtime available for explicitly requested existing-session reuse; do not automatically route unrelated web tasks there. The current Chrome native_first config disables background semantic CDP, while Edge prefer_persistent works. Do not suggest localhost:9222 inside dev-main as a Mac endpoint. A Mac-side configuration/consent operation must be separately deployed and verified to change that state.
+20. A login redirect in isolated Chromium is an authentication boundary, not a Playwright failure. If user requested existing Mac login, STOP retrying headless login and use the MAC bridge attach-only provider if available. If provider=native, do not claim semantic background automation; report that native computer use is foreground and requires an authorized delegated session. The dedicated Chrome profile on 127.0.0.1:9223 uses its own CDP flags and does not require enabling debugging on personal Chrome. Never export cookies/passwords/MFA to Linux.
+21. Keep the Mac bridge/browser runtime available for explicitly requested existing-session reuse; do not automatically route unrelated web tasks there. Browser routing must be read from live browser_runtime_status; the current Mac Bridge was separately verified after the dedicated Chrome and trusted delegation upgrades. Do not suggest localhost:9222 inside dev-main as a Mac endpoint. A Mac-side configuration/consent operation must be separately deployed and verified to change that state.
 
 ## Dedicated authenticated browser on demand
 
@@ -84,3 +84,23 @@ finishes. The close button only hides the notification; it does not end
 the session. An operator who has not enabled this mode retains normal
 approval prompts. Never bypass native OS permission prompts or write
 outside the configured HTTPS allowlist.
+
+## Terminal `sandbox` and cross-agent reinforcement
+
+Read `docs/computer-use-v2/TERMINAL_SANDBOX_CONTRACT.md` before asserting
+that a Mac Terminal `sandbox` or `sandbox -c` session inherits ChatGPT's
+Mac Bridge configuration. The **installed host Bridge**, not the shell
+command or model, owns the trusted delegation policy: operator opt-in,
+30-minute maximum, unlimited actions, 20-second closable Edu notice,
+HTTPS mutation allowlist and audit. Any tool client connected to the same
+Bridge shares that policy, but session grants are task-scoped and may not
+be shared across agents.
+
+Check `computer_use_status` read-only at the start of a task that needs
+authenticated Mac browser access. The tool's published schema may still
+accept/restrict `max_actions` (1..200); pass an allowed value for
+compatibility. The Mac trusted runtime ignores this request-side counter
+and reports `unlimited_actions=true` and `remaining_actions=null`.
+Do not alter a running Chrome/Edge session or restart the Bridge to refresh
+help text. Do not assume the Mac `sandbox` shell definition exists in this
+Linux workspace; its actual alias/function/executable must be checked on Mac.
