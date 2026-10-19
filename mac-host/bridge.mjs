@@ -30,28 +30,63 @@ async function launchBrowser(name) {
   }catch { throw new Error('BROWSER_APP_UNAVAILABLE'); }
 }
 
-// Explicit operator opt-in: auto-start ONLY the dedicated Chrome CDP profile.
-const dedicatedChromePort = 9223;
+// LCH_DEDICATED_CHROME_AUTOSTART_V3
 async function ensureDedicatedChrome() {
-  const endpoint = 'http://127.0.0.1:' + dedicatedChromePort + '/json/version';
-  const probe = async () => {
-    try { const response = await fetch(endpoint, {signal:AbortSignal.timeout(1200)});
-      return response.ok; } catch { return false; }
+  const profile = path.join(os.homedir(), '.ido-chrome-bridge', 'profile');
+  const port = 9223;
+  const endpoint = 'http://127.0.0.1:' + port + '/json/version';
+  const owner = async () => {
+    try {
+      const {stdout} = await exec('/usr/sbin/lsof',
+        ['-n','-P','-t','-iTCP:' + port,'-sTCP:LISTEN'],
+        {timeout:3000,maxBuffer:1500});
+      const pids = [...new Set(stdout.trim().split(/\s+/).filter(x => /^\d+$/.test(x)))].slice(0,5);
+      if (pids.length !== 1) return {occupied:pids.length>0, trusted:false};
+      const details = await exec('/bin/ps',
+        ['-p',pids[0],'-o','command='],{timeout:3000,maxBuffer:15000});
+      const command = details.stdout;
+      return {occupied:true, trusted:command.includes('--remote-debugging-port=9223') &&
+        command.includes('--user-data-dir=' + profile)};
+    } catch { return {occupied:false,trusted:false}; }
   };
-  if (await probe()) return {started:false,ready:true};
-  // Launch only an isolated profile: never restart/reconfigure personal Chrome.
-  const profile = path.join(os.homedir(),'.ido-chrome-bridge','profile');
+  const health = async () => {
+    try {
+      const response = await fetch(endpoint,{signal:AbortSignal.timeout(1800)});
+      if (!response.ok) return false;
+      const body = await response.json();
+      return typeof body?.Browser === 'string' &&
+        body.Browser.startsWith('Chrome/') &&
+        typeof body.webSocketDebuggerUrl === 'string';
+    } catch { return false; }
+  };
+  const current = await owner();
+  // Fail closed if a CDP server responds but its owner cannot be proven.
+  if (!current.occupied && await health()) return {ready:false,started:false};
+  if (current.occupied) return {ready:current.trusted && await health(),started:false};
+  const parent = path.dirname(profile);
+  await fs.mkdir(parent,{recursive:true,mode:0o700});
+  const parentStat = await fs.lstat(parent);
+  if (parentStat.isSymbolicLink() || !parentStat.isDirectory()) return {ready:false,started:false};
+  await fs.chmod(parent,0o700);
   await fs.mkdir(profile,{recursive:true,mode:0o700});
-  const args=['-na','Google Chrome','--args',
-    '--remote-debugging-address=127.0.0.1',
-    '--remote-debugging-port='+dedicatedChromePort,
-    '--user-data-dir='+profile,'--no-first-run','--no-default-browser-check'];
-  await exec('/usr/bin/open',args,{timeout:12000,maxBuffer:3000});
-  for(let i=0;i<18;i++){
-    if(await probe())return {started:true,ready:true};
+  const stat = await fs.lstat(profile);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) return {ready:false,started:false};
+  await fs.chmod(profile,0o700);
+  try {
+    await exec('/usr/bin/open',['-na','Google Chrome','--args',
+      '--remote-debugging-address=127.0.0.1',
+      '--remote-debugging-port=9223',
+      '--user-data-dir=' + profile,
+      '--no-first-run','--no-default-browser-check'],
+      {timeout:12000,maxBuffer:3000});
+  } catch { return {ready:false,started:false}; }
+  for (let i=0; i<24; i++) {
     await sleep(450);
+    const check = await owner();
+    if (check.occupied && check.trusted && await health()) return {ready:true,started:true};
+    if (check.occupied && !check.trusted) return {ready:false,started:true};
   }
-  return {started:true,ready:false};
+  return {ready:false,started:true};
 }
 
 export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, origins, reason = 'PERSISTENT_BROWSER_UNAVAILABLE') {
@@ -292,14 +327,17 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             try {
               if (input.browser==='chrome' && dedicatedChromeAutoStart &&
                   browserProviders.chrome?.endpoint==='http://127.0.0.1:9223') {
-                const ready=await ensureDedicatedChromeHandler();
-                if (!ready.ready)throw new RuntimeFault('BROWSER_ENDPOINT_UNAVAILABLE');
+                const opened=await ensureDedicatedChromeHandler();
+                if (!opened.ready)throw new RuntimeFault('DEDICATED_CHROME_NOT_READY');
               }
               result=await runtime.discover(input);
               result.provider='persistent';
               result.semantic_available=true;
               routingMetrics.persistent_discoveries++;
             } catch(error) {
+              if (input.browser==='chrome' && dedicatedChromeAutoStart &&
+                  browserProviders.chrome?.endpoint==='http://127.0.0.1:9223')
+                throw new RuntimeFault('DEDICATED_CHROME_ATTACH_FAILED');
               // Never turn authorization, request-validation or stale-target
               // failures into an alternate way to access a browser.
               if(!attachFallbackCodes.has(error?.message))throw error;
@@ -540,7 +578,7 @@ export async function startBridge(options = {}) {
     // so registration alone does not attach a debugger or request permission.
     browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
     browserAudit: event => ledger.append(event),
-    dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START==='true'
+    dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START === 'true'
   });
   server.once('close', () => { if (ledger) void ledger.close().catch(() => {}); });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';

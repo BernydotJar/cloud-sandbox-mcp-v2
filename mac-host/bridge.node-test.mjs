@@ -442,7 +442,8 @@ test('dedicated Chrome auto-start is opt-in and requires the exact dedicated CDP
     ensureDedicatedChromeHandler:async()=>{starts++;return {ready:false,started:true};}};
   const {post}=await ready(base);
   const fail=await post('/v2/browser/tabs',{browser:'chrome'});
-  assert.equal(fail.data.provider,'native');
+  assert.equal(fail.status,400);
+  assert.equal(fail.error,'DEDICATED_CHROME_ATTACH_FAILED');
   assert.equal(starts,1);
   const {post:without}=await ready({...base,dedicatedChromeAutoStart:false});
   await without('/v2/browser/tabs',{browser:'chrome'});

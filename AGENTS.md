@@ -37,3 +37,16 @@ Test project UIs using isolated Playwright/Chromium headless inside dev-main. Do
 19. P0 Playwright headless in dev-main for ordinary tasks; P1 Playwright persistent attached via authenticated Mac bridge WHEN user explicitly requests existing Mac session reuse; P2 native macOS Computer Use only for foreground interaction explicitly approved by user. Playwright may use CDP internally to control its OWN isolated Chromium.
 20. A login redirect in isolated Chromium is an authentication boundary, not a Playwright failure. If user requested existing Mac login, STOP retrying headless login and use the MAC bridge attach-only provider if available. If provider=native, do not claim background automation: disclose the missing semantic CDP attach and require the separate Mac debugging enablement with browser permission. Never export cookies/passwords/MFA to Linux.
 21. Keep the Mac bridge/browser runtime available for explicitly requested existing-session reuse; do not automatically route unrelated web tasks there. The current Chrome native_first config disables background semantic CDP, while Edge prefer_persistent works. Do not suggest localhost:9222 inside dev-main as a Mac endpoint. A Mac-side configuration/consent operation must be separately deployed and verified to change that state.
+
+## Dedicated authenticated browser on demand
+
+For user-authorized authenticated web automation, prefer the dedicated
+Chrome profile when it has been explicitly provisioned. Mac Bridge
+auto-starts that browser on `browser_tabs(chrome)` only after operator
+`COMPUTER_USE_DEDICATED_CHROME_AUTO_START=true` opt-in and exact local
+CDP endpoint assignment. Do not launch or profile the user's personal Chrome,
+expose 9223 to Docker, copy cookies or substitute native coordinate clicks
+when dedicated CDP attach fails. Keep Chessy-style Playwright headless as the
+default for QA. For deployment and rollback, use
+`deploy/dedicated-chrome/README.md` and its guarded installer. Verify the
+returned provider is persistent and inspect the post-action state.
