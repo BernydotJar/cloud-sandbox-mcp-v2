@@ -50,3 +50,12 @@ when dedicated CDP attach fails. Keep Chessy-style Playwright headless as the
 default for QA. For deployment and rollback, use
 `deploy/dedicated-chrome/README.md` and its guarded installer. Verify the
 returned provider is persistent and inspect the post-action state.
+
+## macOS browser connection UX
+
+If the optional Bridge Glass Toast is enabled, it confirms a successful
+dedicated Chrome CDP attach exactly once per Bridge process without taking
+focus or altering the application. Do not generate persistent "connected"
+warnings or inject status decorations into customer web pages. Preserve
+browser-native security indicators and all real failure messages. See
+deploy/bridge-toast/README.md.

@@ -166,3 +166,17 @@ After an approved deployment, refresh Cloud Sandbox MCP V2 action discovery in t
 ## Remaining enterprise acceptance gates
 
 Actual authenticated Mac attachment/extension pairing; controller image dependency migration; macOS browser/version compatibility; installer/rollback maintenance drill; multi-operator identity and policy enforcement if the deployment expands beyond this single-owner Mac; release signing; log rotation/retention and independent security review. These are not marked complete by isolated unit/E2E tests.
+
+## Glass toast after authenticated Chrome Bridge connection
+
+The separate opt-in release under deploy/bridge-toast provides a native
+macOS NSPanel connection confirmation ("Bridge listo"), dismissed after
+2.1 seconds. It is click-through, non-activating, reduced-motion aware and
+triggered only once per Mac Bridge service process after an actual dedicated
+Chrome persistent CDP discovery. No site DOM injection or personal browser
+changes. Its binary is compiled locally on Mac at installation; the release
+installer performs source validation, backup, Bridge restart, health check and
+rollback. Operator action: run the guarded one-command installer from
+deploy/bridge-toast/README.md; re-query browser_tabs(chrome) to validate.
+Do not mistake Chrome's own security infobar for a Bridge-generated warning,
+and never disable browser-level security notices to implement cosmetic UX.

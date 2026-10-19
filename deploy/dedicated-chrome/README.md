@@ -44,3 +44,11 @@ A Linux test proves migration compatibility but **not** Mac deployment. Do not r
 ## Rollback
 
 Restore `bridge.mjs` and `controller.env` from the recorded backup to their original paths, preserving original permissions, then restart the existing user LaunchAgent. No browser profiles, credentials or controller tools are deleted.
+
+## Optional glass connection confirmation
+
+After dedicated Chrome auto-start is accepted and validated, the operator can
+install the **Bridge Glass Toast** from deploy/bridge-toast/README.md. This
+adds a small auto-dismissing native macOS confirmation on successful persistent
+CDP discovery. It does not affect CDP permissions or suppress Chrome's own
+remote debugging / automation security banners.

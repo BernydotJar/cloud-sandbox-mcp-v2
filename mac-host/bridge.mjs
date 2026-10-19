@@ -89,6 +89,14 @@ async function ensureDedicatedChrome() {
   return {ready:false,started:true};
 }
 
+// LCH_BRIDGE_READY_TOAST_V1
+async function showDedicatedChromeToast() {
+  const executable=path.join(os.homedir(),
+    'Library/Application Support/LCH/CloudSandboxComputerUse/ux/bridge-toast');
+  try { await exec(executable,[],{timeout:10000,maxBuffer:512}); }
+  catch { /* Visual confirmation is optional; browser operation is unaffected. */ }
+}
+
 export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, origins, reason = 'PERSISTENT_BROWSER_UNAVAILABLE') {
   const titleFilter=input.title;
   const exact=input.exact!==false;
@@ -236,7 +244,9 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    enableBrowserRuntime = false, browserAudit = auditHandler,
                                    browserRouting = 'native_first',
                                    launchBrowserHandler = launchBrowser, dedicatedChromeAutoStart = false,
-                                   ensureDedicatedChromeHandler = ensureDedicatedChrome}) {
+                                   ensureDedicatedChromeHandler = ensureDedicatedChrome,
+                                   bridgeToastEnabled = false,
+                                   bridgeToastHandler = showDedicatedChromeToast}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
@@ -251,6 +261,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
     sessionStore, audit: browserAudit, dynamicTabs, allowedOrigins,
     restrictMutationsToAllowlist: restrictBrowserWrites }) : null;
   let busy = false;
+  let bridgeToastShown = false;
   const routingMetrics = { native_discoveries:0, persistent_discoveries:0,
     persistent_fallbacks:0, native_discovery_failures:0 };
   const server = http.createServer(async (req, res) => {
@@ -334,6 +345,14 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
               result.provider='persistent';
               result.semantic_available=true;
               routingMetrics.persistent_discoveries++;
+              // Quiet, click-through toast once per live Bridge connection.
+              if (input.browser==='chrome' && bridgeToastEnabled &&
+                  dedicatedChromeAutoStart &&
+                  browserProviders.chrome?.endpoint==='http://127.0.0.1:9223' &&
+                  !bridgeToastShown) {
+                bridgeToastShown=true;
+                void Promise.resolve().then(() => bridgeToastHandler()).catch(() => {});
+              }
             } catch(error) {
               if (input.browser==='chrome' && dedicatedChromeAutoStart &&
                   browserProviders.chrome?.endpoint==='http://127.0.0.1:9223')
@@ -578,7 +597,8 @@ export async function startBridge(options = {}) {
     // so registration alone does not attach a debugger or request permission.
     browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
     browserAudit: event => ledger.append(event),
-    dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START === 'true'
+    dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START === 'true',
+    bridgeToastEnabled: environment.COMPUTER_USE_BRIDGE_TOAST === 'true'
   });
   server.once('close', () => { if (ledger) void ledger.close().catch(() => {}); });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';
