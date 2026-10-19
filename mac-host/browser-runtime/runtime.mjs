@@ -82,7 +82,26 @@ export class BrowserRuntime {
       try {
         content = await r.page.locator('body').innerText({ timeout: TIMEOUT });
         inspectionMode = 'text_fallback';
-      } catch { this.metrics.inspections_unavailable++; fail('BROWSER_INSPECT_UNAVAILABLE'); }
+      } catch {
+        // Attached Chrome can expose its protocol DOM even when Playwright's
+        // page execution context cannot run selectors (e.g. extension/runtime restrictions).
+        // A protocol DOM snapshot is inspection-only, NEVER semantic locator evidence.
+        try {
+          const session = await r.page.context().newCDPSession(r.page);
+          try {
+            const snapshot = await session.send('DOMSnapshot.captureSnapshot', {
+              computedStyles: [], includeDOMRects: false, includePaintOrder: false
+            });
+            const strings = snapshot?.strings || [];
+            const doc = snapshot?.documents?.[0];
+            const nodes = doc?.nodes;
+            const indices = nodes?.nodeValue || [];
+            content = indices.map(index => strings[index]).filter(Boolean).join('\n');
+            if (!content || typeof content !== 'string') throw Error('DOM_SNAPSHOT_EMPTY');
+            inspectionMode = 'cdp_dom_fallback';
+          } finally { await session.detach().catch(() => {}); }
+        } catch { this.metrics.inspections_unavailable++; fail('BROWSER_INSPECT_UNAVAILABLE'); }
+      }
     }
     if (typeof content !== 'string') {
       this.metrics.inspections_unavailable++;

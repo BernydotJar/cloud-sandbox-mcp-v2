@@ -432,3 +432,27 @@ test('explicit local Playwright endpoints override automatic channels without si
     edge:{endpoint:'ws://127.0.0.1:4050/agent',protocol:'playwright'}
   });
 });
+
+test('CDP DOM fallback is non-semantic when DOM execution and text both fail', async () => {
+  const f = fixture();
+  f.page.ariaError = true;
+  f.page.textError = true;
+  let detached = false;
+  f.page.context = () => ({ newCDPSession: async () => ({
+    send: async (method) => {
+      assert.equal(method, 'DOMSnapshot.captureSnapshot');
+      return {
+        strings: ['ignored', 'Authenticated workspace'],
+        documents: [{nodes: {nodeValue: [0,1]}}]
+      };
+    },
+    detach: async () => {detached=true;}
+  })});
+  const tab=(await f.runtime.discover({browser:'chrome'})).tabs[0];
+  const result=await f.runtime.inspect({browser:'chrome',tab_ref:tab.tab_ref});
+  assert.equal(result.inspection_mode, 'cdp_dom_fallback');
+  assert.equal(result.semantic_available, false);
+  assert.match(result.page_text,/Authenticated workspace/);
+  assert.equal(detached,true);
+  await f.runtime.close();
+});
