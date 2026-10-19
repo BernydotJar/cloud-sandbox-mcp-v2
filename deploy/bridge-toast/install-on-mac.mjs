@@ -13,7 +13,10 @@ import {upgradeToastBridgeSource,upgradeToastEnvSource} from './upgrade-toast.mj
 const release=path.dirname(fileURLToPath(import.meta.url));
 const log=(key,value)=>process.stdout.write('[Bridge Glass Toast] '+key+'='+value+'\n');
 const hash=contents=>crypto.createHash('sha256').update(contents).digest('hex');
-const previousRuntimeSha='c5f41efcf6807df120e79bca49e48d2f76154edbe1621ede9f8c722cf1a60b4a';
+const previousRuntimeShas=new Set([
+  'c5f41efcf6807df120e79bca49e48d2f76154edbe1621ede9f8c722cf1a60b4a',
+  '00ba4772df315d9ca13b6990c96a902e7765d4e1b22f37258595dc4afac44575'
+]);
 
 function command(bin,args,timeout=20000) {
   return execFileSync(bin,args,{
@@ -89,14 +92,18 @@ async function main() {
   const cdpRelease=path.join(release,'cdp-semantic.mjs');
   const upgradedRuntime=fs.readFileSync(runtimeRelease);
   const cdpSource=fs.readFileSync(cdpRelease);
-  if(hash(oldRuntime.contents)!==previousRuntimeSha &&
+  if(!previousRuntimeShas.has(hash(oldRuntime.contents)) &&
      hash(oldRuntime.contents)!==hash(upgradedRuntime))
     throw Error('UNKNOWN_MAC_RUNTIME_VERSION_NO_OVERWRITE');
   if(!upgradedRuntime.toString().includes('prepareCdpSemanticAction') ||
      !upgradedRuntime.toString().includes('cdp_ax_fallback'))
     throw Error('INVALID_CDP_RUNTIME_RELEASE');
   const existingCdp=fs.existsSync(cdpFile)?safeFile(cdpFile):null;
-  if(existingCdp && hash(existingCdp.contents)!==hash(cdpSource))
+  const previousCdpDriverShas=new Set([
+    '8aef0cbc753b9f4234b8be76ab599ec2c362054a11f575f5a7694cc9c7308b60'
+  ]);
+  if(existingCdp && hash(existingCdp.contents)!==hash(cdpSource) &&
+     !previousCdpDriverShas.has(hash(existingCdp.contents)))
     throw Error('UNKNOWN_EXISTING_CDP_DRIVER_NO_OVERWRITE');
   const patch=upgradeToastBridgeSource(original.contents.toString('utf8'));
   const nextEnv=upgradeToastEnvSource(oldEnv.contents.toString('utf8'));
@@ -167,7 +174,8 @@ async function main() {
     atomicWrite(binary,fs.readFileSync(compiled),0o700);
     if(hash(oldRuntime.contents)!==hash(upgradedRuntime))
       atomicWrite(runtimeFile,upgradedRuntime,oldRuntime.mode);
-    if(!existingCdp)atomicWrite(cdpFile,cdpSource,0o600);
+    if(!existingCdp || hash(existingCdp.contents)!==hash(cdpSource))
+      atomicWrite(cdpFile,cdpSource,existingCdp?.mode||0o600);
     if(original.contents.toString('utf8')!==patch.source)
       atomicWrite(bridgeFile,patch.source,original.mode);
     if(oldEnv.contents.toString('utf8')!==nextEnv)

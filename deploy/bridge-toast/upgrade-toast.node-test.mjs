@@ -144,3 +144,12 @@ test('Akira one-shot release includes guarded CDP AX runtime files',()=>{
   assert.match(helper,/Input\.insertText/);
   assert.doesNotMatch(helper,/session\.send\(['"](?:Runtime\.evaluate|Input\.dispatchMouseEvent)/);
 });
+
+
+test('CDP fallback preserves accessible field labels without exposing values',async()=>{
+  const {scrubContent}=await import('../../mac-host/browser-runtime/contracts.mjs');
+  const raw='- textbox "Start writing lyrics": [REDACTED_FIELD_VALUE]';
+  assert.equal(scrubContent(raw),raw);
+  const source=fs.readFileSync(path.join(here,'cdp-semantic.mjs'),'utf8');
+  assert.match(source,/lines\.push\('- '\+role\+' "'\+quoted\+'": \[REDACTED_FIELD_VALUE\]'\)/);
+});

@@ -65,3 +65,9 @@ guards, protected-field exclusions and audits remain enforced. Deployment
 is atomic with the splash and rolls back on failed Bridge health. A real
 isolated Chromium E2E simulates the failed injected Playwright engine and
 asserts CDP AX inspection, click and fill.
+
+### ARIA field label fix
+
+In the CDP AX semantic fallback, textbox accessible names now precede the colon
+in the normalized snapshot so privacy masking does not erase locator names.
+The fallback still never returns editable field values.

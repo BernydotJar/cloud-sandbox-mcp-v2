@@ -66,3 +66,14 @@ After Mac activation, the browser service must report the new
 `inspections_cdp_ax` metric. Use `browser_tabs(chrome)`,
 `browser_inspect` and a scoped, authorized `browser_action` to validate the
 actual Suno UI. Any full song generation is a separate business-level gate.
+
+### Accessible field-name correction
+
+The original CDP AX fallback emitted textboxes as `- textbox: "name"`; the
+existing privacy scrubber treated everything after the colon as field *value*
+and erased even the accessible control name. The corrected driver emits
+`- textbox "name": [REDACTED_FIELD_VALUE]`, preserving only the verified
+accessible label and never leaking the field content. The installer accepts
+both the original CDP driver release and the corrected driver as guarded
+known versions. Live delegated sessions must be ended before the update;
+only the Mac Bridge service restarts, not Chrome or any logged-in tab.

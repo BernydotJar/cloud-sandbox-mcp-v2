@@ -39,7 +39,13 @@ export async function cdpAccessibilitySnapshot(page) {
       if(isIgnored(node)||!allowed.has(role))continue;
       const name=axName(node).replace(/[\r\n]/g,' ').slice(0,180);
       if(!name) continue;
-      lines.push('- '+role+': "'+name.replaceAll('"',"'")+'"');
+      const quoted=name.replaceAll('"',"'");
+      // A field's accessible NAME is an identity/label, not its current value.
+      // Keep it before the colon so scrubContent can mask any value without
+      // erasing the verified semantic locator.
+      if (['textbox','searchbox','spinbutton'].includes(role))
+        lines.push('- '+role+' "'+quoted+'": [REDACTED_FIELD_VALUE]');
+      else lines.push('- '+role+': "'+quoted+'"');
       if(lines.length>=320)break;
     }
     if(!lines.length)fault('CDP_AX_EMPTY');
