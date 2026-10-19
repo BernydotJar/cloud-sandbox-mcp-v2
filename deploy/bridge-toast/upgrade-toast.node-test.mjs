@@ -100,3 +100,29 @@ test('toast is emitted once after persistent Chrome discovery and never blocks a
     fs.unlinkSync(temp);
   }
 });
+
+test('Akira splash is a 5-second click-through nonmodal overlay at upper right',()=>{
+  const swift=fs.readFileSync(path.join(here,'bridge-toast.swift'),'utf8');
+  assert.match(swift,/static let lifetime: TimeInterval = 5\.0/);
+  assert.match(swift,/area\.maxX - AkiraSplash\.width - AkiraSplash\.margin/);
+  assert.match(swift,/area\.maxY - AkiraSplash\.height - AkiraSplash\.margin/);
+  assert.match(swift,/\.nonactivatingPanel/);
+  assert.match(swift,/panel\.ignoresMouseEvents = true/);
+  assert.match(swift,/\.accessory/);
+  assert.match(swift,/accessibilityDisplayShouldReduceMotion/);
+  assert.match(swift,/asyncAfter\(deadline: \.now\(\) \+ AkiraSplash\.lifetime\)/);
+  assert.match(swift,/application\.terminate\(nil\)/);
+  assert.match(swift,/Bridge listo/);
+  assert.match(swift,/private final class AkiraMascot/);
+  assert.doesNotMatch(swift,/NSAlert|NSCriticalAlertStyle|UIAlertController/);
+  const installer=fs.readFileSync(path.join(here,'install-on-mac.mjs'),'utf8');
+  assert.match(installer,/log\('AUTO_DISMISS_MS',5000\)/);
+  assert.match(installer,/swiftc/);
+  assert.match(installer,/ROLLED_BACK/);
+});
+
+test('Akira splash builds with Apple Swift on macOS', {skip:process.platform!=='darwin'},()=>{
+  execFileSync('/usr/bin/xcrun',['swiftc','-typecheck',
+    path.join(here,'bridge-toast.swift'),'-framework','AppKit','-framework','QuartzCore'],
+  {timeout:120000,stdio:['ignore','pipe','pipe']});
+});

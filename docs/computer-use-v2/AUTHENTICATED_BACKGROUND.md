@@ -36,3 +36,18 @@ call `browser_tabs(chrome)`, inspect the resulting persistent tab, and
 perform approved E2E verification with screenshots and assertions. The
 macOS service LaunchAgent remains configured to restart on demand/login
 through its existing `KeepAlive` / `RunAtLoad` settings.
+
+## Short native status splash with Akira mascot
+
+The dedicated Chrome Bridge can optionally display a one-time native macOS
+connection confirmation. `deploy/bridge-toast/` contains an AppKit overlay
+(upper-right corner, mascot, click-through and nonactivating) and a guarded
+one-shot installer. It remains visible for approximately 5 seconds and then auto-hides.
+It never prompts the operator or blocks agent work; structured connection
+errors remain available to MCP clients. It does **not** change Chrome-native
+automation/debugging security banners or operating-system permission prompts.
+
+Operator installation: run `node "$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/bridge-glass-toast/install-on-mac.mjs" --activate`
+once on macOS. `browser_tabs(chrome)` displays it after successful persistent
+discovery when `COMPUTER_USE_BRIDGE_TOAST=true` is enabled. For development
+tests, see `deploy/bridge-toast/README.md`.

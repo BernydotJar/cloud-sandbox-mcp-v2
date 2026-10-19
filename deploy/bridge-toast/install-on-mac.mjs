@@ -19,9 +19,9 @@ function command(bin,args,timeout=20000) {
     timeout,encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:1000000
   }).trim();
 }
-function safeFile(file) {
+function safeFile(file,requireOwnership=true) {
   const stat=fs.lstatSync(file);
-  if(!stat.isFile() || stat.isSymbolicLink() || stat.uid!==process.getuid())
+  if(!stat.isFile() || stat.isSymbolicLink() || (requireOwnership && stat.uid!==process.getuid()))
     throw Error('UNSAFE_OR_UNOWNED_FILE');
   return {contents:fs.readFileSync(file),mode:stat.mode&0o777};
 }
@@ -99,6 +99,7 @@ async function main() {
   });
   log('ROUTING',patch.variant);
   log('PATCH_REQUIRED',patch.applied);
+  log('SPLASH_STYLE','AKIRA_GLASS_CORNER');
   log('CHROME_SECURITY_BANNER','UNCHANGED');
   if(mode==='--inspect')return;
   const delegation=await post(port,token,'/v1/session/status');
@@ -160,7 +161,7 @@ async function main() {
   log('AUTO_DISMISS_MS',5000);
   log('BACKUP',backup);
   // Do not start tabs, move focus or modify a signed-in session to display the splash.
-  log('NEXT','Toast will appear once on next dedicated Chrome persistent discovery');
+  log('NEXT','Akira splash will appear once on the next successful dedicated Chrome connection');
 }
 main().catch(error=>{
   log('STOP',String(error?.message||error).slice(0,180));

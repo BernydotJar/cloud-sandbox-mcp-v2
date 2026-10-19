@@ -124,7 +124,7 @@ glass.addSubview(accent)
 let mascot = AkiraMascot(frame: NSRect(x: 13, y: 13, width: 68, height: 64))
 glass.addSubview(mascot)
 
-let heading = NSTextField(labelWithString: "Akira está lista ✦")
+let heading = NSTextField(labelWithString: "Bridge listo ✨")
 heading.frame = NSRect(x: 91, y: 45, width: 220, height: 27)
 heading.font = NSFont.systemFont(ofSize: 17, weight: .semibold)
 heading.textColor = .labelColor
@@ -132,7 +132,7 @@ heading.lineBreakMode = .byTruncatingTail
 heading.isSelectable = false
 glass.addSubview(heading)
 
-let detail = NSTextField(labelWithString: "Bridge conectado · Playwright")
+let detail = NSTextField(labelWithString: "Chrome conectado · Playwright")
 detail.frame = NSRect(x: 91, y: 23, width: 223, height: 20)
 detail.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
 detail.textColor = .secondaryLabelColor

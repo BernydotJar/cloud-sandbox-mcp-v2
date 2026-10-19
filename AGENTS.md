@@ -59,3 +59,13 @@ focus or altering the application. Do not generate persistent "connected"
 warnings or inject status decorations into customer web pages. Preserve
 browser-native security indicators and all real failure messages. See
 deploy/bridge-toast/README.md.
+
+## Akira Bridge splash
+
+For the dedicated authenticated Chrome browser, the optional connection UX is
+a **5-second** top-right native glass splash with the original Akira mascot. Show it once on successful
+persistent CDP discovery; do not present blocking connection notices or
+persistent status warnings in agent-owned UI. Do not conceal Chrome-native
+security indicators, OS permission dialogs, or actionable errors. See
+`deploy/bridge-toast/README.md`; do not repeatedly invoke the toast or
+interrupt the browser.
