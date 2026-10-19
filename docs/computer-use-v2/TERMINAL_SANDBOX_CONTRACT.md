@@ -87,3 +87,32 @@ reinforcement. Updating `AGENTS.md` is a shared instruction for agents that
 A local Git commit records changes but does not publish a new MCP controller
 image or push GitHub by itself. Runtime health checks determine what is
 **installed**, not what was merely edited in a repository.
+
+
+## Read-only one-shot Mac CLI diagnostic
+
+The shell command has now been identified by the operator as:
+`/Users/eduardosacahui/.local/bin/sandbox`. It is **not mounted** inside
+`cloud-sandbox-dev-main`; the Mac Bridge's read-only `computer_use_status`
+does not expose arbitrary host files.
+
+A shareable, no-deployment inspector is provided at
+`scripts/terminal-sandbox/doctor.mjs`. It reads the Mac CLI file,
+examines only structural references (MCP, Cloud Sandbox, bridge, `-c`,
+shared agent instructions) and reads the *existing* Mac Bridge's
+authenticated `/v1/status` without printing secrets. It **never invokes
+`sandbox`**, does not launch a browser or change any file. Binary or
+unrecognizable CLI wrappers are reported as inconclusive rather than
+assuming integration. It cannot establish real terminal routing solely
+from string matching.
+
+On Mac:
+
+```sh
+node "$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/terminal-sandbox-doctor.mjs"
+```
+
+Share that diagnostic's output (no credentials are printed). If it shows
+MCP and Bridge integration references, we can verify the actual terminal
+handshake next; if not, we can locate the CLI's underlying entrypoint
+without touching the user's existing shell configuration.
