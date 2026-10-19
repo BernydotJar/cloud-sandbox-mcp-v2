@@ -34,3 +34,26 @@ test('stop revokes capability without a model-side token and does not persist',(
  assert.equal(store.status().active,false);
  assert.throws(()=>store.authorize(grant.session_id,'chrome'),/SESSION_NOT_ACTIVE/);
 });
+
+
+test('explicit unlimited actions still expire after 30 minutes and revoke immediately',()=>{
+  let now=7000;
+  const store=createSessionStore({now:()=>now,randomId:()=> 'f'.repeat(48)});
+  const grant=store.begin({
+    scope:'edge',duration_minutes:30,max_actions:200,unlimited_actions:true,
+    purpose:'Allow operator-opted-in verified browser automation without action cap'
+  });
+  assert.equal(grant.remaining_actions,null);
+  assert.equal(grant.unlimited_actions,true);
+  for(let i=0;i<2000;i++){
+    const step=store.authorize(grant.session_id,'edge',{consume:true});
+    assert.equal(step.remaining_actions,null);
+    assert.equal(step.unlimited_actions,true);
+  }
+  assert.equal(store.status().active,true);
+  assert.equal(store.status().remaining_actions,null);
+  assert.throws(()=>store.authorize(grant.session_id,'chrome'),/SESSION_SCOPE_MISMATCH/);
+  now+=30*60*1000;
+  assert.equal(store.status().active,false);
+  assert.throws(()=>store.authorize(grant.session_id,'edge',{consume:true}),/SESSION_NOT_ACTIVE/);
+});

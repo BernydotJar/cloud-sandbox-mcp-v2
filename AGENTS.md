@@ -69,3 +69,18 @@ persistent status warnings in agent-owned UI. Do not conceal Chrome-native
 security indicators, OS permission dialogs, or actionable errors. See
 `deploy/bridge-toast/README.md`; do not repeatedly invoke the toast or
 interrupt the browser.
+
+## Bridge-only Edu! delegated session notice
+
+For a Mac workstation whose operator explicitly opted in to
+`COMPUTER_USE_TRUSTED_SESSION_NOTICE=true`, start every authorized
+native browser workflow using a scoped `computer_use_session_begin`
+(max 30 minutes, unlimited actions, one browser at a time). The Bridge issues
+a bounded allowlisted capability and displays a top-right **Edu!** notice
+for **20 seconds** with a dismiss button. This does **not** require CDP;
+do not open Chrome or change browser profiles merely for the notice.
+Always pass the `session_id` to delegated actions and revoke it when work
+finishes. The close button only hides the notification; it does not end
+the session. An operator who has not enabled this mode retains normal
+approval prompts. Never bypass native OS permission prompts or write
+outside the configured HTTPS allowlist.

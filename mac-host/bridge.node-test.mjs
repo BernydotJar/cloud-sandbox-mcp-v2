@@ -1,6 +1,7 @@
 import {test,afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {createBridgeServer,safeUrl,allowedPeer} from './bridge.mjs';
+import {setImmediate} from 'node:timers';
 
 const token='not-a-real-production-token-abcdefghijklmnopqrstuvwxyz0123456789';
 const allowedOrigins = new Set(['https://admin.microsoft.com']);
@@ -452,4 +453,136 @@ test('dedicated Chrome auto-start is opt-in and requires the exact dedicated CDP
     chrome:{endpoint:'chrome',protocol:'cdp'}}});
   await personal('/v2/browser/tabs',{browser:'chrome'});
   assert.equal(starts,1);
+});
+
+test('trusted Edge delegation emits an optional 20-second notice without approval modal',async()=>{
+  const notices=[],audit=[];
+  let modalCalls=0;
+  const {post,calls}=await ready({
+    trustedSessionNoticeEnabled:true,
+    restrictBrowserWrites:true,
+    approvalHandler:async()=>{modalCalls++;return false;},
+    trustedSessionNoticeHandler:async payload=>{notices.push(payload);},
+    auditHandler:async event=>{audit.push(event);}
+  });
+  const bridgeStatus=await post('/v1/status');
+  assert.deepEqual(bridgeStatus.data.trusted_delegation_notice,
+    {enabled:true,seconds:20,closable:true,max_minutes:30,max_actions:null,
+      unlimited_actions:true,scope:'single_browser'});
+  const requested={scope:'edge',duration_minutes:5,max_actions:4,
+    purpose:'Reload only the Meridian Edge tab for verified QA'};
+  const granted=await post('/v1/session/begin',requested);
+  assert.equal(granted.status,200);
+  assert.equal(granted.data.approval_mode,'configured_trust');
+  assert.equal(granted.data.notice_seconds,20);
+  assert.equal(modalCalls,0);
+  assert.equal(granted.data.remaining_actions,null);
+  assert.equal(granted.data.unlimited_actions,true);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(notices,[{scope:'edge',duration_minutes:5,max_actions:null}]);
+  assert(audit.some(e=>e.action==='trusted_session_intent'&&e.outcome==='prepared'));
+  const action=await post('/v1/action',{
+    ...target,session_id:granted.data.session_id,action:'press_key',key:'tab',
+    reason:'Read the allowed Microsoft 365 example application'});
+  assert.equal(action.status,200);
+  assert.equal(action.data.approval_mode,'delegated_session');
+  assert.equal(action.data.remaining_session_actions,null);
+  assert.equal(modalCalls,0);
+  assert.equal(calls.filter(c=>c.operation==='action').length,1);
+  const denied=await post('/v1/action',{
+    ...target,expected_url:'https://not-allowlisted.example/',
+    session_id:granted.data.session_id,
+    action:'click',x:20,y:50,reason:'Attempt a destination outside configured origins'});
+  assert.equal(denied.status,400);
+  assert.equal(calls.filter(c=>c.operation==='action').length,1);
+  assert.equal(notices.length,1);
+});
+
+test('a failed postgrant audit revokes unlimited trusted delegation before showing notice',async()=>{
+  let notices=0;
+  const {post}=await ready({
+    trustedSessionNoticeEnabled:true,
+    restrictBrowserWrites:true,
+    trustedSessionNoticeHandler:async()=>{notices++;},
+    auditHandler:async event=>{
+      if(event.action==='session_begin')throw Error('AUDIT_PERSISTENCE_FAILED');
+    }
+  });
+  const grant=await post('/v1/session/begin',{
+    scope:'edge',duration_minutes:30,max_actions:1,
+    purpose:'Attempt an operator trusted session while audit persistence is broken'
+  });
+  assert.equal(grant.status,400);
+  assert.equal(grant.error,'AUDIT_UNAVAILABLE');
+  assert.equal((await post('/v1/session/status')).data.active,false);
+  assert.equal(notices,0);
+});
+
+test('trusted delegated mode is off by default and rejects unrestricted auto-approval',async()=>{
+  const {post}=await ready({restrictBrowserWrites:true});
+  const response=await post('/v1/session/begin',{
+    scope:'edge',duration_minutes:5,max_actions:4,
+    purpose:'Inspect the Edge tab in an explicitly scoped QA session'});
+  assert.equal(response.error,'USER_DENIED_SESSION');
+  assert.throws(()=>createBridgeServer({
+    token,allowedOrigins,platform:'darwin',
+    restrictBrowserWrites:false,trustedSessionNoticeEnabled:true
+  }),/TRUSTED_NOTICE_REQUIRES_ALLOWLIST/);
+});
+
+test('trusted grants fail closed for both browsers and oversized requests',async()=>{
+  const {post}=await ready({
+    trustedSessionNoticeEnabled:true,
+    restrictBrowserWrites:true,
+    approvalHandler:async()=>{throw Error('MODAL_SHOULD_NOT_BE_CALLED');}
+  });
+  const baseline={scope:'edge',duration_minutes:5,max_actions:4,
+    purpose:'Verify a scoped tab without additional dialog'};
+  const both=await post('/v1/session/begin',{...baseline,scope:'both'});
+  assert.equal(both.status,400);
+  assert.equal(both.error,'TRUSTED_SESSION_LIMITS_EXCEEDED');
+  const overTime=await post('/v1/session/begin',{...baseline,duration_minutes:31});
+  assert.equal(overTime.status,400);
+  assert.equal(overTime.error,'INVALID_SESSION_REQUEST');
+  assert.equal((await post('/v1/session/status')).data.active,false);
+});
+
+test('trusted 30-minute grant is genuinely unlimited by action count',async()=>{
+  const {post}=await ready({
+    trustedSessionNoticeEnabled:true,
+    restrictBrowserWrites:true,
+    approvalHandler:async()=>{throw Error('NO_MODAL_EXPECTED');}
+  });
+  const started=await post('/v1/session/begin',{
+    scope:'edge',duration_minutes:30,max_actions:200,
+    purpose:'Use an allowlisted single Edge browser for authorized application QA'});
+  assert.equal(started.status,200);
+  assert.equal(started.data.unlimited_actions,true);
+  assert.equal(started.data.remaining_actions,null);
+  assert.equal((await post('/v1/session/status')).data.unlimited_actions,true);
+  assert.equal((await post('/v1/session/status')).data.remaining_actions,null);
+  assert.equal(started.data.approval_mode,'configured_trust');
+  const ended=await post('/v1/session/end',{session_id:started.data.session_id});
+  assert.equal(ended.status,200);
+  assert.equal(ended.data.revoked,true);
+  assert.equal((await post('/v1/session/status')).data.active,false);
+});
+
+test('trusted grant never skips its pre-grant audit',async()=>{
+  let notices=0,modalCalls=0;
+  const {post}=await ready({
+    trustedSessionNoticeEnabled:true,restrictBrowserWrites:true,
+    approvalHandler:async()=>{modalCalls++;return true;},
+    auditHandler:async event=>{
+      if(event.action==='trusted_session_intent')throw Error('DISK_FULL');
+    },
+    trustedSessionNoticeHandler:async()=>{notices++;}
+  });
+  const result=await post('/v1/session/begin',{
+    scope:'edge',duration_minutes:5,max_actions:4,
+    purpose:'Attempt an audited session with unavailable audit storage'});
+  assert.equal(result.error,'AUDIT_UNAVAILABLE');
+  assert.equal((await post('/v1/session/status')).data.active,false);
+  assert.equal(modalCalls,0);
+  assert.equal(notices,0);
 });

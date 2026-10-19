@@ -59,7 +59,7 @@ export class ComputerUseService {
     return this.request('/v1/action', input);
   }
 
-  /** One local macOS approval grants bounded browser interaction for a task. */
+  /** A scoped task grant; trusted Mac configuration may bypass the modal and action quota, never the expiry or allowlist. */
   async beginSession(input: {
     scope: 'chrome' | 'edge' | 'both';
     duration_minutes: number;

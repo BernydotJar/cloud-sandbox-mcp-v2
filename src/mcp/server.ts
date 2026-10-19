@@ -155,7 +155,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_session_begin', {
       title: 'Authorize a temporary Mac task session',
-      description: 'Request ONE local macOS approval for a time-limited, action-budgeted delegated Chrome/Edge session. Subsequent clicks and typing with session_id require no further local approvals until expiration, revocation or exhaustion. This can operate on sensitive pages; obtain clear user task instructions before requesting.',
+      description: 'Request a scoped Mac Chrome/Edge delegated session. Default mode requires one local approval and enforces max_actions. If the Mac operator explicitly enabled the trusted Edu notice, qualifying single-browser requests receive up to 30 minutes and unlimited actions without modal approval; max_actions is ignored in that mode, and a closable 20-second notice is shown. The configured HTTPS allowlist, expiry, revocation and audit still apply. Obtain clear user task instructions first.',
       inputSchema: {
         scope: z.enum(['chrome','edge','both']),
         duration_minutes: z.number().int().min(1).max(30).default(20),
@@ -167,7 +167,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_session_status', {
       title: 'Check delegated Computer Use session',
-      description: 'Read the current macOS session scope, expiry and remaining action budget. Does not return the session token.',
+      description: 'Read the delegated session scope and expiry. In trusted mode unlimited_actions=true and remaining_actions=null indicate no per-session action quota; otherwise remaining_actions is a finite budget. Does not expose the session token.',
       inputSchema: {},
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async () => await safely(() => computer.sessionStatus()));

@@ -4,13 +4,16 @@ import QuartzCore
 
 // Akira: a tiny, unobtrusive, purely informational macOS splash.
 // The Bridge is already connected before this process is launched.
-// It is click-through, never activates a window, and closes after five seconds.
+// Connection: five seconds. Delegation notice: 20 seconds with an X to dismiss.
+// Neither mode activates another app or blocks the agent.
 private enum AkiraSplash {
-    static let lifetime: TimeInterval = 5.0
+    static let connectionLifetime: TimeInterval = 5.0
+    static let delegatedLifetime: TimeInterval = 20.0
     static let fadeIn: TimeInterval = 0.28
     static let fadeOut: TimeInterval = 0.32
-    static let width: CGFloat = 326
-    static let height: CGFloat = 94
+    static let width: CGFloat = 420
+    static let connectionHeight: CGFloat = 122
+    static let delegatedHeight: CGFloat = 155
     static let margin: CGFloat = 18
 }
 
@@ -80,14 +83,27 @@ private final class AkiraMascot: NSView {
     }
 }
 
+// This popup conveys information; only the local operator's trusted-mode setting
+// can grant authority. The notice itself never has authority to approve actions.
+let arguments = Array(CommandLine.arguments.dropFirst())
+let delegated = arguments.first == "--session-notice"
+let browserName = delegated && arguments.count >= 2 &&
+    ["chrome", "edge"].contains(arguments[1]) ? arguments[1].capitalized : "Navegador"
+let requestedMinutes = delegated && arguments.count >= 3 ? Int(arguments[2]) ?? 0 : 0
+let actionsLabel = delegated && arguments.count >= 4 && arguments[3] == "unlimited"
+    ? "acciones sin límite"
+    : "máx. \(delegated && arguments.count >= 4 ? Int(arguments[3]) ?? 0 : 0) acciones"
+let noticeLifetime = delegated ? AkiraSplash.delegatedLifetime : AkiraSplash.connectionLifetime
+let noticeHeight = delegated ? AkiraSplash.delegatedHeight : AkiraSplash.connectionHeight
+
 let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
 
 let screen = NSScreen.main ?? NSScreen.screens.first
 let area = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 let bounds = NSRect(x: area.maxX - AkiraSplash.width - AkiraSplash.margin,
-                    y: area.maxY - AkiraSplash.height - AkiraSplash.margin,
-                    width: AkiraSplash.width, height: AkiraSplash.height)
+                    y: area.maxY - noticeHeight - AkiraSplash.margin,
+                    width: AkiraSplash.width, height: noticeHeight)
 
 let panel = NSPanel(contentRect: bounds,
                     styleMask: [.borderless, .nonactivatingPanel],
@@ -96,7 +112,9 @@ panel.level = .floating
 panel.backgroundColor = .clear
 panel.isOpaque = false
 panel.hasShadow = true
-panel.ignoresMouseEvents = true
+// The 5-second confirmation is entirely click-through; the 20-second notice
+// accepts clicks solely so the operator can dismiss it manually.
+panel.ignoresMouseEvents = !delegated
 panel.hidesOnDeactivate = false
 panel.animationBehavior = .none
 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -104,7 +122,7 @@ panel.isReleasedWhenClosed = false
 
 let glass = NSVisualEffectView(frame: NSRect(x: 0, y: 0,
                                              width: AkiraSplash.width,
-                                             height: AkiraSplash.height))
+                                             height: noticeHeight))
 glass.material = .hudWindow
 glass.blendingMode = .behindWindow
 glass.state = .active
@@ -115,29 +133,82 @@ glass.layer?.borderWidth = 1.0
 glass.layer?.borderColor = NSColor.systemPurple.withAlphaComponent(0.31).cgColor
 panel.contentView = glass
 
-let accent = NSView(frame: NSRect(x: 0, y: 15, width: 3, height: 63))
+let accent = NSView(frame: NSRect(x: 0, y: 14, width: 3, height: noticeHeight - 28))
 accent.wantsLayer = true
 accent.layer?.backgroundColor = NSColor.systemPink.withAlphaComponent(0.84).cgColor
 accent.layer?.cornerRadius = 1.5
 glass.addSubview(accent)
 
-private let mascot = AkiraMascot(frame: NSRect(x: 13, y: 13, width: 68, height: 64))
+private let mascot = AkiraMascot(frame: NSRect(x: 13, y: noticeHeight - 86,
+                                                width: 68, height: 64))
 glass.addSubview(mascot)
 
-let heading = NSTextField(labelWithString: "Bridge listo ✨")
-heading.frame = NSRect(x: 91, y: 45, width: 220, height: 27)
-heading.font = NSFont.systemFont(ofSize: 17, weight: .semibold)
+let heading = NSTextField(labelWithString: "Edu!")
+heading.frame = NSRect(x: 92, y: noticeHeight - 38, width: 278, height: 26)
+heading.font = NSFont.systemFont(ofSize: 18, weight: .bold)
 heading.textColor = .labelColor
-heading.lineBreakMode = .byTruncatingTail
 heading.isSelectable = false
 glass.addSubview(heading)
 
-let detail = NSTextField(labelWithString: "Chrome conectado · Playwright")
-detail.frame = NSRect(x: 91, y: 23, width: 223, height: 20)
-detail.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
-detail.textColor = .secondaryLabelColor
-detail.isSelectable = false
-glass.addSubview(detail)
+let status = NSTextField(labelWithString: delegated ? "Bridge listo · Sesión activa" : "Bridge listo ✨")
+status.frame = NSRect(x: 92, y: noticeHeight - 62, width: 304, height: 22)
+status.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+status.textColor = .systemCyan
+status.isSelectable = false
+glass.addSubview(status)
+
+// Original motivational phrasing inspired by reframing in
+// "Introducción a la PNL" (Joseph O'Connor and John Seymour).
+// This is a paraphrase, NOT a misattributed direct quotation.
+let phrase = NSTextField(labelWithString: "Tu enfoque abre posibilidades. Hoy eliges avanzar.")
+phrase.frame = NSRect(x: 92, y: noticeHeight - 85, width: 310, height: 19)
+phrase.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+phrase.textColor = .secondaryLabelColor
+phrase.lineBreakMode = .byTruncatingTail
+phrase.isSelectable = false
+glass.addSubview(phrase)
+
+let attribution = NSTextField(labelWithString: "Inspirado en Introducción a la PNL")
+attribution.frame = NSRect(x: 92, y: noticeHeight - 103, width: 307, height: 16)
+attribution.font = NSFont.systemFont(ofSize: 9.5, weight: .regular)
+attribution.textColor = .tertiaryLabelColor
+attribution.isSelectable = false
+glass.addSubview(attribution)
+
+if delegated {
+    let details = NSTextField(
+        labelWithString: "\(browserName) · \(requestedMinutes) min · \(actionsLabel)"
+    )
+    details.frame = NSRect(x: 92, y: 20, width: 290, height: 16)
+    details.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+    details.textColor = .secondaryLabelColor
+    details.isSelectable = false
+    glass.addSubview(details)
+}
+
+// A close button dismisses *only the notice*. It never revokes a delegated
+// session; the already-existing session_end / local STOP command does that.
+private final class NoticeDismissal: NSObject {
+    weak var panel: NSPanel?
+    @objc func closeNotice(_ sender: Any?) {
+        panel?.orderOut(nil)
+        NSApplication.shared.terminate(nil)
+    }
+}
+private let dismissal = NoticeDismissal()
+dismissal.panel = panel
+if delegated {
+    let close = NSButton(title: "×", target: dismissal,
+                         action: #selector(NoticeDismissal.closeNotice(_:)))
+    close.frame = NSRect(x: AkiraSplash.width - 42, y: noticeHeight - 43,
+                         width: 25, height: 25)
+    close.isBordered = false
+    close.font = NSFont.systemFont(ofSize: 21, weight: .medium)
+    close.contentTintColor = .secondaryLabelColor
+    close.toolTip = "Cerrar aviso (la sesión permanece activa)"
+    close.setAccessibilityLabel("Cerrar aviso")
+    glass.addSubview(close)
+}
 
 let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 panel.alphaValue = reducedMotion ? 1 : 0
@@ -150,7 +221,7 @@ if !reducedMotion {
     }
 }
 
-DispatchQueue.main.asyncAfter(deadline: .now() + AkiraSplash.lifetime) {
+DispatchQueue.main.asyncAfter(deadline: .now() + noticeLifetime) {
     if reducedMotion {
         panel.orderOut(nil)
         application.terminate(nil)

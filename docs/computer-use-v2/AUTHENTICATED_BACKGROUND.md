@@ -71,3 +71,37 @@ asserts CDP AX inspection, click and fill.
 In the CDP AX semantic fallback, textbox accessible names now precede the colon
 in the normalized snapshot so privacy masking does not erase locator names.
 The fallback still never returns editable field values.
+
+## Edu! Bridge-only trusted session notice
+
+For the one-time operator opt-in, run the native Mac
+`deploy/bridge-toast/install-on-mac.mjs --activate-trusted-notice`.
+This explicitly configures a bounded, allowlisted delegated-session
+authorization in the Mac Bridge itself, **without requiring CDP**.
+The Bridge no longer displays its Approve/Deny modal for eligible sessions,
+but it does show a 20-second, dismissible, nonactivating native macOS glass
+notice in the upper-right corner. It greets **Edu!**, confirms Bridge readiness,
+provides a short original NLP-inspired reframing phrase, and identifies the
+browser/session action budget. The X dismisses the notice, not the grant.
+
+The operator must have explicitly enabled the feature. Otherwise all
+existing approval semantics remain unchanged. The trusted session is
+single-browser, maximum 30 minutes / unlimited actions; all mutations must target
+existing operator allowlisted HTTPS origins. An audit failure before grant
+issuance or any over-budget/multi-browser request prevents auto-grant.
+A scoped `computer_use_session_begin` grant is required: direct per-action
+mutations without a `session_id` continue to ask for approval. OS/macOS
+security prompts and browsers' own security indicators are not suppressed.
+
+
+### Trusted delegation action counter
+
+The locally enabled trusted grant expires after at most **30 minutes** and
+does not use a per-session action cap. Its status reports
+`unlimited_actions=true` and `remaining_actions=null`. The existing
+`max_actions` MCP parameter remains valid for classic sessions and is
+ignored by the Mac Bridge for operator-enabled trusted sessions. The
+`autonomy-session.mjs` helper is upgraded together with the Bridge in a
+guarded, reversible host installation. Every action still requires
+the actual session ID, correct browser and configured HTTPS allowlist and
+creates audit evidence.

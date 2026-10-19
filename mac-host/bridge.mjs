@@ -97,6 +97,15 @@ async function showDedicatedChromeToast() {
   catch { /* Visual confirmation is optional; browser operation is unaffected. */ }
 }
 
+// LCH_BRIDGE_TRUSTED_NOTICE_V2
+async function showTrustedSessionNotice({scope,duration_minutes}) {
+  const executable=path.join(os.homedir(),
+    'Library/Application Support/LCH/CloudSandboxComputerUse/ux/bridge-toast');
+  try { await exec(executable,['--session-notice',scope,
+    String(duration_minutes),'unlimited'],{timeout:25000,maxBuffer:512}); }
+  catch { /* Visual confirmation is optional. */ }
+}
+
 export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, origins, reason = 'PERSISTENT_BROWSER_UNAVAILABLE') {
   const titleFilter=input.title;
   const exact=input.exact!==false;
@@ -246,11 +255,15 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    launchBrowserHandler = launchBrowser, dedicatedChromeAutoStart = false,
                                    ensureDedicatedChromeHandler = ensureDedicatedChrome,
                                    bridgeToastEnabled = false,
-                                   bridgeToastHandler = showDedicatedChromeToast}) {
+                                   bridgeToastHandler = showDedicatedChromeToast,
+                                   trustedSessionNoticeEnabled = false,
+                                   trustedSessionNoticeHandler = showTrustedSessionNotice}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
   if (typeof restrictBrowserWrites !== 'boolean') throw new Error('INVALID_MUTATION_POLICY');
+  if (trustedSessionNoticeEnabled && !restrictBrowserWrites)
+    throw new Error('TRUSTED_NOTICE_REQUIRES_ALLOWLIST');
   if (!['native_first','prefer_persistent'].includes(browserRouting))
     throw new Error('INVALID_BROWSER_ROUTING');
   if (!(allowedOrigins instanceof Set) || !allowedOrigins.size ||
@@ -385,6 +398,10 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           title_identity_required:dynamicTabs,
           mutation_policy:restrictBrowserWrites?'allowlist_only':'session_scoped',
           approval_modes:['per_action','delegated_session'],
+          trusted_delegation_notice:{
+            enabled:trustedSessionNoticeEnabled,seconds:20,closable:true,
+            max_minutes:30,max_actions:null,unlimited_actions:true,scope:'single_browser'
+          },
           delegated_session:sessionStore.status()}});
         return;
       }
@@ -420,13 +437,40 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             'settings and transactions; the browser driver cannot distinguish them.\n' +
             'Only approve for the task you actually requested. You can STOP the session ' +
             'at any time through computer_use_session_end or the local stop command.';
-          if (!await approvalHandler(prompt)) throw new Error('USER_DENIED_SESSION');
-          const session=sessionStore.begin(input);
+          // Trusted mode is an explicit Mac operator opt-in, never an agent-request flag.
+        // Only exact configured HTTPS allowlisted origins may be mutated.
+        const trusted=trustedSessionNoticeEnabled;
+        if(trusted && (input.scope==='both' || input.duration_minutes>30))
+          throw new Error('TRUSTED_SESSION_LIMITS_EXCEEDED');
+        if(trusted) {
+          // Fail closed if the audit cannot record intent BEFORE creating authority.
+          try { await auditHandler({action:'trusted_session_intent',
+            outcome:'prepared',scope:input.scope,
+            duration_minutes:input.duration_minutes,unlimited_actions:true}); }
+          catch { throw new Error('AUDIT_UNAVAILABLE'); }
+        } else if(!await approvalHandler(prompt))throw new Error('USER_DENIED_SESSION');
+          const session=sessionStore.begin(trusted
+            ? {...input,unlimited_actions:true}
+            : input);
           let auditSaved=true;
           try {await auditHandler({action:'session_begin',scope:input.scope,
             outcome:'approved',duration_minutes:input.duration_minutes,
-            max_actions:input.max_actions});}catch{auditSaved=false;}
-          reply(res,200,{ok:true,data:{...session,audit_receipt:auditSaved?'saved':'unavailable'}});
+            max_actions:trusted?null:input.max_actions,
+            unlimited_actions:trusted});}catch{auditSaved=false;}
+          if(trusted && !auditSaved) {
+            sessionStore.end(session.session_id);
+            throw new Error('AUDIT_UNAVAILABLE');
+          }
+          if(trusted) {
+            // Inform the user only once the grant is durably audited.
+            bridgeToastShown=true;
+            void Promise.resolve().then(()=>trustedSessionNoticeHandler({
+              scope:input.scope,duration_minutes:input.duration_minutes,
+              max_actions:null})).catch(()=>{});
+          }
+          reply(res,200,{ok:true,data:{...session,
+            ...(trusted?{approval_mode:'configured_trust',notice_seconds:20}:{}),
+            audit_receipt:auditSaved?'saved':'unavailable'}});
           return;
         } finally {busy=false;}
       }
@@ -541,6 +585,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'STALE_WINDOW','STALE_TAB','STALE_URL','TARGET_CHANGED','BROWSER_NOT_RUNNING',
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',
         'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
+        'TRUSTED_SESSION_LIMITS_EXCEEDED','AUDIT_UNAVAILABLE',
         'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
         'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE','MUTATION_ORIGIN_DENIED']);
       reply(res,400,{ok:false,error:error instanceof RuntimeFault ? error.message :
@@ -583,7 +628,10 @@ export async function startBridge(options = {}) {
   if (mutationPolicyFlag !== undefined && !['true','false'].includes(mutationPolicyFlag)) {
     throw new Error('INVALID_MUTATION_POLICY');
   }
-  const restrictBrowserWrites = mutationPolicyFlag === 'true';
+  const trustedSessionNoticeEnabled = environment.COMPUTER_USE_TRUSTED_SESSION_NOTICE === 'true';
+  if(trustedSessionNoticeEnabled && mutationPolicyFlag === 'false')
+    throw new Error('TRUSTED_NOTICE_ALLOWLIST_CONFLICT');
+  const restrictBrowserWrites = trustedSessionNoticeEnabled || mutationPolicyFlag === 'true';
   const enableBrowserRuntime = environment.COMPUTER_USE_BROWSER_V2 === 'true';
   const browserRouting = browserRoutingFromEnvironment(environment);
   const ledger = enableBrowserRuntime ? new AuditLedger(path.join(os.homedir(),
@@ -598,7 +646,8 @@ export async function startBridge(options = {}) {
     browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
     browserAudit: event => ledger.append(event),
     dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START === 'true',
-    bridgeToastEnabled: environment.COMPUTER_USE_BRIDGE_TOAST === 'true'
+    bridgeToastEnabled: environment.COMPUTER_USE_BRIDGE_TOAST === 'true',
+    trustedSessionNoticeEnabled
   });
   server.once('close', () => { if (ledger) void ledger.close().catch(() => {}); });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';

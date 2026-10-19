@@ -77,3 +77,98 @@ accessible label and never leaking the field content. The installer accepts
 both the original CDP driver release and the corrected driver as guarded
 known versions. Live delegated sessions must be ended before the update;
 only the Mac Bridge service restarts, not Chrome or any logged-in tab.
+
+## Edu! trusted delegation notice: 20 seconds, no repeated Approve/Deny
+
+This **separate, explicitly enabled** Mac-host feature supports the user's
+requested nonblocking 20-second UI. The familiar delegated-session
+`Approve/Deny` dialog remains the **default** for installations that have
+not opted in. An operator may deliberately enable the bounded no-modal
+behavior from **their Mac Terminal** with:
+
+```sh
+node "$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/bridge-toast/install-on-mac.mjs" --activate-trusted-notice
+```
+
+This updates the installed Bridge additively, preserves the existing browser
+profiles, requires a preconfigured exact-HTTPS allowlist and backs up the
+previous Mac Bridge and configuration. Configuration includes
+`COMPUTER_USE_TRUSTED_SESSION_NOTICE=true` and
+`COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=true`; it does **not**
+enable a CDP endpoint or require `chrome://inspect`.
+
+When a scoped `computer_use_session_begin` succeeds, a native **Edu!**
+glass notice appears at the **upper-right corner** for **20 seconds**.
+It includes an original motivational paraphrase inspired by *Introducción
+a la PNL* (Joseph O'Connor and John Seymour): **«Tu enfoque abre
+posibilidades. Hoy eliges avanzar.»** This is not claimed to be an exact
+quotation from the book. The notice shows browser, duration and action
+limits. It does not steal focus or prevent agent execution.
+
+The **X** hides the notice immediately. **It does not revoke the delegated
+session**; the explicit `computer_use_session_end` tool or the local STOP
+command remains available. The usual five-second «Bridge listo» confirmation
+still appears after initial dedicated Chrome discovery if no delegation
+notice has already been shown in that Bridge process.
+
+### Limits and authorization behavior
+
+- This is a **prior operator authorization** via the opt-in installer, not
+  implicit authorization granted by a browser page or an agent.
+- Only one browser per delegated session (`chrome` or `edge`), at most
+  **30 minutes**, with **no per-session action limit**. Requests for both
+  browsers are rejected with `TRUSTED_SESSION_LIMITS_EXCEEDED` and sessions
+  over 30 minutes with `INVALID_SESSION_REQUEST`.
+- Mutations are confined to the operator-configured
+  `COMPUTER_USE_ALLOWED_ORIGINS` exact HTTPS origins. Other websites cannot
+  be changed through this mode. Extend the allowlist only through the
+  operator's own existing configuration procedure.
+- Request capability, tab identity, origin and stale-revision checks remain
+  enforced. Successful mutation calls are still audited; no
+  action budget is consumed in explicitly configured trusted mode. An unavailable pre-grant audit blocks delegation.
+- Legacy per-action commands **without a delegated session** still require
+  explicit approval; agents should acquire a scoped session and supply the
+  returned `session_id` for permitted work.
+- Native/macOS permission dialogs, OS security controls and browser security
+  indicators are unchanged. A trusted delegation can still perform
+  consequential actions **within allowed domains**, so enable this mode
+  only on a workstation and allowlist the operator trusts.
+
+### Operator validation
+
+1. Run `--activate-trusted-notice` locally; require
+   `ACTIVATED=PASS` and `BRIDGE_HEALTH=PASS`.
+2. Start a scoped session, e.g. Edge for **30 minutes**. The existing
+   `max_actions` MCP argument is kept for backward compatibility; the Mac
+   Bridge ignores it when this trusted mode is enabled. A successful grant
+   reports `unlimited_actions=true` and `remaining_actions=null`.
+   The response should include `approval_mode=configured_trust` and
+   `notice_seconds=20`, with **no approval dialog**.
+3. Confirm the top-right **Edu!** notice appears for 20 seconds,
+   can close with **X**, and contains no CDP-related text.
+4. Verify out-of-scope origins, `both` scope, requests longer than 30
+   minutes and failed audit all reject safely; `computer_use_session_end` revokes the grant.
+5. If an old macOS permissions dialog still appears, identify its source:
+   OS/browser-level dialogs cannot be replaced by this Bridge-owned notice.
+
+### Rollback
+
+The operator's installer prints the
+`~/Library/Application Support/LCH/CloudSandboxBackups/bridge-glass-...`
+backup path. Restore `bridge.mjs` and `controller.env` from that backup,
+preserving permissions, then restart the Bridge LaunchAgent. Existing browser
+sessions and profiles are never deleted. To disable no-modal delegation while
+keeping the visual splash, explicitly change
+`COMPUTER_USE_TRUSTED_SESSION_NOTICE=false` in the Mac host configuration
+and restart the existing service.
+
+### Host session-store deployment
+
+The `--activate-trusted-notice` installer also upgrades the **Mac-hosted
+`autonomy-session.mjs`** to a version with a truly unlimited action counter
+(`unlimited_actions=true`, `remaining_actions=null`). It verifies a
+known baseline hash, saves an original copy in the same backup folder,
+parses the upgraded JS, then checks `/v1/status` after LaunchAgent restart
+before confirming success. If anything fails, the session store, Bridge and
+environment are restored. The installer does **not** modify CDP or Playwright
+runtime when installing this Bridge-only trusted notice mode.

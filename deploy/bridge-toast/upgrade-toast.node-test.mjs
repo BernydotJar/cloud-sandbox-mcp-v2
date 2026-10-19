@@ -8,6 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {setImmediate} from 'node:timers';
 import {upgradeToastBridgeSource,upgradeToastEnvSource,TOAST_MARKER} from './upgrade-toast.mjs';
+import * as requireTrustedMigrator from './upgrade-trusted-notice.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const releases='/shared-auth/deployment/handoff/cloud-sandbox-computer-use';
@@ -103,14 +104,14 @@ test('toast is emitted once after persistent Chrome discovery and never blocks a
 
 test('Akira splash is a 5-second click-through nonmodal overlay at upper right',()=>{
   const swift=fs.readFileSync(path.join(here,'bridge-toast.swift'),'utf8');
-  assert.match(swift,/static let lifetime: TimeInterval = 5\.0/);
+  assert.match(swift,/static let connectionLifetime: TimeInterval = 5\.0/);
   assert.match(swift,/area\.maxX - AkiraSplash\.width - AkiraSplash\.margin/);
-  assert.match(swift,/area\.maxY - AkiraSplash\.height - AkiraSplash\.margin/);
+  assert.match(swift,/area\.maxY - noticeHeight - AkiraSplash\.margin/);
   assert.match(swift,/\.nonactivatingPanel/);
-  assert.match(swift,/panel\.ignoresMouseEvents = true/);
+  assert.match(swift,/panel\.ignoresMouseEvents = !delegated/);
   assert.match(swift,/\.accessory/);
   assert.match(swift,/accessibilityDisplayShouldReduceMotion/);
-  assert.match(swift,/asyncAfter\(deadline: \.now\(\) \+ AkiraSplash\.lifetime\)/);
+  assert.match(swift,/asyncAfter\(deadline: \.now\(\) \+ noticeLifetime\)/);
   assert.match(swift,/application\.terminate\(nil\)/);
   assert.match(swift,/Bridge listo/);
   assert.match(swift,/private final class AkiraMascot/);
@@ -135,6 +136,10 @@ test('Akira one-shot release includes guarded CDP AX runtime files',()=>{
   assert.match(installer,/previousRuntimeSha/);
   assert.match(installer,/UNKNOWN_MAC_RUNTIME_VERSION_NO_OVERWRITE/);
   assert.match(installer,/runtime\.previous\.mjs/);
+  assert.match(installer,/autonomy-session\.previous\.mjs/);
+  assert.match(installer,/UNKNOWN_SESSION_STORE_VERSION_NO_OVERWRITE/);
+  assert.match(installer,/TRUSTED_SESSION_RUNTIME_HEALTH_GATE_FAILED/);
+  assert.match(installer,/CDP_CHANGES/);
   assert.match(installer,/CDP_AX_RUNTIME_HEALTH_GATE_FAILED/);
   assert.match(installer,/SWIFT_COMPILER_DIAGNOSTIC/);
   assert.match(candidate,/inspection_mode: inspectionMode/);
@@ -152,4 +157,42 @@ test('CDP fallback preserves accessible field labels without exposing values',as
   assert.equal(scrubContent(raw),raw);
   const source=fs.readFileSync(path.join(here,'cdp-semantic.mjs'),'utf8');
   assert.match(source,/lines\.push\('- '\+role\+' "'\+quoted\+'": \[REDACTED_FIELD_VALUE\]'\)/);
+});
+
+test('delegated Edu notification is 20 seconds and dismissible without ending session',()=>{
+  const swift=fs.readFileSync(path.join(here,'bridge-toast.swift'),'utf8');
+  assert.match(swift,/static let connectionLifetime: TimeInterval = 5\.0/);
+  assert.match(swift,/static let delegatedLifetime: TimeInterval = 20\.0/);
+  assert.match(swift,/actionsLabel/);
+  assert.match(swift,/acciones sin límite/);
+  assert.match(swift,/--session-notice/);
+  assert.match(swift,/let heading = NSTextField\(labelWithString: "Edu!"\)/);
+  assert.match(swift,/Tu enfoque abre posibilidades/);
+  assert.match(swift,/Introducción a la PNL/);
+  assert.match(swift,/class NoticeDismissal/);
+  assert.match(swift,/close\.setAccessibilityLabel\("Cerrar aviso"\)/);
+  assert.match(swift,/panel\.ignoresMouseEvents = !delegated/);
+  assert.doesNotMatch(swift,/NSAlert|NSCriticalAlertStyle|UIAlertController/);
+});
+
+test('trusted notice patch supports installed per-browser and legacy scalar routing',()=>{
+  const source=fs.readFileSync(
+    path.join(releases,'edge-playwright-75d5a19','bridge.mjs'),'utf8');
+  const {upgradeTrustedNoticeBridgeSource,upgradeTrustedNoticeEnvSource}=
+    requireTrustedMigrator;
+  const patch=upgradeTrustedNoticeBridgeSource(source);
+  assert.equal(patch.variant,'per-browser');
+  assert(patch.applied);
+  assert(patch.source.includes('TRUSTED_SESSION_LIMITS_EXCEEDED'));
+  assert(patch.source.includes('trustedSessionNoticeHandler'));
+  assert(patch.source.includes('unlimited_actions:true'));
+  execFileSync(process.execPath,['--check','--input-type=module'],
+    {input:patch.source,timeout:8000});
+  assert.equal(upgradeTrustedNoticeBridgeSource(patch.source).applied,false);
+  const env='COMPUTER_USE_BRIDGE_TOKEN=dummy-12345678901234567890123456789\n'+
+    'COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=false\n';
+  const authorized=upgradeTrustedNoticeEnvSource(env,{enabled:true});
+  assert(authorized.includes('COMPUTER_USE_TRUSTED_SESSION_NOTICE=true'));
+  assert(authorized.includes('COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=true'));
+  assert.equal(upgradeTrustedNoticeEnvSource(authorized,{enabled:true}),authorized);
 });
