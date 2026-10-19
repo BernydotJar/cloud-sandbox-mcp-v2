@@ -104,6 +104,49 @@ try {
   evidence.benchmark.attach_count_before_disconnect = runtime.status().metrics.connections;
   assert.equal(runtime.status().metrics.connections, 1);
   evidence.checks.push('persistent_connection_reused_30_times');
+  // Simulate a live attached CDP page whose Playwright injected locator engine
+  // cannot evaluate (the observed authenticated Mac/Suno failure). Native CDP
+  // accessibility and DOM focus + keyboard must still work with no coordinates.
+  const runtimePage = runtime.tabs.resolve('chrome',tab.tab_ref).page;
+  const originalLocator = runtimePage.locator;
+  const originalGetByRole = runtimePage.getByRole;
+  const originalGetByLabel = runtimePage.getByLabel;
+  try {
+    runtimePage.locator = selector => selector === 'body' ? {
+      ariaSnapshot:async()=>{throw Error('PLAYWRIGHT_INJECTED_ENGINE_UNAVAILABLE');},
+      innerText:async()=>{throw Error('PLAYWRIGHT_INJECTED_ENGINE_UNAVAILABLE');}
+    } : originalLocator.call(page,selector);
+    runtimePage.getByRole = () => ({
+      waitFor:async()=>{throw Error('PLAYWRIGHT_INJECTED_ENGINE_UNAVAILABLE');}
+    });
+    runtimePage.getByLabel = () => ({
+      waitFor:async()=>{throw Error('PLAYWRIGHT_INJECTED_ENGINE_UNAVAILABLE');}
+    });
+    const semantic = await runtime.inspect({browser:'chrome',tab_ref:tab.tab_ref});
+    assert.equal(semantic.inspection_mode,'cdp_ax_fallback');
+    assert.equal(semantic.semantic_available,true);
+    assert.match(semantic.aria,/button: "Start"/);
+    evidence.checks.push('cdp_accessibility_tree_without_playwright_injected_engine');
+    const clickResult=await runtime.perform({...base,
+      request_id:'real-cdp-accessible-click-fixture-101',action:'click',
+      locator:{by:'role',role:'button',name:'Start'}});
+    assert.equal(clickResult.outcome,'dispatched');
+    assert.equal(clickResult.action_driver,'cdp_ax');
+    assert.equal(await page.locator('#count').innerText(),'2');
+    evidence.checks.push('cdp_ax_dom_focus_keyboard_click_without_mouse_coordinates');
+    const fillResult=await runtime.perform({...base,
+      request_id:'real-cdp-accessible-fill-fixture-102',action:'fill',
+      locator:{by:'label',name:'Learner note'},value:'CDP AX fallback verified'});
+    assert.equal(fillResult.outcome,'dispatched');
+    assert.equal(fillResult.action_driver,'cdp_ax');
+    assert.equal(await page.locator('input[aria-label="Learner note"]').inputValue(),
+      'CDP AX fallback verified');
+    evidence.checks.push('cdp_ax_dom_focus_insert_text_no_script_evaluation');
+  }finally{
+    runtimePage.locator=originalLocator;
+    runtimePage.getByRole=originalGetByRole;
+    runtimePage.getByLabel=originalGetByLabel;
+  }
   await page.goto(url + '?tenant=changed#route');
   await assert.rejects(runtime.perform({ ...click, request_id: 'stale-navigation-request5' }), /STALE_PAGE_REVISION/);
   evidence.checks.push('full_url_navigation_revision_guard');

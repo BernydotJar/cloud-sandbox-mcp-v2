@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { ConnectionPool } from './connection-pool.mjs';
+import {cdpAccessibilitySnapshot,prepareCdpSemanticAction} from './cdp-semantic.mjs';
 import { TabRegistry } from './tab-registry.mjs';
 import { RuntimeFault, fail, browserName, object, boundedText, targetRequest, validateAction, webUrl, digest, scrubContent } from './contracts.mjs';
 
@@ -27,7 +28,7 @@ export class BrowserRuntime {
     this.busy = new Set();
     this.hmacKey = crypto.randomBytes(32);
     this.metrics = { actions: 0, uncertain: 0, replays: 0, rejected: 0, total_action_ms: 0,
-      inspections_aria: 0, inspections_text_fallback: 0, inspections_unavailable: 0,
+      inspections_aria: 0, inspections_cdp_ax: 0, inspections_text_fallback: 0, inspections_unavailable: 0,
       screenshots_ok: 0, screenshots_unavailable: 0 };
   }
   status() {
@@ -77,30 +78,32 @@ export class BrowserRuntime {
     try {
       content = await r.page.locator('body').ariaSnapshot({ timeout: TIMEOUT });
     } catch {
-      // An attached browser can remain available when its ARIA snapshot fails.
-      // Never present ordinary text as semantic accessibility information.
+      // The attached Chrome can expose its actual accessibility tree through CDP
+      // even when Playwright's injected locator / ARIA execution is unavailable.
       try {
-        content = await r.page.locator('body').innerText({ timeout: TIMEOUT });
-        inspectionMode = 'text_fallback';
+        content = await cdpAccessibilitySnapshot(r.page);
+        inspectionMode = 'cdp_ax_fallback';
       } catch {
-        // Attached Chrome can expose its protocol DOM even when Playwright's
-        // page execution context cannot run selectors (e.g. extension/runtime restrictions).
-        // A protocol DOM snapshot is inspection-only, NEVER semantic locator evidence.
         try {
-          const session = await r.page.context().newCDPSession(r.page);
+          content = await r.page.locator('body').innerText({ timeout: TIMEOUT });
+          inspectionMode = 'text_fallback';
+        } catch {
           try {
-            const snapshot = await session.send('DOMSnapshot.captureSnapshot', {
-              computedStyles: [], includeDOMRects: false, includePaintOrder: false
-            });
-            const strings = snapshot?.strings || [];
-            const doc = snapshot?.documents?.[0];
-            const nodes = doc?.nodes;
-            const indices = nodes?.nodeValue || [];
-            content = indices.map(index => strings[index]).filter(Boolean).join('\n');
-            if (!content || typeof content !== 'string') throw Error('DOM_SNAPSHOT_EMPTY');
-            inspectionMode = 'cdp_dom_fallback';
-          } finally { await session.detach().catch(() => {}); }
-        } catch { this.metrics.inspections_unavailable++; fail('BROWSER_INSPECT_UNAVAILABLE'); }
+            const session = await r.page.context().newCDPSession(r.page);
+            try {
+              const snapshot = await session.send('DOMSnapshot.captureSnapshot', {
+                computedStyles: [], includeDOMRects: false, includePaintOrder: false
+              });
+              const strings = snapshot?.strings || [];
+              const doc = snapshot?.documents?.[0];
+              const nodes = doc?.nodes;
+              const indices = nodes?.nodeValue || [];
+              content = indices.map(index => strings[index]).filter(Boolean).join('\n');
+              if (!content || typeof content !== 'string') throw Error('DOM_SNAPSHOT_EMPTY');
+              inspectionMode = 'cdp_dom_fallback';
+            } finally { await session.detach().catch(() => {}); }
+          } catch { this.metrics.inspections_unavailable++; fail('BROWSER_INSPECT_UNAVAILABLE'); }
+        }
       }
     }
     if (typeof content !== 'string') {
@@ -111,11 +114,12 @@ export class BrowserRuntime {
     if (r.page.isClosed() || revision !== r.revision) fail('STALE_PAGE_REVISION');
     r.inspectedAt = this.now();
     if (inspectionMode === 'aria') this.metrics.inspections_aria++;
+    else if (inspectionMode === 'cdp_ax_fallback') this.metrics.inspections_cdp_ax++;
     else this.metrics.inspections_text_fallback++;
     const scrubbed = scrubContent(content).slice(0, 24000);
     return { ...this.tabs.describe(r, title),
-      inspection_mode: inspectionMode, semantic_available: inspectionMode === 'aria',
-      ...(inspectionMode === 'aria' ? { aria: scrubbed } : { page_text: scrubbed }),
+      inspection_mode: inspectionMode, semantic_available: ['aria','cdp_ax_fallback'].includes(inspectionMode),
+      ...(['aria','cdp_ax_fallback'].includes(inspectionMode) ? { aria: scrubbed } : { page_text: scrubbed }),
       truncated: content.length > 24000, content_is_untrusted: true,
       privacy: 'Page content may contain personal data; token/URL redaction is best-effort, not comprehensive.',
       revision_covers: 'document_navigation_and_full_url_changes' };
@@ -183,6 +187,7 @@ export class BrowserRuntime {
     this.busy.add(input.browser);
     const started = this.now();
     let dispatched = false;
+    let cdpDriver = null;
     let result;
     const event = { request_id: input.request_id, browser: input.browser,
       tab_ref: input.tab_ref, revision: input.expected_revision };
@@ -194,11 +199,19 @@ export class BrowserRuntime {
       const spec = input.locator;
       const locator = spec.by === 'role' ? r.page.getByRole(spec.role, { name: spec.name, exact: true })
         : spec.by === 'label' ? r.page.getByLabel(spec.name, { exact: true }) : r.page.getByTestId(spec.name);
-      await locator.waitFor({ state: 'visible', timeout: TIMEOUT });
-      if (await locator.count() !== 1) fail('AMBIGUOUS_LOCATOR');
-      const type = String(await locator.getAttribute('type', { timeout: TIMEOUT }) || '').toLowerCase();
-      const autocomplete = await locator.getAttribute('autocomplete', { timeout: TIMEOUT });
-      if (['password', 'file'].includes(type) || /^(?:cc-|one-time-code)/i.test(autocomplete || '')) fail('PROTECTED_INPUT');
+      try {
+        await locator.waitFor({ state: 'visible', timeout: TIMEOUT });
+        if (await locator.count() !== 1) fail('AMBIGUOUS_LOCATOR');
+        const type = String(await locator.getAttribute('type', { timeout: TIMEOUT }) || '').toLowerCase();
+        const autocomplete = await locator.getAttribute('autocomplete', { timeout: TIMEOUT });
+        if (['password', 'file'].includes(type) || /^(?:cc-|one-time-code)/i.test(autocomplete || ''))
+          fail('PROTECTED_INPUT');
+      } catch(error) {
+        // Only non-policy Playwright failures may use the scoped CDP AX/DOM path.
+        // Never bypass a protected-input or ambiguous-locator policy denial.
+        if (error instanceof RuntimeFault) throw error;
+        cdpDriver = await prepareCdpSemanticAction(r.page,spec,input.action);
+      }
       // Append and fsync the intent before consuming authority or dispatching an event.
       try { await this.audit({ ...event, event: 'intent', outcome: 'prepared' }); }
       catch { fail('AUDIT_UNAVAILABLE'); }
@@ -207,13 +220,15 @@ export class BrowserRuntime {
       if (!this.mutationAllowed(r.rawUrl)) fail('MUTATION_ORIGIN_DENIED');
       const delegation = this.authorize(input, true);
       dispatched = true;
-      if (input.action === 'click') await locator.click({ timeout: TIMEOUT });
+      if (cdpDriver) await cdpDriver.dispatch({value:input.value,key:input.key});
+      else if (input.action === 'click') await locator.click({ timeout: TIMEOUT });
       else if (input.action === 'fill') await locator.fill(input.value, { timeout: TIMEOUT });
       else if (input.action === 'select') await locator.selectOption(input.value, { timeout: TIMEOUT });
       else await locator.press(input.key, { timeout: TIMEOUT });
       this.tabs.refresh(r);
       result = { request_id: input.request_id, outcome: 'dispatched', tab_ref: r.ref,
         revision: r.revision, remaining_session_actions: delegation.remaining_actions,
+        action_driver: cdpDriver ? 'cdp_ax' : 'playwright',
         requires_business_verification: true };
       this.metrics.actions++;
     } catch (error) {
@@ -227,6 +242,7 @@ export class BrowserRuntime {
       result = { request_id: input.request_id, outcome: 'uncertain',
         code: 'DISPATCH_OUTCOME_UNKNOWN', requires_business_verification: true, automatic_retry: false };
     } finally {
+      if(cdpDriver)await cdpDriver.close().catch(()=>{});
       this.busy.delete(input.browser);
       this.metrics.total_action_ms += this.now() - started;
     }

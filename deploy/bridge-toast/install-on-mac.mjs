@@ -13,6 +13,7 @@ import {upgradeToastBridgeSource,upgradeToastEnvSource} from './upgrade-toast.mj
 const release=path.dirname(fileURLToPath(import.meta.url));
 const log=(key,value)=>process.stdout.write('[Bridge Glass Toast] '+key+'='+value+'\n');
 const hash=contents=>crypto.createHash('sha256').update(contents).digest('hex');
+const previousRuntimeSha='c5f41efcf6807df120e79bca49e48d2f76154edbe1621ede9f8c722cf1a60b4a';
 
 function command(bin,args,timeout=20000) {
   return execFileSync(bin,args,{
@@ -79,8 +80,24 @@ async function main() {
     'Library/Application Support/LCH/CloudSandboxComputerUse');
   const bridgeFile=path.join(bridgeRoot,'bridge.mjs');
   const binary=path.join(bridgeRoot,'ux','bridge-toast');
+  const runtimeFile=path.join(bridgeRoot,'browser-runtime','runtime.mjs');
+  const cdpFile=path.join(bridgeRoot,'browser-runtime','cdp-semantic.mjs');
   const original=safeFile(bridgeFile);
   const oldEnv=safeFile(envFile);
+  const oldRuntime=safeFile(runtimeFile);
+  const runtimeRelease=path.join(release,'runtime.mjs');
+  const cdpRelease=path.join(release,'cdp-semantic.mjs');
+  const upgradedRuntime=fs.readFileSync(runtimeRelease);
+  const cdpSource=fs.readFileSync(cdpRelease);
+  if(hash(oldRuntime.contents)!==previousRuntimeSha &&
+     hash(oldRuntime.contents)!==hash(upgradedRuntime))
+    throw Error('UNKNOWN_MAC_RUNTIME_VERSION_NO_OVERWRITE');
+  if(!upgradedRuntime.toString().includes('prepareCdpSemanticAction') ||
+     !upgradedRuntime.toString().includes('cdp_ax_fallback'))
+    throw Error('INVALID_CDP_RUNTIME_RELEASE');
+  const existingCdp=fs.existsSync(cdpFile)?safeFile(cdpFile):null;
+  if(existingCdp && hash(existingCdp.contents)!==hash(cdpSource))
+    throw Error('UNKNOWN_EXISTING_CDP_DRIVER_NO_OVERWRITE');
   const patch=upgradeToastBridgeSource(original.contents.toString('utf8'));
   const nextEnv=upgradeToastEnvSource(oldEnv.contents.toString('utf8'));
   if(envValue(oldEnv.contents,'COMPUTER_USE_ENABLED')!=='true' ||
@@ -100,7 +117,7 @@ async function main() {
   log('ROUTING',patch.variant);
   log('PATCH_REQUIRED',patch.applied);
   log('SPLASH_STYLE','AKIRA_GLASS_CORNER');
-  log('CHROME_SECURITY_BANNER','UNCHANGED');
+  log('CDP_SEMANTIC_RUNTIME','PATCH_READY');
   if(mode==='--inspect')return;
   const delegation=await post(port,token,'/v1/session/status');
   if(delegation?.active)throw Error('ACTIVE_DELEGATED_SESSION');
@@ -114,6 +131,10 @@ async function main() {
   fs.mkdirSync(backup,{recursive:true,mode:0o700});
   fs.writeFileSync(path.join(backup,'bridge.mjs'),original.contents,{mode:0o600,flag:'wx'});
   fs.writeFileSync(path.join(backup,'controller.env'),oldEnv.contents,{mode:0o600,flag:'wx'});
+  fs.writeFileSync(path.join(backup,'runtime.previous.mjs'),oldRuntime.contents,
+    {mode:0o600,flag:'wx'});
+  if(existingCdp)fs.writeFileSync(path.join(backup,'cdp-semantic.previous.mjs'),
+    existingCdp.contents,{mode:0o600,flag:'wx'});
   const previousBinary=fs.existsSync(binary)?safeFile(binary):null;
   if(previousBinary)
     fs.writeFileSync(path.join(backup,'bridge-toast.previous'),
@@ -128,7 +149,12 @@ async function main() {
       '-framework','AppKit','-framework','QuartzCore','-o',compiled],120000);
     if(!fs.existsSync(compiled)||!fs.statSync(compiled).size)
       throw Error('COMPILATION_OUTPUT_MISSING');
-  }catch {
+  }catch(error) {
+    // The previous installer obscured the real Swift compile error. Display a
+    // bounded diagnostic with source paths redacted; no credentials are read.
+    const stderr=String(error?.stderr||error?.message||'').slice(0,2600)
+      .replaceAll(os.homedir(),'~').replace(/[\r\n]+/g,' | ');
+    log('SWIFT_COMPILER_DIAGNOSTIC',stderr||'NO_COMPILER_OUTPUT');
     throw Error('SWIFT_TOAST_COMPILATION_FAILED_NO_CHANGES');
   }
 
@@ -139,15 +165,24 @@ async function main() {
     if(stat.isSymbolicLink() || !stat.isDirectory() || stat.uid!==process.getuid())
       throw Error('TOAST_DIRECTORY_UNSAFE');
     atomicWrite(binary,fs.readFileSync(compiled),0o700);
+    if(hash(oldRuntime.contents)!==hash(upgradedRuntime))
+      atomicWrite(runtimeFile,upgradedRuntime,oldRuntime.mode);
+    if(!existingCdp)atomicWrite(cdpFile,cdpSource,0o600);
     if(original.contents.toString('utf8')!==patch.source)
       atomicWrite(bridgeFile,patch.source,original.mode);
     if(oldEnv.contents.toString('utf8')!==nextEnv)
       atomicWrite(envFile,nextEnv,oldEnv.mode);
     command('/bin/launchctl',['kickstart','-k',label]);
     if(!await ready(port,token))throw Error('BRIDGE_HEALTH_GATE_FAILED');
+    const healthy=await post(port,token,'/v2/browser/status');
+    if(typeof healthy?.metrics?.inspections_cdp_ax!=='number')
+      throw Error('CDP_AX_RUNTIME_HEALTH_GATE_FAILED');
   }catch(error) {
     atomicWrite(bridgeFile,original.contents,original.mode);
     atomicWrite(envFile,oldEnv.contents,oldEnv.mode);
+    atomicWrite(runtimeFile,oldRuntime.contents,oldRuntime.mode);
+    if(existingCdp)atomicWrite(cdpFile,existingCdp.contents,existingCdp.mode);
+    else if(fs.existsSync(cdpFile))fs.unlinkSync(cdpFile);
     if(previousBinary)atomicWrite(binary,previousBinary.contents,previousBinary.mode);
     else if(fs.existsSync(binary))fs.unlinkSync(binary);
     try{command('/bin/launchctl',['kickstart','-k',label]);}
@@ -158,6 +193,7 @@ async function main() {
   }
   log('ACTIVATED','PASS');
   log('BRIDGE_HEALTH','PASS');
+  log('CDP_AX_ACTION_FALLBACK','READY');
   log('AUTO_DISMISS_MS',5000);
   log('BACKUP',backup);
   // Do not start tabs, move focus or modify a signed-in session to display the splash.

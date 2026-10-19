@@ -126,3 +126,21 @@ test('Akira splash builds with Apple Swift on macOS', {skip:process.platform!=='
     path.join(here,'bridge-toast.swift'),'-framework','AppKit','-framework','QuartzCore'],
   {timeout:120000,stdio:['ignore','pipe','pipe']});
 });
+
+
+test('Akira one-shot release includes guarded CDP AX runtime files',()=>{
+  const installer=fs.readFileSync(path.join(here,'install-on-mac.mjs'),'utf8');
+  const candidate=fs.readFileSync(path.join(here,'runtime.mjs'),'utf8');
+  const helper=fs.readFileSync(path.join(here,'cdp-semantic.mjs'),'utf8');
+  assert.match(installer,/previousRuntimeSha/);
+  assert.match(installer,/UNKNOWN_MAC_RUNTIME_VERSION_NO_OVERWRITE/);
+  assert.match(installer,/runtime\.previous\.mjs/);
+  assert.match(installer,/CDP_AX_RUNTIME_HEALTH_GATE_FAILED/);
+  assert.match(installer,/SWIFT_COMPILER_DIAGNOSTIC/);
+  assert.match(candidate,/inspection_mode: inspectionMode/);
+  assert.match(candidate,/cdp_ax_fallback/);
+  assert.match(helper,/Accessibility\.getFullAXTree/);
+  assert.match(helper,/DOM\.focus/);
+  assert.match(helper,/Input\.insertText/);
+  assert.doesNotMatch(helper,/session\.send\(['"](?:Runtime\.evaluate|Input\.dispatchMouseEvent)/);
+});

@@ -51,3 +51,17 @@ Operator installation: run `node "$HOME/.cloud-sandbox-mcp-data/shared-auth/depl
 once on macOS. `browser_tabs(chrome)` displays it after successful persistent
 discovery when `COMPUTER_USE_BRIDGE_TOAST=true` is enabled. For development
 tests, see `deploy/bridge-toast/README.md`.
+
+
+## Suno locator recovery shipped with Akira splash
+
+The Akira one-shot Mac installer also provisions a guarded Browser Runtime
+AX/CDP fallback (`cdp-semantic.mjs`). Chrome's accessibility tree provides
+actual control roles/names even when Playwright's injected locator engine
+cannot run on the attached tab. Actions focus the verified backend DOM node
+and use keyboard events / Input.insertText, not screen coordinates or
+arbitrary JavaScript. All existing delegated grants, request-ID replay
+guards, protected-field exclusions and audits remain enforced. Deployment
+is atomic with the splash and rolls back on failed Bridge health. A real
+isolated Chromium E2E simulates the failed injected Playwright engine and
+asserts CDP AX inspection, click and fill.
