@@ -30,7 +30,31 @@ async function launchBrowser(name) {
   }catch { throw new Error('BROWSER_APP_UNAVAILABLE'); }
 }
 
-export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, origins) {
+// Explicit operator opt-in: auto-start ONLY the dedicated Chrome CDP profile.
+const dedicatedChromePort = 9223;
+async function ensureDedicatedChrome() {
+  const endpoint = 'http://127.0.0.1:' + dedicatedChromePort + '/json/version';
+  const probe = async () => {
+    try { const response = await fetch(endpoint, {signal:AbortSignal.timeout(1200)});
+      return response.ok; } catch { return false; }
+  };
+  if (await probe()) return {started:false,ready:true};
+  // Launch only an isolated profile: never restart/reconfigure personal Chrome.
+  const profile = path.join(os.homedir(),'.ido-chrome-bridge','profile');
+  await fs.mkdir(profile,{recursive:true,mode:0o700});
+  const args=['-na','Google Chrome','--args',
+    '--remote-debugging-address=127.0.0.1',
+    '--remote-debugging-port='+dedicatedChromePort,
+    '--user-data-dir='+profile,'--no-first-run','--no-default-browser-check'];
+  await exec('/usr/bin/open',args,{timeout:12000,maxBuffer:3000});
+  for(let i=0;i<18;i++){
+    if(await probe())return {started:true,ready:true};
+    await sleep(450);
+  }
+  return {started:true,ready:false};
+}
+
+export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, origins, reason = 'PERSISTENT_BROWSER_UNAVAILABLE') {
   const titleFilter=input.title;
   const exact=input.exact!==false;
   const tabs=[];
@@ -50,15 +74,38 @@ export function nativeDiscoveryFallback(browser, state, input, dynamicTabs, orig
     }
     if(tabs.length>=256)break;
   }
+  // Unknown macOS state is not proof that the browser is closed. Do not launch
+  // a second browser when Automation permission/discovery is unavailable.
+  const running = state?.running === true ? true : state?.running === false ? false : null;
   return {
     browser,provider:'native',semantic_available:false,
-    fallback_reason:'PERSISTENT_BROWSER_UNAVAILABLE',
-    running:Boolean(state?.running),launch_available:!state?.running,
+    ...(reason === 'NATIVE_FIRST' ? {selection_reason:'NATIVE_FIRST_NO_DEBUGGING'} :
+      {fallback_reason:'PERSISTENT_BROWSER_UNAVAILABLE'}),
+    running,launch_available:running === false,
     tabs,
-    next_step:state?.running?'Use computer_use_screenshot and computer_use_action with native_target':
-      'Call browser_open to launch the existing browser profile'
+    next_step:running === true ? 'Use computer_use_screenshot and computer_use_action with native_target' :
+      running === false ? 'Call browser_open to launch the existing browser profile' :
+      'Check macOS Automation permission and retry tab discovery'
   };
 }
+
+export function browserRoutingFromEnvironment(environment) {
+  const mode = environment.COMPUTER_USE_BROWSER_ROUTING || 'native_first';
+  if (!['native_first','prefer_persistent'].includes(mode)) throw new Error('INVALID_BROWSER_ROUTING');
+  return mode;
+}
+
+function validateDiscoveryRequest(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) ||
+      Object.keys(input).some(key => !['browser','title','exact'].includes(key)) ||
+      !browsers.has(input.browser) ||
+      (input.title !== undefined && (typeof input.title !== 'string' ||
+        input.title.length < 1 || input.title.length > 300)) ||
+      (input.exact !== undefined && typeof input.exact !== 'boolean')) {
+    throw new RuntimeFault('INVALID_RUNTIME_REQUEST');
+  }
+}
+
 
 export function safeUrl(value) {
   try {
@@ -152,11 +199,15 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    auditHandler = async () => {}, platform = process.platform,
                                    sessionStore = createSessionStore(), browserProviders = {},
                                    enableBrowserRuntime = false, browserAudit = auditHandler,
-                                   launchBrowserHandler = launchBrowser}) {
+                                   browserRouting = 'native_first',
+                                   launchBrowserHandler = launchBrowser, dedicatedChromeAutoStart = false,
+                                   ensureDedicatedChromeHandler = ensureDedicatedChrome}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
   if (typeof restrictBrowserWrites !== 'boolean') throw new Error('INVALID_MUTATION_POLICY');
+  if (!['native_first','prefer_persistent'].includes(browserRouting))
+    throw new Error('INVALID_BROWSER_ROUTING');
   if (!(allowedOrigins instanceof Set) || !allowedOrigins.size ||
       [...allowedOrigins].some(v => !v.startsWith('https://') || new URL(v).origin !== v)) {
     throw new Error('EXPLICIT_HTTPS_ALLOWLIST_REQUIRED');
@@ -165,6 +216,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
     sessionStore, audit: browserAudit, dynamicTabs, allowedOrigins,
     restrictMutationsToAllowlist: restrictBrowserWrites }) : null;
   let busy = false;
+  const routingMetrics = { native_discoveries:0, persistent_discoveries:0,
+    persistent_fallbacks:0, native_discovery_failures:0 };
   const server = http.createServer(async (req, res) => {
     if (!allowedPeer(req.socket.remoteAddress) || !authorized(req.headers.authorization, token)) {
       reply(res, 403, {ok:false,error:'UNAUTHORIZED'}); return;
@@ -188,7 +241,9 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('INVALID_BODY');
       if (req.url.startsWith('/v2/browser/')) {
         if (req.url === '/v2/browser/status') {
-          reply(res, 200, {ok:true, data:runtime ? {enabled:true,...runtime.status()} :
+          reply(res, 200, {ok:true, data:runtime ? {enabled:true,...runtime.status(),
+            browser_routing:browserRouting, cdp_attach_enabled:browserRouting === 'prefer_persistent',
+            routing_metrics:{...routingMetrics}} :
             {enabled:false, version:'2.0.0', native_fallback:'explicit_only'}}); return;
         }
         if (!runtime) throw new RuntimeFault('BROWSER_RUNTIME_DISABLED');
@@ -228,20 +283,38 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           busy=true;
           try { result=await runtime.perform(input); } finally { busy=false; }
         } else if (req.url === '/v2/browser/tabs') {
-          try {
-            result=await runtime.discover(input);
-            result.provider='persistent';
-            result.semantic_available=true;
-          } catch(error) {
-            // Downgrade ONLY temporary/unavailable transport failures.
-            // Never bypass a denied target, invalid request or stale revision.
-            if(!attachFallbackCodes.has(error?.message))throw error;
-            if(!browsers.has(input.browser) || (input.title!==undefined &&
-              (typeof input.title!=='string'||input.title.length<1||input.title.length>300)) ||
-              (input.exact!==undefined && typeof input.exact!=='boolean'))
-              throw new RuntimeFault('INVALID_RUNTIME_REQUEST');
-            const nativeState=await nativeHandler('state',input.browser);
-            result=nativeDiscoveryFallback(input.browser,nativeState,input,dynamicTabs,allowedOrigins);
+          // Daily authenticated browsers use native macOS discovery without CDP.
+          // No attempt to enable browser debugging, inspect internal browser URLs,
+          // or attach a debugger unless the operator explicitly opts in.
+          validateDiscoveryRequest(input);
+          let fallback = false;
+          if (browserRouting === 'prefer_persistent') {
+            try {
+              if (input.browser==='chrome' && dedicatedChromeAutoStart &&
+                  browserProviders.chrome?.endpoint==='http://127.0.0.1:9223') {
+                const ready=await ensureDedicatedChromeHandler();
+                if (!ready.ready)throw new RuntimeFault('BROWSER_ENDPOINT_UNAVAILABLE');
+              }
+              result=await runtime.discover(input);
+              result.provider='persistent';
+              result.semantic_available=true;
+              routingMetrics.persistent_discoveries++;
+            } catch(error) {
+              // Never turn authorization, request-validation or stale-target
+              // failures into an alternate way to access a browser.
+              if(!attachFallbackCodes.has(error?.message))throw error;
+              fallback=true;
+              routingMetrics.persistent_fallbacks++;
+            }
+          }
+          if (browserRouting === 'native_first' || fallback) {
+            let nativeState;
+            try { nativeState=await nativeHandler('state',input.browser); }
+            catch { routingMetrics.native_discovery_failures++;
+              throw new RuntimeFault('NATIVE_DISCOVERY_UNAVAILABLE'); }
+            result=nativeDiscoveryFallback(input.browser,nativeState,input,dynamicTabs,allowedOrigins,
+              fallback?'PERSISTENT_BROWSER_UNAVAILABLE':'NATIVE_FIRST');
+            routingMetrics.native_discoveries++;
           }
         }
         else if (req.url === '/v2/browser/inspect') result=await runtime.inspect(input);
@@ -455,13 +528,19 @@ export async function startBridge(options = {}) {
   }
   const restrictBrowserWrites = mutationPolicyFlag === 'true';
   const enableBrowserRuntime = environment.COMPUTER_USE_BROWSER_V2 === 'true';
+  const browserRouting = browserRoutingFromEnvironment(environment);
   const ledger = enableBrowserRuntime ? new AuditLedger(path.join(os.homedir(),
     'Library','Application Support','LCH','CloudSandboxComputerUse','audit-v2')) : null;
   const server = createBridgeServer({
     token: environment.COMPUTER_USE_BRIDGE_TOKEN, allowedOrigins: new Set(list),
     dynamicTabs, restrictBrowserWrites, auditHandler: appendAudit, enableBrowserRuntime,
+    browserRouting,
+    // Keep legacy provider metadata registered for the existing Mac installer
+    // and for a later operator opt-in. Native-first never calls pool.get(),
+    // so registration alone does not attach a debugger or request permission.
     browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
-    browserAudit: event => ledger.append(event)
+    browserAudit: event => ledger.append(event),
+    dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START==='true'
   });
   server.once('close', () => { if (ledger) void ledger.close().catch(() => {}); });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';

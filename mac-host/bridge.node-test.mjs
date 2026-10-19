@@ -433,3 +433,22 @@ test('native fallback is not used to bypass an invalid target request',async()=>
  assert.equal(r.error,'INVALID_RUNTIME_REQUEST');
  assert.equal(calls.filter(c=>c.operation==='state').length,0);
 });
+
+test('dedicated Chrome auto-start is opt-in and requires the exact dedicated CDP endpoint',async()=>{
+  let starts=0;
+  const base={browserRouting:'prefer_persistent',enableBrowserRuntime:true,
+    browserProviders:{chrome:{endpoint:'http://127.0.0.1:9223',protocol:'cdp'}},
+    dedicatedChromeAutoStart:true,
+    ensureDedicatedChromeHandler:async()=>{starts++;return {ready:false,started:true};}};
+  const {post}=await ready(base);
+  const fail=await post('/v2/browser/tabs',{browser:'chrome'});
+  assert.equal(fail.data.provider,'native');
+  assert.equal(starts,1);
+  const {post:without}=await ready({...base,dedicatedChromeAutoStart:false});
+  await without('/v2/browser/tabs',{browser:'chrome'});
+  assert.equal(starts,1);
+  const {post:personal}=await ready({...base,browserProviders:{
+    chrome:{endpoint:'chrome',protocol:'cdp'}}});
+  await personal('/v2/browser/tabs',{browser:'chrome'});
+  assert.equal(starts,1);
+});
