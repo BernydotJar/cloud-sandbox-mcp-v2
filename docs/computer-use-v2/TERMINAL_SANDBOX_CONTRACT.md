@@ -116,3 +116,18 @@ Share that diagnostic's output (no credentials are printed). If it shows
 MCP and Bridge integration references, we can verify the actual terminal
 handshake next; if not, we can locate the CLI's underlying entrypoint
 without touching the user's existing shell configuration.
+
+## LinkedIn action allowlist update (operator-controlled)
+
+For user-requested LinkedIn automation, the requested canonical HTTPS origin
+is `https://www.linkedin.com`. To add it to the Mac Bridge's
+`COMPUTER_USE_ALLOWED_ORIGINS` **without removing other values**,
+use the guarded Mac one-shot installer in
+`deploy/allowed-origins/install-linkedin-on-mac.mjs`. Operator syntax and
+backup/verification procedure: `deploy/allowed-origins/README.md`.
+
+The present Bridge allowlist is shared by Chrome and Edge, while delegated
+task grants are browser-scoped. Discovery of a LinkedIn tab does not itself
+prove that actions are authorized: the installed Mac Bridge must be restarted
+and show the additional origin count after a successful change. Do not
+claim LinkedIn was added merely because this repository was committed.

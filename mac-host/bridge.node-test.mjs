@@ -586,3 +586,38 @@ test('trusted grant never skips its pre-grant audit',async()=>{
   assert.equal(modalCalls,0);
   assert.equal(notices,0);
 });
+
+test('operator-added exact LinkedIn origin permits scoped Chrome actions but not lookalike domains',async()=>{
+  const addedOrigins=new Set([...allowedOrigins,'https://www.linkedin.com']);
+  const {post,calls}=await ready({
+    allowedOrigins:addedOrigins,
+    dynamicTabs:true,
+    restrictBrowserWrites:true,
+    trustedSessionNoticeEnabled:true,
+    approvalHandler:async()=>{throw Error('TRUSTED_MODE_SHOULD_NOT_PROMPT');}
+  });
+  const grant=await post('/v1/session/begin',{
+    scope:'chrome',duration_minutes:5,max_actions:1,
+    purpose:'Verify delegated LinkedIn navigation within the exact permitted origin'
+  });
+  assert.equal(grant.status,200);
+  assert.equal(grant.data.unlimited_actions,true);
+  const exact={browser:'chrome',window_index:1,tab_index:2,
+    expected_title:'LinkedIn Feed',expected_url:'https://www.linkedin.com/feed/',
+    session_id:grant.data.session_id,action:'press_key',key:'tab',
+    reason:'Navigate a permitted LinkedIn page without posting content'};
+  const allowed=await post('/v1/action',exact);
+  assert.equal(allowed.status,200);
+  assert.equal(allowed.data.approval_mode,'delegated_session');
+  for(const lookalike of [
+    'https://linkedin.com/feed/',
+    'https://www.linkedin.com.evil.example/feed/',
+    'https://business.linkedin.com/feed/'
+  ]) {
+    const denied=await post('/v1/action',{...exact,expected_url:lookalike});
+    assert.equal(denied.status,400);
+    assert.equal(denied.error,'MUTATION_ORIGIN_DENIED');
+  }
+  assert.equal(calls.filter(c=>c.operation==='action').length,1);
+  assert.equal((await post('/v1/session/end',{session_id:grant.data.session_id})).data.revoked,true);
+});
