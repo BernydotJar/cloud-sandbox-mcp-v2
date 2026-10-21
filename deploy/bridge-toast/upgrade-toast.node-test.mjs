@@ -216,3 +216,11 @@ test('terminal and shared agent policy reinforce the live Mac Bridge contract wi
   assert(guide.includes('unlimited_actions=true'));
   assert(registered.includes('unlimited actions without modal approval'));
 });
+
+
+test('Akira reinstallation recognizes only the approved LCH HTTPS wildcard',()=>{
+  const script=fs.readFileSync(path.join(here,'install-on-mac.mjs'),'utf8');
+  assert(script.includes("origin==='https://*.lch-app.cloud'"));
+  assert(script.includes("origin.includes('*')"));
+  assert(script.includes('TRUSTED_NOTICE_REQUIRES_EXACT_HTTPS_ALLOWLIST'));
+});

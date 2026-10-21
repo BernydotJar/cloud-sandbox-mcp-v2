@@ -1,8 +1,8 @@
-/* global URL */
 /**
  * Exact-origin additive change only. Never edits other .env keys or prints
  * credentials. The active Mac Bridge uses this key for browser mutations.
  */
+import {validAllowlistEntry} from './allowed-origins.mjs';
 export const LINKEDIN_ORIGIN = 'https://www.linkedin.com';
 export const ALLOWLIST_ENV_KEY = 'COMPUTER_USE_ALLOWED_ORIGINS';
 
@@ -32,16 +32,12 @@ export function addLinkedInOrigin(envSource) {
     if (raw.includes(quote))throw Error('INVALID_ALLOWED_ORIGINS_FORMAT');
   }
   const origins = raw.split(',').map(s=>s.trim());
-  if (!origins.length || origins.length > 50 || origins.some(v=>!v || v.includes('*')))
+  if (!origins.length || origins.length > 50 || origins.some(v=>!v))
     throw Error('INVALID_ALLOWED_ORIGINS_LIST');
   if (new Set(origins).size !== origins.length)
     throw Error('DUPLICATE_ALLOWED_ORIGIN');
   for (const origin of origins) {
-    let url;
-    try{url=new URL(origin);}catch{throw Error('INVALID_ALLOWED_ORIGIN');}
-    if (url.protocol !== 'https:' || url.origin !== origin ||
-        url.username || url.password || url.pathname !== '/' ||
-        url.search || url.hash)throw Error('INVALID_ALLOWED_ORIGIN');
+    if(!validAllowlistEntry(origin))throw Error('INVALID_ALLOWED_ORIGIN');
   }
   const alreadyPresent = origins.includes(LINKEDIN_ORIGIN);
   if (!alreadyPresent) {

@@ -1,6 +1,6 @@
 import {test,afterEach} from 'node:test';
 import assert from 'node:assert/strict';
-import {createBridgeServer,safeUrl,allowedPeer} from './bridge.mjs';
+import {createBridgeServer,safeUrl,allowedPeer,isAllowlistedTabUrl} from './bridge.mjs';
 import {setImmediate} from 'node:timers';
 
 const token='not-a-real-production-token-abcdefghijklmnopqrstuvwxyz0123456789';
@@ -620,4 +620,81 @@ test('operator-added exact LinkedIn origin permits scoped Chrome actions but not
   }
   assert.equal(calls.filter(c=>c.operation==='action').length,1);
   assert.equal((await post('/v1/session/end',{session_id:grant.data.session_id})).data.revoked,true);
+});
+
+
+test('LCH wildcard supports both native Chrome and Edge delegated browser sessions',async()=>{
+  const allowlist=new Set([
+    'https://www.linkedin.com',
+    'https://lch-app.cloud',
+    'https://*.lch-app.cloud'
+  ]);
+  for(const browser of ['chrome','edge']) {
+    const {post,calls}=await ready({
+      allowedOrigins:allowlist,
+      dynamicTabs:true,
+      restrictBrowserWrites:true,
+      trustedSessionNoticeEnabled:true,
+      auditHandler:async()=>{},
+      approvalHandler:async()=>{throw Error('TRUSTED_MODE_HAS_NO_MODAL');}
+    });
+    const status=await post('/v1/status');
+    assert.equal(status.status,200);
+    assert.equal(status.data.lch_app_cloud_wildcard_enabled,true);
+    assert.equal(status.data.allowlisted_origins,3);
+    const grant=await post('/v1/session/begin',{
+      scope:browser,duration_minutes:10,max_actions:1,
+      purpose:'Verify test-only wildcard origin policy for both supported browsers'
+    });
+    assert.equal(grant.status,200);
+    assert.equal(grant.data.unlimited_actions,true);
+    for(const url of [
+      'https://lch-app.cloud/',
+      'https://luma.lch-app.cloud/studio',
+      'https://meridian.lch-app.cloud/',
+      'https://future.service.lch-app.cloud/',
+      'https://www.linkedin.com/feed/'
+    ]){
+      const data=await post('/v1/action',{
+        browser,window_index:1,tab_index:1,
+        expected_title:'QA Page',expected_url:url,
+        action:'press_key',key:'tab',session_id:grant.data.session_id,
+        reason:'Perform one safe keyboard navigation within test allowlist'
+      });
+      assert.equal(data.status,200,url);
+      assert.equal(data.data.approval_mode,'delegated_session');
+      assert.equal(data.data.remaining_session_actions,null);
+    }
+    const count=calls.filter(e=>e.operation==='action').length;
+    for(const url of [
+      'https://lch-app.cloud.evil.example/',
+      'https://evil-lch-app.cloud/',
+      'https://evillch-app.cloud/',
+      'http://luma.lch-app.cloud/',
+      'https://foo.lch-app.cloud:8443/',
+      'https://linkedin.com/'
+    ]){
+      const denied=await post('/v1/action',{
+        browser,window_index:1,tab_index:1,
+        expected_title:'QA Page',expected_url:url,
+        action:'press_key',key:'tab',session_id:grant.data.session_id,
+        reason:'Verify that no event reaches an unapproved origin'
+      });
+      assert.equal(denied.status,400,url);
+      assert.equal(denied.error,'MUTATION_ORIGIN_DENIED');
+    }
+    assert.equal(calls.filter(e=>e.operation==='action').length,count);
+    assert.equal((await post('/v1/session/end',{session_id:grant.data.session_id})).data.revoked,true);
+  }
+});
+
+test('native tab allowlist honors apex, deep wildcard and domain boundary',()=>{
+  const policy=new Set(['https://lch-app.cloud','https://*.lch-app.cloud']);
+  for(const url of ['https://lch-app.cloud/','https://luma.lch-app.cloud/studio',
+    'https://one.two.lch-app.cloud/'])
+    assert.equal(isAllowlistedTabUrl(url,policy),true);
+  for(const url of ['https://lch-app.cloud.evil.example/',
+    'https://evil-lch-app.cloud/','http://luma.lch-app.cloud/',
+    'https://luma.lch-app.cloud:8443/'])
+    assert.equal(isAllowlistedTabUrl(url,policy),false);
 });

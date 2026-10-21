@@ -131,3 +131,21 @@ task grants are browser-scoped. Discovery of a LinkedIn tab does not itself
 prove that actions are authorized: the installed Mac Bridge must be restarted
 and show the additional origin count after a successful change. Do not
 claim LinkedIn was added merely because this repository was committed.
+
+## lch-app.cloud apex and wildcard permission (Chrome + Edge)
+
+The **requested** browser action boundary is the exact apex
+https://lch-app.cloud plus a DNS-label-bounded wildcard
+https://*.lch-app.cloud. This allows LUMA, Meridian and future
+HTTPS-only subdomains but rejects lookalike domains and arbitrary ports.
+Both native Computer Use and the persistent Playwright/CDP driver use
+one shared policy. The operator one-shot installer is described in
+deploy/allowed-origins/README.md and is safe to re-run. Its Mac
+postdeploy acceptance gate requires lch_app_cloud_wildcard_enabled=true
+on both Bridge status endpoints. Before that Mac installation, the sandbox
+repository patch is only staged code; do not claim the policy has been
+applied to the live service.
+
+The existing explicit LinkedIn origin https://www.linkedin.com is
+preserved. Wildcard expansion covers future hosts, so the site operator
+must monitor DNS entries to prevent unintended subdomain takeover.

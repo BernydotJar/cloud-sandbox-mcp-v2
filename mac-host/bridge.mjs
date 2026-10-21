@@ -10,6 +10,8 @@ import { createSessionStore } from './autonomy-session.mjs';
 import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runtime.mjs';
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
 import { RuntimeFault } from './browser-runtime/contracts.mjs';
+// LCH_ORIGIN_WILDCARD_V1
+import {allowsWebOrigin,validAllowlistEntry,LCH_WILDCARD} from './allowed-origins.mjs';
 import os from 'node:os';
 
 const exec = promisify(execFile);
@@ -169,7 +171,7 @@ export function safeUrl(value) {
 export function isAllowlistedTabUrl(value, origins) {
   const cleaned = safeUrl(value);
   if (!cleaned) return false;
-  try { return origins.has(new URL(cleaned).origin); }
+  try { return allowsWebOrigin(cleaned,origins); }
   catch { return false; }
 }
 export function allowedPeer(ip) {
@@ -194,8 +196,8 @@ function verifyTarget(t, origins, dynamicTabs, restrictMutation = false) {
   if (!browsers.has(t.browser) || !Number.isInteger(t.window_index) ||
       !Number.isInteger(t.tab_index) || t.window_index < 1 || t.tab_index < 1 ||
       typeof t.expected_url !== 'string' || safeUrl(t.expected_url) !== t.expected_url ||
-      (!dynamicTabs && !origins.has(new URL(t.expected_url).origin))) throw new Error('INVALID_TARGET');
-  if (restrictMutation && !origins.has(new URL(t.expected_url).origin)) {
+      (!dynamicTabs && !allowsWebOrigin(t.expected_url,origins))) throw new Error('INVALID_TARGET');
+  if (restrictMutation && !allowsWebOrigin(t.expected_url,origins)) {
     throw new Error('MUTATION_ORIGIN_DENIED');
   }
   // In dynamic discovery, identical safe URLs may belong to different tabs.
@@ -267,7 +269,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
   if (!['native_first','prefer_persistent'].includes(browserRouting))
     throw new Error('INVALID_BROWSER_ROUTING');
   if (!(allowedOrigins instanceof Set) || !allowedOrigins.size ||
-      [...allowedOrigins].some(v => !v.startsWith('https://') || new URL(v).origin !== v)) {
+      [...allowedOrigins].some(v => !validAllowlistEntry(v))) {
     throw new Error('EXPLICIT_HTTPS_ALLOWLIST_REQUIRED');
   }
   const runtime = enableBrowserRuntime ? new BrowserRuntime({ providers: browserProviders,
@@ -394,6 +396,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       if (req.url === '/v1/status') {
         reply(res, 200, {ok:true,data:{backend:'macos-automation',
           browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size,
+          lch_app_cloud_wildcard_enabled:allowedOrigins.has(LCH_WILDCARD),
           discovery_mode:dynamicTabs ? 'all_web_tabs' : 'allowlist',
           title_identity_required:dynamicTabs,
           mutation_policy:restrictBrowserWrites?'allowlist_only':'session_scoped',

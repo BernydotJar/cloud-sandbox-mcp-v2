@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import { ConnectionPool } from './connection-pool.mjs';
 import {cdpAccessibilitySnapshot,prepareCdpSemanticAction} from './cdp-semantic.mjs';
+// LCH_ORIGIN_WILDCARD_V1
+import {allowsWebOrigin,LCH_WILDCARD} from '../allowed-origins.mjs';
 import { TabRegistry } from './tab-registry.mjs';
 import { RuntimeFault, fail, browserName, object, boundedText, targetRequest, validateAction, webUrl, digest, scrubContent } from './contracts.mjs';
 
@@ -13,10 +15,11 @@ export class BrowserRuntime {
       !(allowedOrigins instanceof Set) ||
       (restrictMutationsToAllowlist && !allowedOrigins.size)) fail('MUTATION_ALLOWLIST_REQUIRED');
     this.sessions = sessionStore;
+    this.allowedOrigins = allowedOrigins;
     this.audit = audit;
-    this.allowed = url => Boolean(webUrl(url)) && (dynamicTabs || allowedOrigins.has(new URL(url).origin));
+    this.allowed = url => Boolean(webUrl(url)) && (dynamicTabs || allowsWebOrigin(url,allowedOrigins));
     this.mutationAllowed = url => Boolean(webUrl(url)) &&
-      (!restrictMutationsToAllowlist || allowedOrigins.has(new URL(url).origin));
+      (!restrictMutationsToAllowlist || allowsWebOrigin(url,allowedOrigins));
     this.restrictMutationsToAllowlist = restrictMutationsToAllowlist;
     this.now = now;
     this.tabs = new TabRegistry({ now });
@@ -34,6 +37,7 @@ export class BrowserRuntime {
   status() {
     return { version: '2.0.0', ...this.pool.status(), metrics: { ...this.pool.metrics, ...this.metrics },
       mutation_policy: this.restrictMutationsToAllowlist ? 'allowlist_only' : 'session_scoped',
+      lch_app_cloud_wildcard_enabled:this.allowedOrigins.has(LCH_WILDCARD),
       native_fallback: 'automatic_tab_discovery', replay_guarantee: 'live_process_session_only',
       capabilities: ['persistent_tabs', 'aria_snapshot', 'role', 'label', 'test_id', 'screenshot', 'session_authorization'] };
   }

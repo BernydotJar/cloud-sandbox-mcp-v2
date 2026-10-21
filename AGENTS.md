@@ -104,3 +104,18 @@ and reports `unlimited_actions=true` and `remaining_actions=null`.
 Do not alter a running Chrome/Edge session or restart the Bridge to refresh
 help text. Do not assume the Mac `sandbox` shell definition exists in this
 Linux workspace; its actual alias/function/executable must be checked on Mac.
+
+## Authenticated LCH cloud properties
+
+When the operator has successfully activated the LCH wildcard release,
+the Bridge may authorize actions on https://lch-app.cloud and any valid
+HTTPS subdomain of *.lch-app.cloud, including LUMA and Meridian, for
+**both** Chrome and Edge. Never infer authorization from a repository
+change alone: check the live computer_use_status flag
+host.lch_app_cloud_wildcard_enabled===true first.
+The wildcard is label-boundary checked; it never covers unrelated suffixes,
+HTTP or unknown nondefault ports. Existing exact-origin entries (including
+https://www.linkedin.com) remain separate. Consult
+deploy/allowed-origins/README.md for the audited Mac installation and
+rollback, and continue to use Graph Harness, task-scoped grants and
+business-level verification for actual app actions.

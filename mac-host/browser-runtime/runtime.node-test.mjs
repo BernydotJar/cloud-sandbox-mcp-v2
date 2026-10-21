@@ -456,3 +456,33 @@ test('CDP DOM fallback is non-semantic when DOM execution and text both fail', a
   assert.equal(detached,true);
   await f.runtime.close();
 });
+
+test('persistent Chrome/Edge semantic driver honors LCH wildcard with strict DNS boundaries',async()=>{
+  const allowedOrigins=new Set([
+    'https://www.linkedin.com',
+    'https://lch-app.cloud',
+    'https://*.lch-app.cloud'
+  ]);
+  const f=fixture({
+    allowedOrigins,
+    dynamicTabs:true,
+    restrictMutationsToAllowlist:true
+  });
+  // Reuse the real BrowserRuntime matching helpers without connecting.
+  assert.equal(f.runtime.status().lch_app_cloud_wildcard_enabled,true);
+  for(const url of [
+    'https://lch-app.cloud',
+    'https://luma.lch-app.cloud/studio',
+    'https://meridian.lch-app.cloud/',
+    'https://foo.bar.lch-app.cloud/dashboard',
+    'https://www.linkedin.com/feed'
+  ])assert.equal(f.runtime.mutationAllowed(url),true,url);
+  for(const url of [
+    'http://luma.lch-app.cloud',
+    'https://evillch-app.cloud',
+    'https://lch-app.cloud.attacker.example',
+    'https://foo.lch-app.cloud:12345',
+    'https://business.linkedin.com'
+  ])assert.equal(f.runtime.mutationAllowed(url),false,url);
+  await f.runtime.close();
+});

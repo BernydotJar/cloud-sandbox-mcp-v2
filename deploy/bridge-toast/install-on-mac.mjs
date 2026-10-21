@@ -129,9 +129,13 @@ async function main() {
     const origins=String(envValue(oldEnv.contents,'COMPUTER_USE_ALLOWED_ORIGINS',true)||'')
       .split(',').map(s=>s.trim()).filter(Boolean);
     if(!origins.length || origins.length>50 || origins.some(origin=>{
+      // A single operator-approved wildcard is supported by the patched
+      // native Bridge; no other glob may be introduced by a splash reinstall.
+      if(origin==='https://*.lch-app.cloud')return false;
       try { const url=new URL(origin);
-        return url.protocol!=='https:' || url.origin!==origin ||
-          Boolean(url.username)||Boolean(url.password);
+        return origin.includes('*') || url.protocol!=='https:' ||
+          url.origin!==origin || Boolean(url.username) ||
+          Boolean(url.password);
       }catch{return true;}
     }))throw Error('TRUSTED_NOTICE_REQUIRES_EXACT_HTTPS_ALLOWLIST');
   }

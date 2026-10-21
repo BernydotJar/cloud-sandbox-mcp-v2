@@ -108,3 +108,13 @@ test('operator installer validates live policy, session inactivity and rollback 
   ]) assert(source.includes(expected),expected+' missing');
   assert(!source.includes('COMPUTER_USE_DEDICATED_CHROME_AUTO_START='));
 });
+
+
+test('LinkedIn reinstallation remains idempotent after the LCH wildcard release',()=>{
+  const input='COMPUTER_USE_ALLOWED_ORIGINS=https://admin.microsoft.com,'+
+    'https://www.linkedin.com,https://lch-app.cloud,https://*.lch-app.cloud\n';
+  const updated=addLinkedInOrigin(input);
+  assert.equal(updated.changed,false);
+  assert.equal(updated.afterCount,4);
+  assert.equal(updated.updated,input);
+});
