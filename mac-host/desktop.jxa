@@ -1,0 +1,90 @@
+// Native macOS desktop driver. Only fixed operations; never execute caller scripts.
+'use strict';
+function response(data) { return JSON.stringify({ok:true,data:data}); }
+function failure(code) { return JSON.stringify({ok:false,error:code}); }
+function run(argv) {
+  const op=String(argv[0]||''), bundle=String(argv[1]||'');
+  try {
+    const se=Application('System Events');
+    const apps=se.applicationProcesses.whose({bundleIdentifier:bundle})();
+    if (op==='apps') return response(se.applicationProcesses.whose({backgroundOnly:false})().slice(0,100).map(function(p){
+      try { return {bundle_id:String(p.bundleIdentifier()),name:String(p.name()),pid:Number(p.unixId())}; }
+      catch (_) { return null; }
+    }).filter(Boolean));
+    if (op==='launch') {
+      // The host validates the allowlisted bundle ID before invoking this operation.
+      const app=Application(bundle); app.activate();
+      return response({launched:true,bundle_id:bundle});
+    }
+    if (!apps.length) return failure('MAC_APP_NOT_RUNNING');
+    const proc=apps[0], pid=Number(argv[2]), wi=Number(argv[3]), title=String(argv[4]||'');
+    if (op==='windows') return response({bundle_id:bundle,pid:Number(proc.unixId()),windows:proc.windows().slice(0,128).map(function(w,i){
+      try {return {window_index:i+1,title:String(w.name()).slice(0,300),position:w.position(),size:w.size()};}
+      catch(_){return null;}
+    }).filter(Boolean)});
+    if (Number(proc.unixId())!==pid) return failure('STALE_MAC_PROCESS');
+    const windows=proc.windows();
+    if (!Number.isInteger(wi)||wi<1||wi>windows.length) return failure('STALE_MAC_WINDOW');
+    const window=windows[wi-1];
+    if (String(window.name())!==title) return failure('STALE_MAC_TITLE');
+    if (op==='focus') {proc.frontmost=true; return response({focused:true});}
+    if (op==='bounds') {return response({x:Number(window.position()[0]),y:Number(window.position()[1]),width:Number(window.size()[0]),height:Number(window.size()[1])});}
+    function children(el) {
+      try { return el.uiElements(); } catch (_) {return [];}
+    }
+    function descend(el,path) {
+      const chunks=path.split('.').slice(1);
+      let target=el;
+      for (const chunk of chunks) {
+        const list=children(target), idx=Number(chunk);
+        if (!Number.isInteger(idx)||idx<0||idx>=list.length) return null;
+        target=list[idx];
+      }
+      return target;
+    }
+    function metadata(el) {
+      let role='',name='';
+      try {role=String(el.role());}catch(_){}
+      try {name=String(el.name()||'');}catch(_){}
+      return {role:role.slice(0,100),name:name.slice(0,200)};
+    }
+    if (op==='tree') {
+      const items=[], queue=[{el:window,path:'0',depth:0}];
+      while (queue.length && items.length<150) {
+        const n=queue.shift(),m=metadata(n.el);
+        items.push({path:n.path,role:m.role,name:m.name});
+        if (n.depth<4) children(n.el).slice(0,25).forEach(function(el,i){queue.push({el:el,path:n.path+'.'+i,depth:n.depth+1});});
+      }
+      return response({bundle_id:bundle,pid:pid,window_index:wi,title:title,elements:items,truncated:queue.length>0});
+    }
+    if (op==='action') {
+      const action=String(argv[5]||''), elementPath=String(argv[6]||'');
+      const role=String(argv[7]||''), name=String(argv[8]||''), value=String(argv[9]||'');
+      proc.frontmost=true;
+      if (action==='click'||action==='type_text') {
+        const el=descend(window,elementPath);
+        if (!el) return failure('STALE_MAC_ELEMENT');
+        const m=metadata(el);
+        if(m.role!==role||m.name!==name)return failure('STALE_MAC_ELEMENT');
+        if (action==='click') el.click();
+        else {
+          if (!/text field|text area|search field|AXTextField|AXTextArea|AXSearchField/i.test(role) ||
+              /password|secure/i.test(role+' '+name)) return failure('MAC_SENSITIVE_FIELD_DENIED');
+          el.setValue(value);
+        }
+      } else if (action==='press_key') {
+        const codes={tab:48,escape:53,enter:36,space:49,backspace:51,up:126,down:125,left:123,right:124,pageup:116,pagedown:121};
+        if(!Object.prototype.hasOwnProperty.call(codes,value)) return failure('INVALID_MAC_KEY');
+        se.keyCode(codes[value]);
+      } else if (action==='scroll') {
+        // Deliberately unsupported until a safe targeted AX scroll implementation is proven.
+        return failure('MAC_SCROLL_NOT_IMPLEMENTED');
+      } else return failure('INVALID_MAC_ACTION');
+      return response({performed:true,action:action});
+    }
+    return failure('INVALID_MAC_OPERATION');
+  }catch(e) {
+    if(Number(e&&e.number)===-1743) return failure('MAC_AUTOMATION_PERMISSION_DENIED');
+    return failure('MAC_NATIVE_UNAVAILABLE');
+  }
+}
