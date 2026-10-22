@@ -85,8 +85,6 @@ export class ComputerUseService {
     return this.request('/v3/mac/' + operation, input);
   }
 
-  async desktop(input: Record<string, unknown>) { return this.request('/v3/mac', input); }
-
   private async request(path: string, body: unknown): Promise<unknown> {
     if (!this.config.COMPUTER_USE_ENABLED || !this.config.COMPUTER_USE_BRIDGE_TOKEN) {
       throw new Error('Native computer use disabled by operator.');
