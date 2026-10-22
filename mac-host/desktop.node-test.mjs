@@ -1,4 +1,4 @@
-import {test,afterEach} from 'node:test';
+import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createSessionStore} from './autonomy-session.mjs';
 import {createDesktopRoutes} from './desktop-routes.mjs';
