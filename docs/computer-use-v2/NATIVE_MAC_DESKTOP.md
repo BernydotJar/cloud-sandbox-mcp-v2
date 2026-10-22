@@ -1,46 +1,46 @@
-# Native macOS Computer Use extension (source candidate)
+# Native macOS Computer Use — source candidate
 
-**State:** feature branch; NOT installed on the user's Mac, not production accepted.
+**Status: DRAFT / NO-GO.** The Mac bridge was not updated in this change. No macOS privacy or accessibility permissions were modified.
 
-The existing browser tools continue to use Playwright / CDP (or explicit native browser fallback). This extension adds native desktop control to the same authenticated Mac bridge, without sharing browser-only authorizations.
+## Architecture
 
-## Enable on Mac (operator action, after source verification)
+- Playwright Chromium inside dev-main: isolated browser QA.
+- Browser MCP / persistent CDP: already authenticated Mac Chrome/Edge tabs (when provisioned).
+- Native Computer Use: macOS application windows and accessibility controls through the existing bearer-authenticated Mac host bridge. Native actions may foreground windows.
+- The desktop surface is an additive, operator-opt-in set of five MCP tools: `mac_windows`, `mac_inspect`, `mac_focus`, `mac_open`, `mac_action`.
 
-In the existing private Mac bridge environment file, add:
+## Operator configuration
+
+Use the already-deployed bridge environment file. Require explicit approval, a clean deployment preflight and private backup before changing production configuration:
 
 ```dotenv
-COMPUTER_USE_MAC_DESKTOP=true
-COMPUTER_USE_MAC_ALLOWED_BUNDLES=com.apple.finder,com.apple.Terminal,com.microsoft.VSCode
+COMPUTER_USE_DESKTOP_ENABLED=true
+COMPUTER_USE_DESKTOP_ALLOWED_BUNDLES=com.apple.finder,com.apple.Terminal,com.microsoft.VSCode
 ```
 
-Do not change the live bridge while a Computer Use session is active. Inspect the deployed customized bridge before overlaying source; keep exact backups, verify deployment hashes, and use the existing guarded release/install procedure. This feature branch is not a signed installer. No deployment is authorized merely by the example above.
+Default state is disabled. The bundle allowlist restricts app discovery and operations. Do not add privileged utilities, password managers or arbitrary bundles automatically.
 
-Grant macOS Accessibility, Automation and Screen Recording permissions specifically to the signed bridge host process through System Settings; do not weaken TCC or bypass consent.
+macOS must grant the bridge the appropriate Automation/Accessibility permissions through native TCC prompts. Never bypass TCC or launch the user's browser profile simply to provision native control.
 
-## Routing
+## Execution protocol
 
-- Browser E2E: isolated Playwright Chromium in dev-main.
-- Existing Mac login: browser_tabs / browser_inspect / browser_action via CDP.
-- Native Mac apps: mac_apps -> mac_windows -> mac_accessibility_tree or mac_screenshot -> computer_use_session_begin(scope=mac) -> mac_action/mac_focus/mac_launch -> computer_use_session_end.
-- Mixed explicit tasks may request scope=all; mac-only and browser-only sessions remain mutually isolated.
+1. `mac_windows(bundle_id)` discovers windows of a named allowlisted app only.
+2. `mac_inspect(bundle_id,pid,window_index,expected_title)` returns a bounded accessibility view without control values.
+3. Request `computer_use_session_begin(scope="desktop", ...)`, which requires local approval and limits duration and action budget. Browser-only sessions cannot mutate Mac windows.
+4. Use `mac_focus`, `mac_open` or `mac_action` with the scoped capability; actions use a unique request ID and exact observed PID/window/title plus AX identity where applicable.
+5. Inspect after each consequential action. Never blindly retry an uncertain dispatched operation. End the session when done.
 
-## Contract
+The current source does NOT promise general desktop screenshot or wheel-scroll support. GUI screenshots must be separately implemented and tested with macOS Screen Recording permission; scrolling must not be represented as supported until actual desktop tests pass.
 
-1. mac_apps returns *only* allowlisted currently running applications.
-2. mac_windows returns PID, fresh window index and exact title. No URL/profile/cookie material.
-3. mac_accessibility_tree returns up to 150 AX nodes, max four levels below the selected window, role + name only, no field values.
-4. mac_screenshot captures selected window bounds through macOS Screen Recording.
-5. mac_action performs click, text-field setValue, bounded press_key, or bounded page scroll; it requires session_id, request_id, exact bundle/PID/window-title, and for semantic actions a fresh AX path/role/name. Secure/password fields are blocked.
-6. mac_focus/mac_launch foreground or launch only operator-allowlisted application windows/bundles and require Mac-specific delegation.
-7. The host serializes native UI mutations with browser actions; a duplicate request_id never dispatches again in a single bridge process. A timeout may still have sent the event: inspect, never retry blindly.
-8. macOS actions can take foreground focus and interfere with local work. Do not run native UI scripts in the background while the human is using the Mac. Prefer deterministic shell/API tasks in their separately controlled environment.
+## Acceptance criteria
 
-## Acceptance (not yet completed)
+- `npm ci --ignore-scripts --no-fund --no-audit`, `npm run typecheck`, `npm run lint`, `npm run test:mac`, `npm run verify:v2` all pass, plus dedicated native desktop CI.
+- Native JXA syntax compiles on macOS.
+- Actual Mac GUI acceptance with Finder, Terminal and VS Code: discovery, fresh target identity, accessibility click and text control, app focus/open, denied permissions, protected-field rejection, session expiry/revoke, replays.
+- Verify browser/Playwright regression; ensure the existing 29-tool customized deployment is not overwritten by older registry code.
+- Bridge upgrade and rollback must be gated; no running delegated session interrupted.
+- Graph Harness issues an explicit GO/NO-GO with observed evidence.
 
-- Run npm ci --ignore-scripts, npm run verify, npm run test:mac on CI.
-- Test mac_apps/windows/AX in a real macOS GUI session with Finder, Terminal, and VS Code.
-- Confirm explicit operator allowlist, TCC denied/allowed behavior, stale-title/pid rejection, secure-field rejection, duplicate request suppression, session expiration and revocation.
-- Verify Chrome and Edge regressions, existing 29-tool customized deployment preserved, only seven additive desktop MCP methods.
-- Check rollout and rollback on the *actual* current Mac deployment, then record GO/NO-GO with Graph Harness.
+## Security notes
 
-**Security limitation:** AX nodes are transient; an app can mutate its own controls asynchronously. This is not a transactional guarantee. Accessibility labels may contain private information; they are never written to the audit ledger. The host controller still authenticates requests with its existing private bearer credential.
+No unbounded OS shell/AppleScript/JXA execution API is exposed through the desktop MCP interface. Terminal GUI keypresses still have potentially serious consequences and therefore require application-specific authorization, session scope, and user task constraints. Inspect actual target before acting. Window titles and AX content may include private user data; exclude it from audit telemetry.
