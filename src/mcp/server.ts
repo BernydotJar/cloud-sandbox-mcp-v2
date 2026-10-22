@@ -1,3 +1,4 @@
+import { registerDesktopTools } from './desktop-tools.js';
 import { registerBrowserRuntimeTools } from './browser-runtime-tools.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
@@ -144,6 +145,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
   if (computer) {
     registerBrowserRuntimeTools(server, computer);
+    registerDesktopTools(server, computer);
     const browserSchema = z.enum(['chrome', 'edge']);
     const targetSchema = {
       browser: browserSchema,
@@ -157,7 +159,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
       title: 'Authorize a temporary Mac task session',
       description: 'Request ONE local macOS approval for a time-limited, action-budgeted delegated Chrome/Edge session. Subsequent clicks and typing with session_id require no further local approvals until expiration, revocation or exhaustion. This can operate on sensitive pages; obtain clear user task instructions before requesting.',
       inputSchema: {
-        scope: z.enum(['chrome','edge','both']),
+        scope: z.enum(['chrome','edge','both','desktop']),
         duration_minutes: z.number().int().min(1).max(30).default(20),
         max_actions: z.number().int().min(1).max(200).default(120),
         purpose: z.string().min(10).max(300)

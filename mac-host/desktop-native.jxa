@@ -1,0 +1,80 @@
+// Strict, fixed-operation macOS Accessibility driver. No eval or shell.
+'use strict';
+function output(data) { return JSON.stringify({ok:true,data:data}); }
+function fail(code) { return JSON.stringify({ok:false,error:code}); }
+function run(argv) {
+  const op=String(argv[0]||'');
+  const bundle=String(argv[1]||'');
+  try {
+    const se=Application('System Events');
+    const ws=se.applicationProcesses.whose({bundleIdentifier:bundle})();
+    if(op==='windows') {
+      return output(ws.map(function(p) {
+        let title=''; try {title=p.name();}catch(_){}
+        let pid=0;try{pid=Number(p.unixId());}catch(_){}
+        let windows=[]; try {windows=p.windows().slice(0,32).map(function(w,i){
+          let name='';try{name=String(w.name()||'').slice(0,300);}catch(_){}
+          return {window_index:i+1,title:name};
+        });}catch(_){}
+        return {bundle_id:bundle,pid:pid,app_name:title,windows:windows};
+      }));
+    }
+    const pid=Number(argv[2]), index=Number(argv[3]), title=String(argv[4]||'');
+    const procs=ws.filter(function(p){return Number(p.unixId())===pid;});
+    if(procs.length!==1)return fail('STALE_MAC_PROCESS');
+    const p=procs[0], windows=p.windows();
+    if(!Number.isInteger(index)||index<1||index>windows.length)return fail('STALE_MAC_WINDOW');
+    const w=windows[index-1];
+    if(String(w.name()||'')!==title)return fail('STALE_MAC_TITLE');
+    if(op==='inspect') {
+      const result=[];
+      function walk(el,path,depth) {
+        if(result.length>=120||depth>4)return;
+        let role='',name='';
+        try{role=String(el.role()||'');}catch(_){}
+        try{name=String(el.name()||'').slice(0,160);}catch(_){}
+        result.push({path:path,role:role,name:name});
+        if(depth<4) {
+          let children=[];try{children=el.uiElements().slice(0,32);}catch(_){}
+          children.forEach(function(child,i){walk(child,path+'.'+i,depth+1);});
+        }
+      }
+      walk(w,'0',0);
+      return output({bundle_id:bundle,pid:pid,window_index:index,expected_title:title,elements:result});
+    }
+    if(op==='focus') {p.frontmost=true;return output({focused:true});}
+    if(op!=='action')return fail('INVALID_MAC_OPERATION');
+    const action=String(argv[5]||''), elementPath=String(argv[6]||''),
+      role=String(argv[7]||''), name=String(argv[8]||''), value=String(argv[9]||'');
+    p.frontmost=true;
+    if(action==='press_key') {
+      const codes={tab:48,escape:53,enter:36,space:49,backspace:51,up:126,down:125,left:123,right:124,pageup:116,pagedown:121};
+      if(!Object.prototype.hasOwnProperty.call(codes,value))return fail('INVALID_MAC_KEY');
+      se.keyCode(codes[value]);return output({performed:true,action:action});
+    }
+    if(action==='scroll') {
+      // Scrolling with System Events is not consistently available across apps.
+      return fail('MAC_SCROLL_UNSUPPORTED');
+    }
+    if(!/^0(?:\.(?:0|[1-9]\d?)){1,5}$/.test(elementPath))return fail('INVALID_MAC_ELEMENT');
+    let el=w;
+    const parts=elementPath.split('.').slice(1);
+    for(const part of parts) {
+      const children=el.uiElements(), position=Number(part);
+      if(position>=children.length)return fail('STALE_MAC_ELEMENT');
+      el=children[position];
+    }
+    if(String(el.role()||'')!==role || String(el.name()||'').slice(0,160)!==name)
+      return fail('STALE_MAC_ELEMENT');
+    if(action==='click') {el.click();return output({performed:true,action:action});}
+    if(action==='type_text') {
+      if(/secure|password/i.test(role+' '+name))return fail('MAC_PROTECTED_FIELD');
+      // Accessibility focus, followed by keystroke. No clipboard access.
+      el.click();se.keystroke(value);return output({performed:true,action:action});
+    }
+    return fail('INVALID_MAC_ACTION');
+  }catch(e) {
+    if(Number(e.number)===-1743)return fail('MAC_AUTOMATION_PERMISSION_DENIED');
+    return fail('MAC_ACCESSIBILITY_UNAVAILABLE');
+  }
+}
