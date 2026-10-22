@@ -61,7 +61,7 @@ export class ComputerUseService {
 
   /** One local macOS approval grants bounded browser interaction for a task. */
   async beginSession(input: {
-    scope: 'chrome' | 'edge' | 'both';
+    scope: 'chrome' | 'edge' | 'both' | 'desktop';
     duration_minutes: number;
     max_actions: number;
     purpose: string;
@@ -79,6 +79,10 @@ export class ComputerUseService {
 
   async browserRuntime(operation: 'status' | 'tabs' | 'inspect' | 'screenshot' | 'action' | 'open', input: Record<string, unknown>) {
     return this.request('/v2/browser/' + operation, input);
+  }
+
+  async desktop(operation: 'windows' | 'inspect' | 'focus' | 'action' | 'open', input: Record<string, unknown>) {
+    return this.request('/v3/mac/' + operation, input);
   }
 
   private async request(path: string, body: unknown): Promise<unknown> {
