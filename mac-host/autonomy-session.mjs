@@ -60,7 +60,7 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
     if (candidate.length!==expected.length || !crypto.timingSafeEqual(candidate,expected)) {
       throw new Error('SESSION_NOT_ACTIVE');
     }
-    if (s.scope!=='both' && s.scope!==browser) throw new Error('SESSION_SCOPE_MISMATCH');
+    if (s.scope!=='all' && !(s.scope==='both' && ['chrome','edge'].includes(browser)) && s.scope!==browser) throw new Error('SESSION_SCOPE_MISMATCH');
     if(consume) s.remaining_actions--;
     return {
       scope:s.scope,
