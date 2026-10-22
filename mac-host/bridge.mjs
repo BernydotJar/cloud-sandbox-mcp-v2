@@ -11,12 +11,20 @@ import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runt
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
 import { RuntimeFault } from './browser-runtime/contracts.mjs';
 import os from 'node:os';
+import {parseAllowedBundles, validateDesktopConfig, requireAllowedBundle, validateDesktopTarget, requireDesktopSession, validateMutation, createDesktopRequestGate, desktopAudit} from './desktop-policy.mjs';
 import {createDesktopRoutes,desktopPaths,desktopError} from './desktop-routes.mjs';
 import {parseAllowedBundles} from './desktop-policy.mjs';
 
 const exec = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const nativeFile = path.join(here, 'native.jxa');
+const desktopFile = path.join(here, 'desktop.jxa');
+async function macNative(...args) {
+  const {stdout} = await exec('/usr/bin/osascript',['-l','JavaScript',desktopFile,...args],{timeout:15000,maxBuffer:300000});
+  const result=JSON.parse(stdout.trim());
+  if (!result.ok) throw new Error(result.error || 'MAC_NATIVE_UNAVAILABLE');
+  return result.data;
+}
 const browsers = new Set(['chrome', 'edge']);
 const keys = new Set(['tab','escape','enter','space','backspace','up','down','left','right']);
 const launchBundles = Object.freeze({ chrome:'com.google.Chrome', edge:'com.microsoft.edgemac' });
@@ -251,6 +259,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    bridgeToastHandler = showDedicatedChromeToast,
                                    desktopEnabled = false, desktopAllowedBundles = new Set(),
                                    desktopNativeHandler, desktopLaunchHandler}) {
+  validateDesktopConfig({enabled:desktopEnabled,allowedBundles:desktopBundles});
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
@@ -267,6 +276,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
   const desktopRoute = desktopEnabled ? createDesktopRoutes({allowedBundles:desktopAllowedBundles,
     sessionStore,auditHandler,...(desktopNativeHandler?{nativeHandler:desktopNativeHandler}:{}),
     ...(desktopLaunchHandler?{launchHandler:desktopLaunchHandler}:{})}) : null;
+  const desktopRequests = createDesktopRequestGate();
   let busy = false;
   let bridgeToastShown = false;
   const routingMetrics = { native_discoveries:0, persistent_discoveries:0,
@@ -300,6 +310,55 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         try {
           const result=await desktopRoute(req.url,input);
           reply(res,200,{ok:true,data:result});return;
+        } finally {busy=false;}
+      }
+      if (req.url === '/v3/mac') {
+        if (!desktopEnabled) throw new Error('MAC_DESKTOP_DISABLED');
+        const operation=input.operation;
+        if (!['apps','windows','tree','bounds','screenshot','focus','launch','action'].includes(operation))
+          throw new Error('INVALID_MAC_OPERATION');
+        if (operation==='apps') {
+          reply(res,200,{ok:true,data:{applications:(await desktopHandler('apps','')).filter(
+            a=>desktopBundles.has(a.bundle_id))}});return;
+        }
+        requireAllowedBundle(input.bundle_id,desktopBundles);
+        if (operation==='windows') {
+          const result=await desktopHandler('windows',input.bundle_id);
+          reply(res,200,{ok:true,data:result});return;
+        }
+        if (operation==='launch' || operation==='focus' || operation==='action') {
+          if (busy) throw new Error('COMPUTER_BUSY');
+          requireDesktopSession(input);
+          if (operation==='action') validateMutation(input,desktopBundles);
+          else {
+            if (typeof input.request_id!=='string'|| !/^[A-Za-z0-9][A-Za-z0-9_-]{15,79}$/.test(input.request_id) ||
+                typeof input.reason!=='string'||input.reason.length<10||input.reason.length>300)
+              throw new Error('INVALID_MAC_ACTION');
+            if(operation==='focus')validateDesktopTarget(input,desktopBundles);
+          }
+          sessionStore.authorize(input.session_id,'mac');
+          busy=true;
+          try {
+            const args=operation==='launch'?[input.bundle_id]:validateDesktopTarget(input,desktopBundles);
+            await auditHandler(desktopAudit(input,'intent'));
+            sessionStore.authorize(input.session_id,'mac',{consume:true});
+            desktopRequests.claim(input.request_id);
+            const result=await desktopHandler(operation==='action'?'action':operation,...args,
+              ...(operation==='action'?validateMutation(input,desktopBundles).slice(4):[]));
+            let saved=true;
+            try{await auditHandler(desktopAudit(input,'dispatched'));}catch{saved=false;}
+            reply(res,200,{ok:true,data:{...result,audit_receipt:saved?'saved':'unavailable'}});return;
+          } finally {busy=false;}
+        }
+        const args=validateDesktopTarget(input,desktopBundles);
+        if (busy) throw new Error('COMPUTER_BUSY');
+        busy=true;
+        try{
+          const result=await desktopHandler(operation==='screenshot'?'bounds':operation,...args);
+          if(operation==='screenshot'){
+            reply(res,200,{ok:true,data:await captureHandler(result)});
+          }else reply(res,200,{ok:true,data:result});
+          return;
         } finally {busy=false;}
       }
       if (req.url.startsWith('/v2/browser/')) {
@@ -425,7 +484,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             input.purpose.length > 300) throw new Error('INVALID_SESSION_REQUEST');
         busy=true;
         try {
-          const request = input.scope === 'both' ? 'Chrome AND Edge' : input.scope;
+          const request = input.scope === 'both' ? 'Chrome AND Edge' : input.scope === 'mac' ? 'macOS desktop applications' : input.scope === 'all' ? 'Chrome, Edge AND macOS desktop' : input.scope;
           const prompt = 'Cloud Sandbox requests a temporary delegated Computer Use session.\n' +
             'TASK: ' + input.purpose.replace(/\p{Cc}+/gu,' ').replace(/\s+/g,' ').slice(0,300) + '\n' +
             'SCOPE: ' + request + '\n' +
@@ -560,6 +619,10 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
         'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
         'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE','MUTATION_ORIGIN_DENIED',
+        'MAC_DESKTOP_DISABLED','MAC_APP_NOT_ALLOWED','INVALID_MAC_OPERATION','INVALID_MAC_TARGET',
+        'INVALID_MAC_ACTION','INVALID_MAC_ELEMENT','INVALID_MAC_TEXT','INVALID_MAC_KEY','INVALID_MAC_SCROLL',
+        'STALE_MAC_PROCESS','STALE_MAC_WINDOW','STALE_MAC_TITLE','STALE_MAC_ELEMENT',
+        'MAC_SENSITIVE_FIELD_DENIED','MAC_REQUEST_ALREADY_DISPATCHED','MAC_REQUEST_GATE_FULL','MAC_NATIVE_UNAVAILABLE',
         'MAC_DESKTOP_DISABLED',...['MAC_APP_NOT_ALLOWED','INVALID_MAC_TARGET','INVALID_MAC_ACTION',
         'INVALID_MAC_ELEMENT','INVALID_MAC_TEXT','INVALID_MAC_KEY','STALE_MAC_PROCESS',
         'STALE_MAC_WINDOW','STALE_MAC_TITLE','STALE_MAC_ELEMENT','MAC_PROTECTED_FIELD',
@@ -621,6 +684,8 @@ export async function startBridge(options = {}) {
     browserAudit: event => ledger.append(event),
     dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START === 'true',
     bridgeToastEnabled: environment.COMPUTER_USE_BRIDGE_TOAST === 'true',
+    desktopEnabled:environment.COMPUTER_USE_MAC_DESKTOP === 'true',
+    desktopBundles:parseAllowedBundles(environment.COMPUTER_USE_MAC_ALLOWED_BUNDLES || ''),
     desktopEnabled: environment.COMPUTER_USE_DESKTOP_ENABLED === 'true',
     desktopAllowedBundles: parseAllowedBundles(environment.COMPUTER_USE_DESKTOP_ALLOWED_BUNDLES || '')
   });
