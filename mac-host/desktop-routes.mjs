@@ -61,10 +61,10 @@ export function createDesktopRoutes({allowedBundles,sessionStore,auditHandler,
         (await launchHandler(input.bundle_id),{launched:true,bundle_id:input.bundle_id}):
         await nativeHandler('action',...args);
     }catch(e){
-      try{await auditHandler(desktopAudit({...input,action:type},'uncertain'));}catch{}
+      try{await auditHandler(desktopAudit({...input,action:type},'uncertain'));}catch{ /* Audit failure after dispatch cannot trigger retry. */ }
       throw e;
     }
-    try{await auditHandler(desktopAudit({...input,action:type},'performed'));}catch{}
+    try{await auditHandler(desktopAudit({...input,action:type},'performed'));}catch{ /* Audit failure after dispatch cannot trigger retry. */ }
     return result;
   };
 }
