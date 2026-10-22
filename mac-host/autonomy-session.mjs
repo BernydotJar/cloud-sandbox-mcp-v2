@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-const scopes = new Set(['chrome','edge','both']);
+const scopes = new Set(['chrome','edge','both','desktop']);
 export const MAX_SESSION_MINUTES = 30;
 export const MAX_SESSION_ACTIONS = 200;
 
