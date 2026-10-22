@@ -11,7 +11,7 @@ import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runt
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
 import { RuntimeFault } from './browser-runtime/contracts.mjs';
 import os from 'node:os';
-import {createDesktopRoutes,desktopPaths,desktopError} from './desktop-routes.mjs';
+import {createDesktopRoutes,desktopPaths} from './desktop-routes.mjs';
 import {parseAllowedBundles} from './desktop-policy.mjs';
 
 const exec = promisify(execFile);
