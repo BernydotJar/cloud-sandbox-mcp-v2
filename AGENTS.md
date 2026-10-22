@@ -69,3 +69,11 @@ persistent status warnings in agent-owned UI. Do not conceal Chrome-native
 security indicators, OS permission dialogs, or actionable errors. See
 `deploy/bridge-toast/README.md`; do not repeatedly invoke the toast or
 interrupt the browser.
+
+## Native macOS desktop automation (opt-in)
+
+22. Use mac_windows and mac_inspect only for approved bundle IDs. Never enumerate or operate on unrelated personal applications. Browser web tasks continue using Playwright and browser MCP as specified above.
+23. Native Mac control is foreground interaction. It may disrupt the operator's keyboard/focus. Require explicit user task instruction and a desktop-scoped delegated session; Chrome/Edge grants do NOT permit desktop operations. Refuse any request to bypass macOS Accessibility, Screen Recording, login, or privacy permissions.
+24. Prefer exact macOS Accessibility element paths after mac_inspect with role and name validation. Do not fall back to guessed screen coordinates. Re-inspect after application or window changes.
+25. Use a unique request_id per intended mutation. Any uncertain result means inspect, never blindly replay. App launch is by preapproved bundle ID only; no arbitrary shell, AppleScript, OS command, clipboard, unrestricted keystroke shortcuts, secret extraction, or privilege escalation.
+26. Feature is disabled until operator explicitly sets COMPUTER_USE_DESKTOP_ENABLED=true and COMPUTER_USE_DESKTOP_ALLOWED_BUNDLES to a reviewed comma-separated allowlist in the host bridge environment. Preserve existing browser bridge, desktop session revocation, content-free audit and Graph Harness gates.
