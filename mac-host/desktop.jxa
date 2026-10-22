@@ -61,8 +61,11 @@ function run(argv) {
       const action=String(argv[5]||''), elementPath=String(argv[6]||'');
       const role=String(argv[7]||''), name=String(argv[8]||''), value=String(argv[9]||'');
       proc.frontmost=true;
-      if (action==='click'||action==='type_text') {
-        const el=descend(window,elementPath);
+      const verify=proc.windows();
+      if(Number(proc.unixId())!==pid || !verify[wi-1] || String(verify[wi-1].name())!==title)
+        return failure('STALE_MAC_WINDOW');
+      if (action='click'||action==='type_text') {
+        const el=descend(verify[wi-1],elementPath);
         if (!el) return failure('STALE_MAC_ELEMENT');
         const m=metadata(el);
         if(m.role!==role||m.name!==name)return failure('STALE_MAC_ELEMENT');
@@ -77,8 +80,10 @@ function run(argv) {
         if(!Object.prototype.hasOwnProperty.call(codes,value)) return failure('INVALID_MAC_KEY');
         se.keyCode(codes[value]);
       } else if (action==='scroll') {
-        // Deliberately unsupported until a safe targeted AX scroll implementation is proven.
-        return failure('MAC_SCROLL_NOT_IMPLEMENTED');
+        const direction=value, steps=Number(argv[10]);
+        if(!['up','down'].includes(direction)||!Number.isInteger(steps)||steps<1||steps>8)
+          return failure('INVALID_MAC_SCROLL');
+        for(let j=0;j<steps;j++) se.keyCode(direction==='down'?121:116);
       } else return failure('INVALID_MAC_ACTION');
       return response({performed:true,action:action});
     }
