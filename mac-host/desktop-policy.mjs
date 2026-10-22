@@ -7,7 +7,7 @@ const elementPathPattern = /^0(?:\.(?:0|[1-9]\d?)){1,5}$/;
 const keys = new Set(['tab','escape','enter','space','backspace','up','down','left','right','pageup','pagedown']);
 const actions = new Set(['click','type_text','press_key','scroll']);
 const limited = (x, max) => typeof x === 'string' && x.length > 0 && x.length <= max &&
-  !/[\u0000-\u001f\u007f]/.test(x);
+  !Array.from(x).some(ch => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127);
 
 export function parseAllowedBundles(value) {
   if (typeof value !== 'string' || !value.trim()) return new Set();
