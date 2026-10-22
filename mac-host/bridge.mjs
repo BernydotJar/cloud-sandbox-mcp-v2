@@ -11,6 +11,8 @@ import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runt
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
 import { RuntimeFault } from './browser-runtime/contracts.mjs';
 import os from 'node:os';
+import {createDesktopRoutes,desktopPaths,desktopError} from './desktop-routes.mjs';
+import {parseAllowedBundles} from './desktop-policy.mjs';
 
 const exec = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -246,7 +248,9 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    launchBrowserHandler = launchBrowser, dedicatedChromeAutoStart = false,
                                    ensureDedicatedChromeHandler = ensureDedicatedChrome,
                                    bridgeToastEnabled = false,
-                                   bridgeToastHandler = showDedicatedChromeToast}) {
+                                   bridgeToastHandler = showDedicatedChromeToast,
+                                   desktopEnabled = false, desktopAllowedBundles = new Set(),
+                                   desktopNativeHandler, desktopLaunchHandler}) {
   if (platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   if (typeof token !== 'string' || token.length < 32) throw new Error('TOKEN_REQUIRED');
   if (typeof dynamicTabs !== 'boolean') throw new Error('INVALID_DISCOVERY_MODE');
@@ -260,6 +264,9 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
   const runtime = enableBrowserRuntime ? new BrowserRuntime({ providers: browserProviders,
     sessionStore, audit: browserAudit, dynamicTabs, allowedOrigins,
     restrictMutationsToAllowlist: restrictBrowserWrites }) : null;
+  const desktopRoute = desktopEnabled ? createDesktopRoutes({allowedBundles:desktopAllowedBundles,
+    sessionStore,auditHandler,...(desktopNativeHandler?{nativeHandler:desktopNativeHandler}:{}),
+    ...(desktopLaunchHandler?{launchHandler:desktopLaunchHandler}:{})}) : null;
   let busy = false;
   let bridgeToastShown = false;
   const routingMetrics = { native_discoveries:0, persistent_discoveries:0,
@@ -272,7 +279,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         !['/v1/status','/v1/state','/v1/focus','/v1/action','/v1/screenshot',
           '/v1/session/begin','/v1/session/status','/v1/session/end',
           '/v2/browser/status','/v2/browser/tabs','/v2/browser/inspect',
-          '/v2/browser/screenshot','/v2/browser/action','/v2/browser/open'].includes(req.url)) {
+          '/v2/browser/screenshot','/v2/browser/action','/v2/browser/open',
+          ...desktopPaths].includes(req.url)) {
       reply(res, 404, {ok:false,error:'UNKNOWN_METHOD'}); return;
     }
     try {
@@ -285,6 +293,15 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       }
       const input = JSON.parse(Buffer.concat(buffers).toString('utf8'));
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('INVALID_BODY');
+      if (desktopPaths.has(req.url)) {
+        if (!desktopRoute) throw new Error('MAC_DESKTOP_DISABLED');
+        if (busy) throw new Error('COMPUTER_BUSY');
+        busy=true;
+        try {
+          const result=await desktopRoute(req.url,input);
+          reply(res,200,{ok:true,data:result});return;
+        } finally {busy=false;}
+      }
       if (req.url.startsWith('/v2/browser/')) {
         if (req.url === '/v2/browser/status') {
           reply(res, 200, {ok:true, data:runtime ? {enabled:true,...runtime.status(),
@@ -380,7 +397,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       }
       if (req.url === '/v1/status') {
         reply(res, 200, {ok:true,data:{backend:'macos-automation',
-          browsers:['chrome','edge'],native_approval:true,allowlisted_origins:allowedOrigins.size,
+          browsers:['chrome','edge'],desktop_enabled:Boolean(desktopRoute),native_approval:true,allowlisted_origins:allowedOrigins.size,
           discovery_mode:dynamicTabs ? 'all_web_tabs' : 'allowlist',
           title_identity_required:dynamicTabs,
           mutation_policy:restrictBrowserWrites?'allowlist_only':'session_scoped',
@@ -399,7 +416,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       if (req.url === '/v1/session/begin') {
         if (busy) throw new Error('COMPUTER_BUSY');
         if (sessionStore.status().active) throw new Error('SESSION_ALREADY_ACTIVE');
-        if (!['chrome','edge','both'].includes(input.scope) ||
+        if (!['chrome','edge','both','desktop'].includes(input.scope) ||
             !Number.isInteger(input.duration_minutes) || input.duration_minutes < 1 ||
             input.duration_minutes > 30 ||
             !Number.isInteger(input.max_actions) || input.max_actions < 1 ||
@@ -411,11 +428,11 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           const request = input.scope === 'both' ? 'Chrome AND Edge' : input.scope;
           const prompt = 'Cloud Sandbox requests a temporary delegated Computer Use session.\n' +
             'TASK: ' + input.purpose.replace(/\p{Cc}+/gu,' ').replace(/\s+/g,' ').slice(0,300) + '\n' +
-            'BROWSERS: ' + request + '\n' +
+            'SCOPE: ' + request + '\n' +
             'DURATION: ' + input.duration_minutes + ' minutes\n' +
             'MAXIMUM CLICKS/KEY EVENTS: ' + input.max_actions + '\n\n' +
             'After approving this ONCE, the agent can click, type, and submit on these ' +
-            'browser tabs WITHOUT another Mac prompt until the session expires, ' +
+            'authorized browser tabs or desktop apps WITHOUT another Mac prompt until the session expires, ' +
             'runs out of actions, or is revoked. This includes potentially important ' +
             'settings and transactions; the browser driver cannot distinguish them.\n' +
             'Only approve for the task you actually requested. You can STOP the session ' +
@@ -542,7 +559,12 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',
         'STALE_TITLE','INVALID_SESSION_REQUEST','SESSION_ALREADY_ACTIVE',
         'SESSION_NOT_ACTIVE','SESSION_SCOPE_MISMATCH','USER_DENIED_SESSION',
-        'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE','MUTATION_ORIGIN_DENIED']);
+        'COMPUTER_BUSY','BROWSER_APP_UNAVAILABLE','MUTATION_ORIGIN_DENIED',
+        'MAC_DESKTOP_DISABLED',...['MAC_APP_NOT_ALLOWED','INVALID_MAC_TARGET','INVALID_MAC_ACTION',
+        'INVALID_MAC_ELEMENT','INVALID_MAC_TEXT','INVALID_MAC_KEY','STALE_MAC_PROCESS',
+        'STALE_MAC_WINDOW','STALE_MAC_TITLE','STALE_MAC_ELEMENT','MAC_PROTECTED_FIELD',
+        'MAC_ACCESSIBILITY_UNAVAILABLE','MAC_SCROLL_UNSUPPORTED',
+        'MAC_REQUEST_ALREADY_DISPATCHED','MAC_REQUEST_GATE_FULL']]);
       reply(res,400,{ok:false,error:error instanceof RuntimeFault ? error.message :
         allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'});
     }
@@ -598,7 +620,9 @@ export async function startBridge(options = {}) {
     browserProviders: enableBrowserRuntime ? providersFromEnvironment(environment) : {},
     browserAudit: event => ledger.append(event),
     dedicatedChromeAutoStart: environment.COMPUTER_USE_DEDICATED_CHROME_AUTO_START === 'true',
-    bridgeToastEnabled: environment.COMPUTER_USE_BRIDGE_TOAST === 'true'
+    bridgeToastEnabled: environment.COMPUTER_USE_BRIDGE_TOAST === 'true',
+    desktopEnabled: environment.COMPUTER_USE_DESKTOP_ENABLED === 'true',
+    desktopAllowedBundles: parseAllowedBundles(environment.COMPUTER_USE_DESKTOP_ALLOWED_BUNDLES || '')
   });
   server.once('close', () => { if (ledger) void ledger.close().catch(() => {}); });
   const host = environment.COMPUTER_USE_BRIDGE_BIND || '0.0.0.0';
