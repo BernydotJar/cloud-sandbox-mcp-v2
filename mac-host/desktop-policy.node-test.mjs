@@ -21,12 +21,12 @@ test('desktop actions enforce allowlist, identity and semantic AX element',()=>{
 });
 test('mac desktop grant does not permit Chrome or Edge and browser grant does not permit desktop',()=>{
  const store=createSessionStore({randomId:()=> 'b'.repeat(48)});
- const mac=store.begin({scope:'mac',duration_minutes:1,max_actions:2,purpose:'Control allowlisted desktop UI'});
- assert.equal(store.authorize(mac.session_id,'mac').remaining_actions,2);
+ const mac=store.begin({scope:'desktop',duration_minutes:1,max_actions:2,purpose:'Control allowlisted desktop UI'});
+ assert.equal(store.authorize(mac.session_id,'desktop').remaining_actions,2);
  assert.throws(()=>store.authorize(mac.session_id,'chrome'),/SESSION_SCOPE_MISMATCH/);
  store.end(mac.session_id);
  const browser=store.begin({scope:'both',duration_minutes:1,max_actions:2,purpose:'Control browser tabs only'});
- assert.throws(()=>store.authorize(browser.session_id,'mac'),/SESSION_SCOPE_MISMATCH/);
+ assert.throws(()=>store.authorize(browser.session_id,'desktop'),/SESSION_SCOPE_MISMATCH/);
 });
 test('desktop request ids never dispatch twice',()=>{
  const gate=createDesktopRequestGate();
