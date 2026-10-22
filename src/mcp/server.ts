@@ -181,63 +181,6 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async ({ session_id }) => await safely(() => computer.endSession(session_id)));
 
-    const macTarget = {
-      bundle_id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]*(?:\\.[A-Za-z0-9][A-Za-z0-9-]*)+$/),
-      pid:z.number().int().positive(),
-      window_index:z.number().int().min(1).max(128),
-      expected_title:z.string().min(1).max(300)
-    };
-    server.registerTool('mac_apps', {
-      description:'List ONLY the macOS desktop applications explicitly allowlisted by the operator.',
-      inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
-    },()=>safely(()=>computer.desktop({operation:'apps'})));
-    server.registerTool('mac_windows', {
-      description:'Discover windows for an explicitly allowlisted macOS application, returning fresh PID, index and exact title.',
-      inputSchema:{bundle_id:macTarget.bundle_id},
-      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
-    },input=>safely(()=>computer.desktop({operation:'windows',...input})));
-    server.registerTool('mac_accessibility_tree', {
-      description:'Bounded accessibility structure for a freshly selected native window; no form values or keystrokes returned.',
-      inputSchema:macTarget,
-      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
-    },input=>safely(()=>computer.desktop({operation:'tree',...input})));
-    server.registerTool('mac_screenshot', {
-      description:'Capture an allowlisted macOS window. Foreground windows may contain sensitive data; requires Screen Recording.',
-      inputSchema:macTarget,
-      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
-    },async input=>{
-      try {
-        const image=await computer.desktop({operation:'screenshot',...input}) as {mime_type?:string;base64?:string};
-        if(image.mime_type!=='image/png'||typeof image.base64!=='string'||image.base64.length>12000000)
-          return jsonResult({error:'INVALID_MAC_SCREENSHOT'},true);
-        return {content:[{type:'image' as const,mimeType:'image/png',data:image.base64}]};
-      }catch(error){return jsonResult({error:errorMessage(error)},true);}
-    });
-    server.registerTool('mac_action', {
-      description:'Perform ONE native macOS UI event in an allowlisted window, requiring a separate mac/all delegated session, fresh window identity, and unique request_id. No arbitrary scripts. Never retry uncertain events; inspect state.',
-      inputSchema:{...macTarget,session_id:z.string().regex(/^[a-f0-9]{48}$/),
-        request_id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{15,79}$/),
-        reason:z.string().min(10).max(300),
-        action:z.enum(['click','type_text','press_key','scroll']),
-        element_path:z.string().max(30).optional(),
-        expected_role:z.string().max(100).optional(),
-        expected_name:z.string().max(200).optional(),
-        text:z.string().max(2000).optional(),
-        key:z.enum(['tab','escape','enter','space','backspace','up','down','left','right','pageup','pagedown']).optional(),
-        direction:z.enum(['up','down']).optional(),
-        steps:z.number().int().min(1).max(8).optional()
-      },annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
-    },input=>safely(()=>computer.desktop({operation:'action',...input})));
-    server.registerTool('mac_focus', {
-      description:'Focus an allowlisted native Mac window after explicit mac/all session authorization.',
-      inputSchema:{...macTarget,session_id:z.string().regex(/^[a-f0-9]{48}$/),request_id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{15,79}$/),reason:z.string().min(10).max(300)},
-      annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true}
-    },input=>safely(()=>computer.desktop({operation:'focus',...input})));
-    server.registerTool('mac_launch', {
-      description:'Launch only an operator-allowlisted macOS app under explicit mac/all session authorization.',
-      inputSchema:{bundle_id:macTarget.bundle_id,session_id:z.string().regex(/^[a-f0-9]{48}$/),request_id:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{15,79}$/),reason:z.string().min(10).max(300)},
-      annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true}
-    },input=>safely(()=>computer.desktop({operation:'launch',...input})));
     server.registerTool('computer_use_status', {
       title: 'Computer Use connectivity',
       description: 'Inspect availability of the native macOS Computer Use bridge inside Cloud Sandbox MCP V2. Never discloses credentials.',
