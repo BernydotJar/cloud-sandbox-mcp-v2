@@ -181,3 +181,7 @@ The operator-requested HCL iTime URL is under the exact origin
 https://wf24.myhcl.com. The existing installer now adds only that
 HTTPS origin for Chrome and Edge. The path /iTime/ngiTime/home is
 covered by origin matching; no unrelated myhcl.com subdomains are allowed.
+
+## UiPath staging
+
+Allow the exact origin https://staging.uipath.com in Chrome and Edge. This does not grant arbitrary uipath.com subdomains. The same guarded installer activates the addition without dropping earlier permissions.

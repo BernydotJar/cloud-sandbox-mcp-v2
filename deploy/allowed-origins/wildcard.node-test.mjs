@@ -6,7 +6,7 @@ import {fileURLToPath,URL} from 'node:url';
 import process from 'node:process';
 import {LCH_APEX,LCH_WILDCARD,validAllowlistEntry,allowsWebOrigin}
   from './allowed-origins.mjs';
-import {addLchOrigins,HCL_ITIME_ORIGIN} from './wildcard-config.mjs';
+import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 const here=fileURLToPath(new URL('.',import.meta.url));
@@ -76,13 +76,13 @@ test('user wildcard expands to apex and explicit dot-bounded rule, keeping previ
   const result=addLchOrigins(input);
   assert.equal(result.changed,true);
   assert.equal(result.beforeCount,2);
-  assert.equal(result.afterCount,10);
+  assert.equal(result.afterCount,11);
   assert(result.updated.includes('https://admin.microsoft.com,https://www.linkedin.com,'+
     LCH_APEX+','+LCH_WILDCARD));
   assert(result.updated.includes('SOME_SECRET=do-not-touch\n'));
   assert(result.updated.endsWith('OTHER=alive\n'));
   assert.deepEqual(addLchOrigins(result.updated),{
-    updated:result.updated,beforeCount:10,afterCount:10,changed:false,
+    updated:result.updated,beforeCount:11,afterCount:11,changed:false,
     alreadyApex:true,alreadyWildcard:true
   });
 });
@@ -91,7 +91,7 @@ test('single or double quoting and CRLF remain byte preserving',()=>{
     for(const eol of ['\n','\r\n']){
       const input=['X=y','COMPUTER_USE_ALLOWED_ORIGINS='+quote+'https://www.linkedin.com'+quote,'Y=z',''].join(eol);
       const result=addLchOrigins(input);
-      assert.equal(result.afterCount,9);
+      assert.equal(result.afterCount,10);
       assert(result.updated.includes(quote+'https://www.linkedin.com,'+LCH_APEX+','+LCH_WILDCARD));
       assert(result.updated.includes('https://*.atlassian.net'+quote));
       assert.equal(addLchOrigins(result.updated).updated,result.updated);
@@ -165,4 +165,16 @@ test('HCL iTime is an exact HTTPS host, not a blanket myhcl.com wildcard',()=>{
     'http://wf24.myhcl.com/','https://wf24.myhcl.com.evil.example/',
     'https://wf24.myhcl.com:8443/'])
     assert.equal(allowsWebOrigin(denied,policy),false,denied);
+});
+
+test('UiPath staging is exact HTTPS origin, no blanket uipath.com wildcard',()=>{
+  const result=addLchOrigins('COMPUTER_USE_ALLOWED_ORIGINS=https://www.linkedin.com\n');
+  assert(result.updated.includes(UIPATH_STAGING_ORIGIN));
+  assert.equal(addLchOrigins(result.updated).changed,false);
+  const allow=new Set([UIPATH_STAGING_ORIGIN]);
+  assert.equal(allowsWebOrigin('https://staging.uipath.com/',allow),true);
+  for(const bad of ['https://other.uipath.com/','https://sub.staging.uipath.com/',
+    'http://staging.uipath.com/','https://staging.uipath.com.evil.example/',
+    'https://staging.uipath.com:4444/'])
+    assert.equal(allowsWebOrigin(bad,allow),false,bad);
 });
