@@ -170,3 +170,7 @@ earlier LCH wildcard upgrade has not yet been installed. It validates
 and backs up the existing configuration before changing anything, checks
 that no delegation is active, restarts only the Mac Bridge service,
 and rolls back on failure.
+
+## LinkedIn wildcard
+
+Authorize https://www.linkedin.com plus https://*.linkedin.com for both Chrome and Edge. DNS-label boundary checks reject lookalikes, HTTP and nondefault ports. Apply with install-lch-wildcard-on-mac.mjs --activate.

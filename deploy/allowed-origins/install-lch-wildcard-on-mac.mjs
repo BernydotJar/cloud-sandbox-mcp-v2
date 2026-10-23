@@ -17,7 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {TextDecoder} from 'node:util';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {addLchOrigins,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
+import {addLchOrigins,LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 import {validAllowlistEntry} from './allowed-origins.mjs';
@@ -160,7 +160,7 @@ async function main(){
     fail('INVALID_LCH_HELPER_RELEASE');
   if(stored.helper && !stored.helper.bytes.equals(helperRelease.bytes)){
     const oldSha=createHash('sha256').update(stored.helper.bytes).digest('hex');
-    if(oldSha!=='aea794ebd723c452ae6427b7064f3815d54033fbf23884a9ce397a475a227c04')
+    if(!new Set(['aea794ebd723c452ae6427b7064f3815d54033fbf23884a9ce397a475a227c04','7a7bac24d127c891f9932b92646aa19155c89ddbd900667a5a46be551cbb53fc']).has(oldSha))
       fail('EXISTING_ORIGIN_HELPER_MISMATCH');
   }
   syntaxCheck(bridgePatch.source);
@@ -173,6 +173,8 @@ async function main(){
     next.alreadyWildcard && !bridgePatch.changed && !runtimePatch.changed);
   log('MODE',mode);
   log('APEX',LCH_APEX);
+  log('LINKEDIN_APEX',LINKEDIN_APEX);
+  log('LINKEDIN_WILDCARD',LINKEDIN_WILDCARD);
   log('SUBDOMAIN_PATTERN',LCH_WILDCARD);
   log('UIPATH_APEX',UIPATH_APEX);
   log('UIPATH_WILDCARD',UIPATH_WILDCARD);
@@ -243,6 +245,7 @@ async function main(){
     log('APEX_ALLOWED','YES');
     log('SUBDOMAIN_PATTERN_ACTIVE','YES');
     log('UIPATH_ATLASSIAN_PATTERNS_ACTIVE','YES');
+    log('LINKEDIN_SUBDOMAINS_ACTIVE','YES');
     log('ORIGINS_ACTIVE',after.native.allowlisted_origins);
     log('BACKUP',backupDir);
   }catch(error) {

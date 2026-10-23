@@ -231,3 +231,7 @@ operator-run Mac allowlist release with live health confirmation. Their
 scope applies to both Edge and Chrome, preserving browser-scoped delegated
 sessions, auditing and domain-boundary checks. Do not assume the rules
 are installed from documentation or code alone.
+
+## LinkedIn browser scope
+
+The intended Mac Bridge policy includes both https://www.linkedin.com and https://*.linkedin.com on Chrome and Edge, after the Mac installer reports success.

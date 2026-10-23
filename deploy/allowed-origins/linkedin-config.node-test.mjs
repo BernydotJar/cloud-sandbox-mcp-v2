@@ -63,7 +63,7 @@ test('reject missing or multiple origin settings without creating a new key',()=
 });
 test('reject unsafe wildcard, invalid URL, non-HTTPS or non-origin values',()=>{
   for(const unsafe of [
-    'http://www.linkedin.com','https://*.linkedin.com',
+    'http://www.linkedin.com',
     'https://www.linkedin.com/path',
     'https://www.linkedin.com/',
     'https://evil.example?continue=https://www.linkedin.com',
@@ -117,4 +117,9 @@ test('LinkedIn reinstallation remains idempotent after the LCH wildcard release'
   assert.equal(updated.changed,false);
   assert.equal(updated.afterCount,4);
   assert.equal(updated.updated,input);
+});
+
+test('specifically allowed LinkedIn wildcard is valid after enterprise policy upgrade',()=>{
+  const source='COMPUTER_USE_ALLOWED_ORIGINS=https://www.linkedin.com,https://*.linkedin.com\n';
+  assert.equal(addLinkedInOrigin(source).updated,source);
 });

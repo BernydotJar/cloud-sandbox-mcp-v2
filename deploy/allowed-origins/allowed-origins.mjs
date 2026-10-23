@@ -5,6 +5,8 @@ import {URL} from 'node:url';
  * No broad glob interpretation, prefix matching, arbitrary wildcard or ports.
  * Apex and wildcard must be separate allowlist entries.
  */
+export const LINKEDIN_APEX = 'https://www.linkedin.com';
+export const LINKEDIN_WILDCARD = 'https://*.linkedin.com';
 export const LCH_APEX = 'https://lch-app.cloud';
 export const LCH_WILDCARD = 'https://*.lch-app.cloud';
 export const UIPATH_APEX = 'https://cloud.uipath.com';
@@ -13,6 +15,7 @@ export const ATLASSIAN_APEX = 'https://atlassian.net';
 export const ATLASSIAN_WILDCARD = 'https://*.atlassian.net';
 export const APPROVED_WILDCARDS = new Map([
   [LCH_WILDCARD,'.lch-app.cloud'],
+  [LINKEDIN_WILDCARD,'.linkedin.com'],
   [UIPATH_WILDCARD,'.cloud.uipath.com'],
   [ATLASSIAN_WILDCARD,'.atlassian.net']
 ]);

@@ -25,7 +25,7 @@ test('operator wildcard syntax is recognized only for the exact named HTTPS doma
     assert.equal(validAllowlistEntry(invalid),false,invalid);
 });
 test('strict DNS hostname boundary and HTTPS-only wildcard matching',()=>{
-  const allow=new Set([LCH_APEX,LCH_WILDCARD,'https://www.linkedin.com',
+  const allow=new Set([LCH_APEX,LCH_WILDCARD,'https://www.linkedin.com','https://*.linkedin.com',
     'https://cloud.uipath.com','https://*.cloud.uipath.com',
     'https://atlassian.net','https://*.atlassian.net']);
   for(const permitted of [
@@ -35,7 +35,8 @@ test('strict DNS hostname boundary and HTTPS-only wildcard matching',()=>{
     'https://a.b.lch-app.cloud/admin',
     'https://WWW.LCH-APP.CLOUD/data',
     'https://foo.lch-app.cloud:443/path?private=hide',
-    'https://www.linkedin.com/feed',
+    'https://www.linkedin.com/feed','https://business.linkedin.com/',
+    'https://www.linkedin.com/profile','https://a.b.linkedin.com/',
     'https://cloud.uipath.com/','https://tenant.cloud.uipath.com/robots',
     'https://a.b.cloud.uipath.com/','https://atlassian.net/',
     'https://myteam.atlassian.net/jira','https://a.b.atlassian.net/'
@@ -51,7 +52,8 @@ test('strict DNS hostname boundary and HTTPS-only wildcard matching',()=>{
     'https://-foo.lch-app.cloud/',
     'https://foo-.lch-app.cloud/',
     'https://user:pass@foo.lch-app.cloud/',
-    'https://linkedin.com/feed','https://business.linkedin.com/feed',
+    'https://linkedin.com/feed','https://evil-linkedin.com/',
+    'https://foo.linkedin.com.evil.example/',
     'https://cloud.uipath.com.evil.example/','https://evilcloud.uipath.com/',
     'https://tenant.cloud.uipath.com:8443/',
     'http://tenant.cloud.uipath.com/',
@@ -74,13 +76,13 @@ test('user wildcard expands to apex and explicit dot-bounded rule, keeping previ
   const result=addLchOrigins(input);
   assert.equal(result.changed,true);
   assert.equal(result.beforeCount,2);
-  assert.equal(result.afterCount,8);
+  assert.equal(result.afterCount,9);
   assert(result.updated.includes('https://admin.microsoft.com,https://www.linkedin.com,'+
     LCH_APEX+','+LCH_WILDCARD));
   assert(result.updated.includes('SOME_SECRET=do-not-touch\n'));
   assert(result.updated.endsWith('OTHER=alive\n'));
   assert.deepEqual(addLchOrigins(result.updated),{
-    updated:result.updated,beforeCount:8,afterCount:8,changed:false,
+    updated:result.updated,beforeCount:9,afterCount:9,changed:false,
     alreadyApex:true,alreadyWildcard:true
   });
 });
@@ -89,7 +91,7 @@ test('single or double quoting and CRLF remain byte preserving',()=>{
     for(const eol of ['\n','\r\n']){
       const input=['X=y','COMPUTER_USE_ALLOWED_ORIGINS='+quote+'https://www.linkedin.com'+quote,'Y=z',''].join(eol);
       const result=addLchOrigins(input);
-      assert.equal(result.afterCount,7);
+      assert.equal(result.afterCount,8);
       assert(result.updated.includes(quote+'https://www.linkedin.com,'+LCH_APEX+','+LCH_WILDCARD));
       assert(result.updated.includes('https://*.atlassian.net'+quote));
       assert.equal(addLchOrigins(result.updated).updated,result.updated);

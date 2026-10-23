@@ -1,8 +1,8 @@
-import {LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,
+import {LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,
   ATLASSIAN_APEX,ATLASSIAN_WILDCARD,validAllowlistEntry}
   from './allowed-origins.mjs';
 import {ALLOWLIST_ENV_KEY} from './linkedin-config.mjs';
-export {LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD};
+export {LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD};
 
 /**
  * Preserve all unrelated environment bytes and preexisting origins.
@@ -36,7 +36,7 @@ export function addLchOrigins(envSource) {
   const alreadyWildcard=origins.includes(LCH_WILDCARD);
   if(!alreadyApex)origins.push(LCH_APEX);
   if(!alreadyWildcard)origins.push(LCH_WILDCARD);
-  for(const candidate of [UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD])
+  for(const candidate of [LINKEDIN_APEX,LINKEDIN_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD])
     if(!origins.includes(candidate))origins.push(candidate);
   if(origins.length>50)throw Error('ALLOWED_ORIGINS_LIMIT');
   const changed=beforeCount!==origins.length;

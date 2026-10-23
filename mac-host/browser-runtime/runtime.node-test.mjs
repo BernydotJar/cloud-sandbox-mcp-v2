@@ -459,7 +459,7 @@ test('CDP DOM fallback is non-semantic when DOM execution and text both fail', a
 
 test('persistent Chrome/Edge semantic driver honors LCH wildcard with strict DNS boundaries',async()=>{
   const allowedOrigins=new Set([
-    'https://www.linkedin.com',
+    'https://www.linkedin.com','https://*.linkedin.com',
     'https://lch-app.cloud',
     'https://*.lch-app.cloud',
     'https://cloud.uipath.com','https://*.cloud.uipath.com',
@@ -477,7 +477,7 @@ test('persistent Chrome/Edge semantic driver honors LCH wildcard with strict DNS
     'https://luma.lch-app.cloud/studio',
     'https://meridian.lch-app.cloud/',
     'https://foo.bar.lch-app.cloud/dashboard',
-    'https://www.linkedin.com/feed',
+    'https://www.linkedin.com/feed','https://business.linkedin.com/jobs',
     'https://cloud.uipath.com/','https://tenant.cloud.uipath.com/',
     'https://atlassian.net/','https://org.atlassian.net/jira'
   ])assert.equal(f.runtime.mutationAllowed(url),true,url);
@@ -486,7 +486,7 @@ test('persistent Chrome/Edge semantic driver honors LCH wildcard with strict DNS
     'https://evillch-app.cloud',
     'https://lch-app.cloud.attacker.example',
     'https://foo.lch-app.cloud:12345',
-    'https://business.linkedin.com',
+    'https://evil-linkedin.com',
     'https://x.cloud.uipath.com.evil.example/',
     'https://x.atlassian.net.evil.example/',
     'http://x.atlassian.net/'
