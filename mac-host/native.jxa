@@ -53,28 +53,114 @@ function run(argv) {
     const tabIndex = Number(argv[3]);
     const expected = String(argv[4] || '');
     const expectedTitle = String(argv[5] || '');
-    if (!(windowIndex > 0 && tabIndex > 0 && windowIndex <= windows.length)) return fail('STALE_WINDOW');
-    const target = windows[windowIndex - 1];
-    const tabs = target.tabs();
-    if (tabIndex > tabs.length) return fail('STALE_TAB');
-    if (safeUrl(tabs[tabIndex - 1].url()) !== expected) return fail('STALE_URL');
-    if (expectedTitle && String(tabs[tabIndex - 1].title() || '') !== expectedTitle) {
-      return fail('STALE_TITLE');
+    if (!Number.isInteger(windowIndex) || windowIndex < 1 ||
+        !Number.isInteger(tabIndex) || tabIndex < 1) return fail('STALE_WINDOW');
+
+    // Chrome and Edge reorder AppleScript window lists when a different
+    // tab/window is activated. A previously observed array index is a hint,
+    // NOT a durable tab identity. Rebind only to a uniquely matching pair of
+    // sanitized URL AND exact observed title; never infer identity by origin.
+    function tabMatches(tab) {
+      try {
+        // Title first: macOS Apple Events for tab URLs are relatively costly,
+        // especially when Edge has dozens of corporate tabs.
+        if (expectedTitle && String(tab.title() || '').slice(0,300) !== expectedTitle) return false;
+        return safeUrl(tab.url()) === expected;
+      } catch (_) { return false; }
+    }
+    function atIndex(wi, ti) {
+      try {
+        const w = windows[wi - 1];
+        if (!w) return null;
+        const tabs = w.tabs();
+        const tab = tabs[ti - 1];
+        if (!tab || !tabMatches(tab)) return null;
+        return {window: w, window_index: wi, tab_index: ti, tab: tab, rebound: false};
+      } catch (_) { return null; }
     }
 
+    let selected = atIndex(windowIndex, tabIndex);
+    if (!selected) {
+      let staleCode = 'STALE_WINDOW';
+      if (windowIndex <= windows.length) {
+        try {
+          const hinted = windows[windowIndex-1].tabs()[tabIndex-1];
+          staleCode = hinted ? (safeUrl(hinted.url()) === expected ?
+            'STALE_TITLE' : 'STALE_URL') : 'STALE_TAB';
+        } catch (_) { staleCode = 'STALE_TAB'; }
+      }
+      // Legacy callers without a title have no second identity factor:
+      // a changed index MUST fail rather than act on a possibly different tab.
+      if (!expectedTitle) return fail(staleCode);
+
+      let matches = 0;
+      for (let wi=0; wi<windows.length; wi++) {
+        let tabs;
+        try { tabs=windows[wi].tabs(); } catch (_) { continue; }
+        for (let ti=0; ti<tabs.length; ti++) {
+          if (!tabMatches(tabs[ti])) continue;
+          matches++;
+          if (matches > 1) return fail('AMBIGUOUS_NATIVE_TARGET');
+          selected={window:windows[wi],window_index:wi+1,
+                    tab_index:ti+1,tab:tabs[ti],rebound:true};
+        }
+      }
+      if (!selected) return fail(staleCode);
+    }
+    // Before mutating a global GUI, require a single identity even when the
+    // original index still matches. Two identically titled URLs in different
+    // windows are not distinguishable by the current MCP input contract.
+    if (operation === 'action' && !selected.rebound) {
+      let matches=0;
+      for (const candidateWindow of windows) {
+        let candidates;
+        try { candidates=candidateWindow.tabs(); } catch (_) { continue; }
+        for (const candidateTab of candidates) {
+          if (tabMatches(candidateTab) && ++matches > 1)
+            return fail('AMBIGUOUS_NATIVE_TARGET');
+        }
+      }
+      if (matches !== 1) return fail('TARGET_CHANGED');
+    }
+    const target = selected.window;
+    const selectedTabIndex = selected.tab_index;
+    if (operation === 'focus') {
+      // Window focus requires only browser Automation permission, not AX.
+      target.activeTabIndex = selectedTabIndex;
+      target.index = 1;
+      app.activate();
+      return ok({focused:true,browser:browser,url:expected,
+                 recovered_stale_index:selected.rebound});
+    }
     if (operation === 'inspect') {
-      return ok({browser: browser, window_index: windowIndex, tab_index: tabIndex, url: expected});
+      return ok({browser: browser, window_index: selected.window_index,
+                 tab_index: selected.tab_index, url: expected,
+                 recovered_stale_index: selected.rebound});
     }
-    // Validate all references before changing the active window/tab.
-    target.activeTabIndex = tabIndex;
-    target.index = 1;
-    app.activate();
-    if (operation === 'focus') return ok({focused: true, browser: browser, url: expected});
-
+    // Reading a screenshot must not collapse an open native <select> menu.
+    // Only foreground the tab when it is NOT already the focused target.
+    // System Events provides the process-level foreground check so an
+    // inactive Edge window cannot be mistaken for the actual desktop front.
     const systems = Application('System Events');
     const proc = systems.processes[apps[browser]];
     if (!proc.exists()) return fail('ACCESSIBILITY_PROCESS_UNAVAILABLE');
+    let sameFrontTab=false;
+    try {
+      const top=app.windows()[0];
+      sameFrontTab=Boolean(proc.frontmost()) && !!top &&
+        tabMatches(top.activeTab()) && tabMatches(target.activeTab());
+    } catch (_) { sameFrontTab=false; }
+    if (!sameFrontTab) {
+      target.activeTabIndex = selectedTabIndex;
+      target.index = 1;
+      app.activate();
+    }
     if (operation === 'bounds') {
+      // The capture backend crops the FRONTMOST window, so refuse to return
+      // a screenshot of a different tab after a focus/order race.
+      const frontmost = app.windows()[0];
+      if (!frontmost || !tabMatches(frontmost.activeTab()) ||
+          !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
       const win = proc.windows[0];
       const p = win.position();
       const s = win.size();
@@ -82,12 +168,13 @@ function run(argv) {
     }
     if (operation === 'action') {
       // Revalidate the visible selection immediately before the UI event.
+      // A window reorder does not invalidate the resolved window object.
+      // Verify BOTH the target's active tab and the browser's actual front
+      // window before sending a keystroke/click to the global macOS UI.
       const refreshed = app.windows();
       const activeWindow = refreshed[0];
-      if (!activeWindow || safeUrl(activeWindow.activeTab().url()) !== expected) return fail('TARGET_CHANGED');
-      if (expectedTitle && String(activeWindow.activeTab().title() || '') !== expectedTitle) {
-        return fail('TARGET_CHANGED');
-      }
+      if (!activeWindow || !tabMatches(activeWindow.activeTab()) ||
+          !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
       const action = String(argv[6] || '');
       if (action === 'click') {
         const x = Number(argv[7]), y = Number(argv[8]);
@@ -104,7 +191,8 @@ function run(argv) {
         if (!Object.prototype.hasOwnProperty.call(codes, key)) return fail('INVALID_KEY');
         systems.keyCode(codes[key]);
       } else return fail('INVALID_ACTION');
-      return ok({performed: true, action: action, browser: browser});
+      return ok({performed: true, action: action, browser: browser,
+                 recovered_stale_index: selected.rebound});
     }
     return fail('INVALID_OPERATION');
   } catch (error) {

@@ -259,3 +259,18 @@ Keep login/auth, browser transport, allowlisted origin, actual row/column
 cell writes, persisted read-back and Graph Harness GH04/GH05 evidence
 distinct. Never infer GO from a connected browser; gates require explicit
 definitions and separately verifiable acceptance results.
+
+## Native browser drift control (Chrome and Edge)
+
+For an explicitly requested authenticated Mac browser profile, use the
+actual browser (Edge stays Edge; never suggest switching an account to
+Chrome). The JXA browser window/tab index is an ephemeral discovery hint,
+not persistent identity. Read
+`docs/computer-use-v2/EDGE_NATIVE_STABILITY.md` before diagnosing
+`STALE_URL`, `STALE_TAB` or transient dropdowns. The updated native
+driver can safely recover a uniquely matching exact title+URL and avoids
+unnecessary reactivation while capturing already-foreground dropdowns,
+but this remains **source code** until Mac operator deployment succeeds.
+Do not claim semantic Playwright/ARIA for a native fallback. Do not
+duplicate a UI mutation on uncertain results; re-inspect actual persisted
+business state. Do not touch unrelated browser profiles or active agent grants.

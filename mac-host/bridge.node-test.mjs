@@ -705,3 +705,39 @@ test('native tab allowlist honors apex, deep wildcard and domain boundary',()=>{
     'https://luma.lch-app.cloud:8443/'])
     assert.equal(isAllowlistedTabUrl(url,policy),false);
 });
+
+test('ambiguous native Edge tab identity blocks action BEFORE approval or dispatch',async()=>{
+  let approvals=0,actions=0;
+  const {post}=await ready({
+    dynamicTabs:true,
+    approvalHandler:async()=>{approvals++;return true;},
+    nativeHandler:async(operation)=>{
+      if(operation==='inspect')throw Error('AMBIGUOUS_NATIVE_TARGET');
+      if(operation==='action')actions++;
+      return {performed:true};
+    }
+  });
+  const result=await post('/v1/action',{
+    ...target,expected_title:'Microsoft 365',action:'press_key',key:'tab',
+    reason:'Navigate the uniquely identified Microsoft 365 tab only'
+  });
+  assert.equal(result.status,400);
+  assert.equal(result.error,'AMBIGUOUS_NATIVE_TARGET');
+  assert.equal(approvals,0);
+  assert.equal(actions,0);
+});
+
+test('screenshot rejects a changed foreground native tab before capture',async()=>{
+  let captures=0;
+  const {post}=await ready({
+    nativeHandler:async operation=>{
+      if(operation==='bounds')throw Error('TARGET_CHANGED');
+      return {performed:true};
+    },
+    captureHandler:async()=>{captures++;return {mime_type:'image/png',base64:'iVBORw0KGgo='};}
+  });
+  const result=await post('/v1/screenshot',target);
+  assert.equal(result.status,400);
+  assert.equal(result.error,'TARGET_CHANGED');
+  assert.equal(captures,0);
+});
