@@ -17,10 +17,11 @@ import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {TextDecoder} from 'node:util';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {addLchOrigins,LCH_APEX,LCH_WILDCARD} from './wildcard-config.mjs';
+import {addLchOrigins,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 import {validAllowlistEntry} from './allowed-origins.mjs';
+import {createHash} from 'node:crypto';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const log=(key,val)=>process.stdout.write('[LCH Bridge Origins] '+key+'='+val+'\n');
@@ -157,8 +158,11 @@ async function main(){
      !helperCode.includes('allowsWebOrigin') ||
      !validAllowlistEntry(LCH_WILDCARD))
     fail('INVALID_LCH_HELPER_RELEASE');
-  if(stored.helper && !stored.helper.bytes.equals(helperRelease.bytes))
-    fail('EXISTING_ORIGIN_HELPER_MISMATCH');
+  if(stored.helper && !stored.helper.bytes.equals(helperRelease.bytes)){
+    const oldSha=createHash('sha256').update(stored.helper.bytes).digest('hex');
+    if(oldSha!=='aea794ebd723c452ae6427b7064f3815d54033fbf23884a9ce397a475a227c04')
+      fail('EXISTING_ORIGIN_HELPER_MISMATCH');
+  }
   syntaxCheck(bridgePatch.source);
   syntaxCheck(runtimePatch.source);
   syntaxCheck(helperCode);
@@ -170,6 +174,10 @@ async function main(){
   log('MODE',mode);
   log('APEX',LCH_APEX);
   log('SUBDOMAIN_PATTERN',LCH_WILDCARD);
+  log('UIPATH_APEX',UIPATH_APEX);
+  log('UIPATH_WILDCARD',UIPATH_WILDCARD);
+  log('ATLASSIAN_APEX',ATLASSIAN_APEX);
+  log('ATLASSIAN_WILDCARD',ATLASSIAN_WILDCARD);
   log('TARGET_BROWSERS','CHROME_EDGE_SHARED_ALLOWLIST');
   log('ORIGINS_BEFORE',next.beforeCount);
   log('ORIGINS_AFTER',next.afterCount);
@@ -234,6 +242,7 @@ async function main(){
     log('BRIDGE_HEALTH','PASS');
     log('APEX_ALLOWED','YES');
     log('SUBDOMAIN_PATTERN_ACTIVE','YES');
+    log('UIPATH_ATLASSIAN_PATTERNS_ACTIVE','YES');
     log('ORIGINS_ACTIVE',after.native.allowlisted_origins);
     log('BACKUP',backupDir);
   }catch(error) {

@@ -627,7 +627,9 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
   const allowlist=new Set([
     'https://www.linkedin.com',
     'https://lch-app.cloud',
-    'https://*.lch-app.cloud'
+    'https://*.lch-app.cloud',
+    'https://cloud.uipath.com','https://*.cloud.uipath.com',
+    'https://atlassian.net','https://*.atlassian.net'
   ]);
   for(const browser of ['chrome','edge']) {
     const {post,calls}=await ready({
@@ -641,7 +643,7 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
     const status=await post('/v1/status');
     assert.equal(status.status,200);
     assert.equal(status.data.lch_app_cloud_wildcard_enabled,true);
-    assert.equal(status.data.allowlisted_origins,3);
+    assert.equal(status.data.allowlisted_origins,7);
     const grant=await post('/v1/session/begin',{
       scope:browser,duration_minutes:10,max_actions:1,
       purpose:'Verify test-only wildcard origin policy for both supported browsers'
@@ -653,7 +655,9 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
       'https://luma.lch-app.cloud/studio',
       'https://meridian.lch-app.cloud/',
       'https://future.service.lch-app.cloud/',
-      'https://www.linkedin.com/feed/'
+      'https://www.linkedin.com/feed/',
+      'https://cloud.uipath.com/','https://org.cloud.uipath.com/',
+      'https://atlassian.net/','https://customer.atlassian.net/jira'
     ]){
       const data=await post('/v1/action',{
         browser,window_index:1,tab_index:1,
@@ -672,7 +676,10 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
       'https://evillch-app.cloud/',
       'http://luma.lch-app.cloud/',
       'https://foo.lch-app.cloud:8443/',
-      'https://linkedin.com/'
+      'https://linkedin.com/',
+      'https://tenant.cloud.uipath.com.evil.example/',
+      'https://customer.atlassian.net.evil.example/',
+      'https://customer.atlassian.net:4444/'
     ]){
       const denied=await post('/v1/action',{
         browser,window_index:1,tab_index:1,

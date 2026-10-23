@@ -221,3 +221,13 @@ automatically register a first-class PdfCraft tool in the ChatGPT-side
 Cloud Sandbox MCP catalog or configure any other CLI client. See
 `docs/artcraft/README.md` for installation, scope, repeatable tests and
 recovery.
+
+## UiPath / Atlassian cloud browser origins
+
+The intended Mac Bridge action policy additionally contains the HTTPS
+apex and dot-bounded tenant wildcards for cloud.uipath.com and atlassian.net.
+These are approved in the source policy but are only active after an
+operator-run Mac allowlist release with live health confirmation. Their
+scope applies to both Edge and Chrome, preserving browser-scoped delegated
+sessions, auditing and domain-boundary checks. Do not assume the rules
+are installed from documentation or code alone.

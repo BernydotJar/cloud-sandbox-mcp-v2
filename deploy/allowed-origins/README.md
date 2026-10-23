@@ -146,3 +146,27 @@ a subdomain takeover would inherit the broad action authority. Delegated
 sessions still require a user-authorized task and remain scoped to one
 browser. A screenshot/click passing does not prove the business outcome,
 and this rule does not authorize unsolicited posting, billing or deployment.
+
+## UiPath and Atlassian wildcard authorization
+
+The same one-shot wildcard release also adds these four HTTPS entries:
+- https://cloud.uipath.com
+- https://*.cloud.uipath.com
+- https://atlassian.net
+- https://*.atlassian.net
+
+The apex and subdomains are separate entries. They authorize exact HTTPS
+hostnames and arbitrarily deep, valid DNS subdomains only, without permitting
+similar suffixes or arbitrary ports. The existing LCH, LinkedIn and other
+origins stay unchanged. Both Edge and Chrome use the same allowlist and
+continue to require an authorized browser-scoped delegated session.
+
+Use the same Mac operator command:
+    node "$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/allowed-origins/install-lch-wildcard-on-mac.mjs" --activate
+
+The installer accepts the previously released, verified LCH helper by
+SHA-256 and upgrades it in place. It also supports the case in which the
+earlier LCH wildcard upgrade has not yet been installed. It validates
+and backs up the existing configuration before changing anything, checks
+that no delegation is active, restarts only the Mac Bridge service,
+and rolls back on failure.

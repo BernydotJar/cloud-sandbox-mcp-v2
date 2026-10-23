@@ -149,3 +149,14 @@ applied to the live service.
 The existing explicit LinkedIn origin https://www.linkedin.com is
 preserved. Wildcard expansion covers future hosts, so the site operator
 must monitor DNS entries to prevent unintended subdomain takeover.
+
+## UiPath Cloud / Atlassian tenant origin rules
+
+The explicitly approved additional HTTPS rules are:
+https://cloud.uipath.com, https://*.cloud.uipath.com,
+https://atlassian.net and https://*.atlassian.net.
+They apply to Chrome and Edge. The same protected one-shot installer
+for LCH wildcards includes these new entries in its allowlist migration.
+They do not grant access to arbitrary uipath.com subdomains, ports,
+external Atlassian Cloud domains, or lookalike hostnames. The live Bridge
+remains the source of truth; local repository code alone is not activation.

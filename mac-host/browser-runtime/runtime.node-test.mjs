@@ -461,7 +461,9 @@ test('persistent Chrome/Edge semantic driver honors LCH wildcard with strict DNS
   const allowedOrigins=new Set([
     'https://www.linkedin.com',
     'https://lch-app.cloud',
-    'https://*.lch-app.cloud'
+    'https://*.lch-app.cloud',
+    'https://cloud.uipath.com','https://*.cloud.uipath.com',
+    'https://atlassian.net','https://*.atlassian.net'
   ]);
   const f=fixture({
     allowedOrigins,
@@ -475,14 +477,19 @@ test('persistent Chrome/Edge semantic driver honors LCH wildcard with strict DNS
     'https://luma.lch-app.cloud/studio',
     'https://meridian.lch-app.cloud/',
     'https://foo.bar.lch-app.cloud/dashboard',
-    'https://www.linkedin.com/feed'
+    'https://www.linkedin.com/feed',
+    'https://cloud.uipath.com/','https://tenant.cloud.uipath.com/',
+    'https://atlassian.net/','https://org.atlassian.net/jira'
   ])assert.equal(f.runtime.mutationAllowed(url),true,url);
   for(const url of [
     'http://luma.lch-app.cloud',
     'https://evillch-app.cloud',
     'https://lch-app.cloud.attacker.example',
     'https://foo.lch-app.cloud:12345',
-    'https://business.linkedin.com'
+    'https://business.linkedin.com',
+    'https://x.cloud.uipath.com.evil.example/',
+    'https://x.atlassian.net.evil.example/',
+    'http://x.atlassian.net/'
   ])assert.equal(f.runtime.mutationAllowed(url),false,url);
   await f.runtime.close();
 });

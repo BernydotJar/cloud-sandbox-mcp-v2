@@ -7,10 +7,19 @@ import {URL} from 'node:url';
  */
 export const LCH_APEX = 'https://lch-app.cloud';
 export const LCH_WILDCARD = 'https://*.lch-app.cloud';
+export const UIPATH_APEX = 'https://cloud.uipath.com';
+export const UIPATH_WILDCARD = 'https://*.cloud.uipath.com';
+export const ATLASSIAN_APEX = 'https://atlassian.net';
+export const ATLASSIAN_WILDCARD = 'https://*.atlassian.net';
+export const APPROVED_WILDCARDS = new Map([
+  [LCH_WILDCARD,'.lch-app.cloud'],
+  [UIPATH_WILDCARD,'.cloud.uipath.com'],
+  [ATLASSIAN_WILDCARD,'.atlassian.net']
+]);
 
 export function validAllowlistEntry(entry) {
   if(typeof entry!=='string')return false;
-  if(entry===LCH_WILDCARD)return true;
+  if(APPROVED_WILDCARDS.has(entry))return true;
   if(entry.includes('*') || entry.length>2048)return false;
   try {
     const url=new URL(entry);
@@ -27,14 +36,13 @@ export function allowsWebOrigin(urlValue, origins) {
   // Keep preexisting *exact* origin semantics (including localhost test rigs).
   // The wildcard itself is only HTTPS, and Mac Bridge config accepts HTTPS.
   if(origins.has(url.origin))return true;
-  if(url.protocol!=='https:' || !origins.has(LCH_WILDCARD))return false;
-  // Dot-bounded DNS suffix: foo.lch-app.cloud valid; evillch-app.cloud not.
-  // An arbitrary port changes authority and is not covered by wildcard grant.
-  const suffix='.lch-app.cloud';
-  if(!url.hostname.endsWith(suffix) || url.port ||
-     url.hostname.length<=suffix.length || url.hostname.length>253)return false;
-  const prefix=url.hostname.slice(0,-suffix.length);
-  // Reject empty/invalid labels, not merely an arbitrary textual suffix.
-  return prefix.split('.').every(label=>
-    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+  if(url.protocol!=='https:' || url.port || url.hostname.length>253)return false;
+  for(const [pattern,suffix] of APPROVED_WILDCARDS){
+    if(!origins.has(pattern) || !url.hostname.endsWith(suffix) ||
+       url.hostname.length<=suffix.length)continue;
+    const prefix=url.hostname.slice(0,-suffix.length);
+    if(prefix.split('.').every(label=>
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)))return true;
+  }
+  return false;
 }
