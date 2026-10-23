@@ -11,12 +11,12 @@ When using this MCP server:
 7. Use `git_push` only after explicit authorization and only when enabled by the operator.
 8. Report commands, exit codes, changed files, tests, assumptions, and remaining risks.
 
-## Default autonomous web automation (all projects)
+## Playwright-first web automation (all projects)
 
-9. For EVERY ordinary web task (navigation, forms, third-party apps, UI QA and E2E), use the existing workstation in /workspace/projects and an isolated Playwright Chromium headless browser via workspace_exec. The browser must not take foreground focus on macOS. Existing Chessy-style offscreen QA is the reference pattern; docs/computer-use-v2/OFFSCREEN_QA.md documents the smoke gate. Chrome/Edge on the Mac, browser_tabs, host CDP and computer_use_* are NOT the default path.
-10. Maintain separate access-controlled persistent headless profiles per site/account only when needed. Never import cookies or secrets from personal Mac Chrome/Edge. On auth_required, provide a scoped one-time login handoff and recheck the persisted profile after login; do not label an anonymous page successful. Do not bypass CAPTCHA, MFA or login protection. No authentication session is magically shared from Mac to Linux.
-11. Use role/label/testid selectors, verified navigation, trace/screenshot artifacts, bounded timeouts and audited workflow results. Do not re-dispatch actions with uncertain effects, especially uploads/purchases/publishing. Never change another project's profile.
-12. When the user requests REUSING AN ALREADY-AUTHENTICATED MAC SESSION (including a terminal client verified to use this MCP), browser_tabs and the Mac bridge are the requested workflow: prefer persistent CDP/Playwright, use exact session tab identity, and avoid foreground focus. Request bounded delegated permission before mutations. Native Computer Use is a last resort, not a background solution. Do not copy cookies or silently export tokens.
+9. For ALL ordinary web UI work (site navigation, forms, product UI, browser QA, UI/UX and E2E), prefer a project's existing Playwright suite, then isolated headless Playwright Chromium in dev-main. This is the global default, not only a QA preference. Do not foreground personal Chrome/Edge tabs, require Mac CDP or call native Computer Use by default.
+10. Use the pure capability selector `scripts/browser-automation/engine-router.mjs` for ambiguous engine decisions. Supply current observed capabilities rather than configured flags; see `docs/computer-use-v2/ENGINE_ROUTING.md`. It selects policy only and never grants permission or executes UI actions.
+11. For isolated authenticated web automation, use a separate protected Playwright profile and approved one-time login handoff. Never copy credentials, cookies, sessions, tokens or OTPs from personal Mac Chrome/Edge. An auth redirect is AUTH_REQUIRED, not a successful logged-in test.
+12. The exception is an explicitly requested ALREADY AUTHENTICATED Mac Chrome/Edge session: inspect Browser MCP provider and semantic tab capability first. Its persistent adapter may use Playwright over CDP; if unavailable, only consider a user-authorized native foreground fallback with independently verifiable outcomes. Never silently switch to a different account, browser or coordinate clicks. CDP adapter failure never blocks independent Playwright.
 
 ## Background-first application QA
 

@@ -1,107 +1,152 @@
-# Cloud Sandbox MCP V2 — engine routing contract
+# Cloud Sandbox MCP V2 - capability-based engine routing
 
-## CDP is not Playwright
+## Normative default: Playwright-first for web UI
 
-Cloud Sandbox MCP V2 orchestrates multiple independent execution engines.
+For ALL ordinary web UI tasks (navigation, forms, visual inspection, UI/UX,
+regression, E2E, accessibility and stress journeys), use Playwright FIRST:
+1. Reuse the project's existing Playwright suite when it can run in isolation.
+2. Otherwise use Playwright + isolated headless Chromium in dev-main.
+3. If the user explicitly requires a different browser engine, use the exact
+   Playwright browser channel only when installed; do not silently substitute.
+4. A request to reuse an ALREADY AUTHENTICATED Mac Chrome/Edge tab is a distinct
+   case: use Browser MCP for that exact authorized session and select its best
+   available semantic provider. Do not attempt an anonymous Playwright profile
+   and present it as the authenticated session.
+5. If the authenticated Browser MCP provider is unavailable, report a targeted
+   block. Native foreground browser fallback is permissible ONLY when the user
+   authorizes it, the task does not require semantic selectors, and the final
+   business outcome can be verified independently. Coordinates are a LAST resort.
+6. For Finder, Terminal, VS Code and other macOS desktop apps use the native
+   Mac Computer Use surface, not a browser driver. For deterministic shell/API
+   tasks prefer scoped shell/API execution rather than simulating keystrokes.
 
-| Engine | Purpose | Installed status |
-| --- | --- | --- |
-| Isolated Playwright/Chromium | Off-screen product QA and CI E2E | Working independently in Linux workstation |
-| Browser MCP authenticated session | Chrome/Edge existing tabs via a browser transport, semantic actions when supported | Working with Chrome CDP; Edge CDP currently failing |
-| Native Computer Use | Browser tabs through macOS automation; general desktop through Accessibility API is a separate future capability | Chrome/Edge native fallback; general desktop tools not registered |
-| Shell/APIs | Deterministic file, infrastructure and supported application actions | Working in Linux workstation |
+This is the browser-default standard for ALL agents using this workstation,
+not only UiPath, LUMA, Meridian or a single user workflow. Browser MCP is a
+tool interface; CDP is a transport; Playwright is an automation framework.
+The *isolated Playwright QA* runtime is independent of an authenticated
+operator browser. The installed Browser MCP persistent adapter uses
+`playwright-core` and `chromium.connectOverCDP` for attached Chrome/Edge
+sessions. That adapter does NOT make CDP mandatory for isolated Playwright.
 
-A CDP endpoint is a browser communication protocol, not Playwright.
-The installed Browser Runtime currently imports playwright-core and uses
-chromium.connectOverCDP for authenticated Chrome/Edge browser channels.
-That is **Playwright as the CDP client**, a specific implementation of
-Browser MCP, and has no bearing on isolated Playwright QA in a test process.
+The tested pure selector is
+`scripts/browser-automation/engine-router.mjs`.
+It makes routing decisions only: it cannot launch apps, authorize sessions or
+act on pages. Before passing capabilities to it, agents must probe the actual
+runtime; flags such as `configured=true` are not proof of a working provider.
 
-The macOS general-purpose mac_list_apps, mac_accessibility_tree,
-mac_focus_window and mac_open_app tools are NOT currently registered.
-Do not claim Finder, Terminal or VS Code native window control is
-available from the installed browser-specific Computer Use tools.
+Example - isolated browser with actual isolated Playwright capability verified:
 
-## Agent engine selection
+```bash
+node scripts/browser-automation/engine-router.mjs \
+  '{"task":{"kind":"web","intent":"qa"},"capabilities":{"isolated_playwright":true}}'
+```
 
-1. For independent web application QA/E2E, use the project Playwright
-   suite or headless isolated Chromium in the workstation, never the
-   personal Edge/Chrome session. Browser CDP is NOT a prerequisite.
-2. For user-authorized authenticated app edits, run read-only
-   computer_use_status, browser_runtime_status and browser_tabs for
-   the requested browser. Inspect actual tab capability, not settings.
-3. If provider=persistent, semantic_available=true and tab_ref exists,
-   use Browser MCP: browser_inspect then role/label/test-id browser_action.
-   Recheck revision, audit and independently verify persistence.
-4. If provider=native, semantic_available=false with a native_target,
-   the persistent CDP adapter is unavailable. Use scoped
-   computer_use_session_begin, screenshot and native actions ONLY when
-   user-authorized, reliable, foreground interaction is acceptable
-   and the final result can be independently verified. Native coordinate
-   clicks are a LAST resort and NEVER semantic Playwright evidence.
-5. If a task requires semantic selectors or an exact cell identity and
-   the native engine cannot provide it, return BLOCKED_SEMANTIC_BROWSER,
-   not a false pass. The rest of isolated Playwright QA may still proceed.
-6. Do not copy credentials, browser profiles or cookies between browsers,
-   launch duplicate browsers or connect random CDP ports.
-7. For general native macOS windows/apps, without registered app/AX tools
-   report BLOCKED_NATIVE_DESKTOP. Use a deterministic CLI/API only when
-   it truly satisfies the requested action.
+Expected: `engine=playwright_isolated`, `code=PLAYWRIGHT_DEFAULT`.
+If a project suite is present, set `project_playwright_suite=true` and prefer
+`playwright_project`. For existing authenticated Mac sessions, pass
+`context=existing_mac`, `browser=chrome|edge`,
+`explicitly_requested_mac_session=true`, and ONLY actual tab capabilities.
+The router never exports or imports cookies and never authorizes itself.
+
+## Capability and execution decision matrix
+
+| Task | Preferred engine | Alternate | What cannot be inferred |
+| --- | --- | --- | --- |
+| Web QA/E2E | Project Playwright | Isolated Playwright Chromium | Mac browser/CDP health is irrelevant |
+| Ordinary web navigation/forms | Isolated Playwright | Project-specific Playwright workflow | Existing Mac login is NOT shared |
+| Web UI requiring existing authenticated Chrome/Edge | Browser MCP with semantic provider (including Playwright/CDP when healthy) | Explicit, verifiable native foreground browser action | Native does not equal semantic Playwright |
+| Exact Edge or Chrome browser-specific regression | Isolated Playwright with exact available browser channel | BLOCKED_EXACT_BROWSER | Never silently swap browser engines |
+| Native Finder/Terminal/VS Code | Native macOS Accessibility (if exposed/authorized) | Approved deterministic CLI/API for equivalent tasks | Browser MCP does not control arbitrary Mac windows |
+| Deterministic CLI/API operation | Scoped shell/API | Explicit user-requested UI workflow | A command result is not a browser E2E assertion |
+
+Playwright isolation means independent browser processes/contexts, controlled
+permissions, traces, screenshots and selectors by role/label/test-id. Avoid
+persistent profiles for test identities unless required. Use the Chessy browser
+QA pattern. Do not touch Mac Chrome/Edge tabs or foreground a window by default.
+For a task that needs authentication in isolated Chromium, return AUTH_REQUIRED
+and use an approved isolated login handoff; do not transfer personal cookies,
+passwords, OTPs, local storage or browser profiles.
+
+The browser selection must be made by *required capabilities, authorization,
+and evidence expectations*, not by a fixed CDP preference. Do not guess ports,
+automatically restart browsers, disable browser security warnings, or bypass MFA.
+No fallback may silently change the user's requested browser or account.
+
+## Existing authenticated Mac tab: execution contract
+
+1. Confirm the user expressly requested the existing Mac session. Consult
+   `computer_use_status`, `browser_runtime_status`, `browser_tabs(browser)`.
+2. If `provider=persistent`, `semantic_available=true` and a real `tab_ref`
+   exists, choose Browser MCP semantic tools. Get the current revision, then
+   use exact role/label/test-id selectors and a task-specific delegated grant
+   for any mutation; do not reuse another agent's session.
+3. If `provider=native` and `semantic_available=false`, this is not
+   a semantic browser. Only consider native fallback after explicit authorization,
+   fresh native target identity/screenshot, and proof that the task can be
+   independently verified. Coordinate clicks are the LAST resort.
+4. If a cell editor or other task requires strict semantic row/column identity,
+   and only native coordinate fallback is available, return
+   `BLOCKED_SEMANTIC_BROWSER` for that step. Other isolated Playwright QA
+   proceeds independently.
+5. Never retry an uncertain UI mutation blindly. Read back persisted values;
+   use distinct Graph Harness gates for click, application acceptance, and
+   independent persistence verification.
+
+A failure of `chromium.connectOverCDP` for an authenticated Edge profile
+is a failure of that *particular attached transport*, not of independent
+Playwright. Repair of Edge CDP is an optional diagnostic/workstream, NOT a
+prerequisite for routine web UI automation.
+
+## Native macOS desktop status and permissions
+
+Native macOS general-purpose app control is not exposed through the
+browser-specific MCP tool registry currently observed. The operator has
+reported that a separate agent opened Terminal and executed curl on the Mac;
+this is a functional smoke test of a Mac execution path, not proof that
+`mac_list_apps`, `mac_accessibility_tree`, `mac_focus_window` and
+`mac_open_app` are all installed in the current MCP registry. Where general
+desktop tools are absent, return `BLOCKED_NATIVE_DESKTOP` rather than
+claiming Browser MCP tabs can control Finder or Terminal. The desktop MCP
+extension remains subject to its separate rollout/permission gates.
 
 ## UiPath website cell-entry transaction
 
 Separate the **source skill** (data extraction/validation) from the
-**UI adapter** (web-cell writes). Neither source data nor successful
-sign-in proves that specific rows were updated.
+**UI adapter** (web-cell writes). Neither source data nor successful sign-in
+proves that specific rows were updated. Capture before state, identify each
+row/column by stable labels, type and expected value, and prefer exact semantic
+browser controls in the authenticated session. For isolated test identities,
+Playwright is preferred. A live Edge session must not be replaced with an
+anonymous Chromium login. On authenticated Browser MCP failure, block only
+the unsupported step instead of declaring all browser automation broken.
 
-Capture before state. Identify each row/column by stable labels, type
-and expected value. Prefer an approved deterministic application API
-when equivalent; otherwise semantic Browser MCP. Use native fallback
-only under the restrictions above. Do not blindly bulk type or retry
-uncertain writes. After entry, read back the target row and verify
-persisted value after app save/reload where supported. Collect redacted
-before/after evidence, action count, browser engine, and row-level outcome.
+After entry, read back the target row and verify its **persisted value** after
+save or reload where supported. Collect redacted before/after evidence,
+action count, engine, and row-level outcome. Native coordinate input cannot
+satisfy semantic evidence requirements by assertion alone.
 
-## Keep release gates separate
+## Graph Harness release gates
 
-A successful login, allowlisted UiPath origin, CDP connection,
-foreground click, and persistent cell value are FIVE distinct facts.
-GH04/GH05 are project-specific Graph Harness gates. Read the actual
-acceptance definitions before claiming their meaning. For each gate
-record evidence-backed PASS, FAIL or BLOCKED; do not declare production
-GO solely from CDP connectivity or a UI edit.
-
-## Recover Edge authenticated semantic capability
-
-Observed on 2026-10-23: Edge is open and has authenticated UiPath tabs.
-Its provider is configured for CDP but returned BROWSER_ATTACH_FAILED.
-The MCP correctly falls back to provider=native,
-semantic_available=false. Chrome CDP is connected separately.
-The Edge failure is a transport attachment issue, not a failure of
-isolated Playwright or macOS automation authorization.
-
-To restore the persistent Edge adapter, in the EXISTING Edge instance
-inspect edge://inspect/#remote-debugging. If disabled, the operator
-must enable the browser-managed debugging permission. This is separate
-from Mac Bridge delegated authorization. The operator-run read-only
-Edge CDP doctor can verify the local marker, actual attach and tab
-identity, without printing URLs or tokens. The installed Mac bridge
-cannot arbitrarily enable debugging on behalf of the browser.
-
-After enablement, call browser_tabs(browser=edge). Require
-provider=persistent, semantic_available=true, and a tab_ref, then
-browser_inspect. Configured=true or cdp_attach_enabled=true alone
-is NOT sufficient. No browser/process restart, profile migration,
-permission bypass or guessed CDP port is authorized.
+A successful login, allowlisted URL, CDP connection, browser click, and
+persisted cell value are independent facts. GH04/GH05 are project-specific
+Graph Harness gates: read the actual acceptance definitions. Mark evidence
+PASS, FAIL or BLOCKED; missing verification is not production GO.
 
 ## Acceptance scenarios
 
-| Test | Correct outcome |
+| Scenario | Required result |
 | --- | --- |
-| QA in isolated Chromium, Edge CDP down | Playwright QA proceeds |
-| Authenticated Edge, semantic tab_ref valid | Browser MCP semantic actions |
-| Edge provider=native, verified foreground actions authorized | Limited native fallback; no semantic claim |
-| Semantic-only cell editor, Edge CDP down | BLOCKED_SEMANTIC_BROWSER |
-| Finder/Terminal native tools not registered | BLOCKED_NATIVE_DESKTOP |
-| Cell entered but value not persisted | Not accepted |
-| GH04/GH05 definitions or evidence missing | BLOCKED, not production GO |
+| Ordinary QA with Chrome/Edge CDP down | Playwright project suite or isolated Chromium |
+| Existing authenticated Edge explicitly requested, semantic tab ready | Browser MCP semantic provider with session grant |
+| Existing authenticated Edge, native-only, strict semantic form | BLOCKED_SEMANTIC_BROWSER, not unverified coordinates |
+| Web task requests browser-specific Edge but only Chromium available | BLOCKED_EXACT_BROWSER |
+| Isolated browser login required, only Mac account authenticated | AUTH_REQUIRED; never copy cookies |
+| Finder/Terminal desktop tool missing | BLOCKED_NATIVE_DESKTOP |
+| Native fallback cannot prove persistent save | BLOCKED for that action |
+| Browser UI edit with missing GH04/GH05 evidence | BLOCKED, not production GO |
+
+See `mac-host/engine-routing.node-test.mjs`,
+`scripts/browser-automation/engine-router.node-test.mjs`,
+`scripts/browser-automation/README.md`,
+`docs/computer-use-v2/OFFSCREEN_QA.md` and the shared
+`/workspace/AGENTS.md` for the agent-facing entrypoint.

@@ -3,6 +3,8 @@ import { URL } from "node:url";
 /** Isolated background browser executor. No connection to personal Mac Chrome/Edge. */
 import { chromium } from 'playwright-core';
 import fs from 'node:fs/promises';
+import {constants as fsConstants} from 'node:fs';
+import {chooseExecutionEngine} from './engine-router.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import process from 'node:process';
@@ -16,6 +18,15 @@ if (!/^[a-z0-9][a-z0-9-]{0,48}$/.test(site)) throw Error('INVALID_SITE_ID');
 if (process.platform !== 'linux') throw Error('ISOLATED_LINUX_WORKSTATION_REQUIRED');
 const url = new URL(destination);
 if (url.username || url.password || !['https:'].includes(url.protocol)) throw Error('UNSAFE_URL');
+const executablePath=process.env.CHROMIUM_PATH || '/usr/bin/chromium';
+const executableAvailable=await fs.access(executablePath,fsConstants.X_OK)
+  .then(()=>true).catch(()=>false);
+const routing=chooseExecutionEngine({
+  task:{kind:'web',intent:'navigate',context:'isolated'},
+  capabilities:{isolated_playwright:executableAvailable}
+});
+if(routing.engine!=='playwright_isolated') throw Error(routing.code);
+
 const root = process.env.BROWSER_AUTOMATION_ROOT || '/workspace/.browser-automation';
 const profile = path.join(root, 'profiles', site);
 const output = path.join(root, 'evidence', site);
@@ -23,11 +34,11 @@ await fs.mkdir(profile, { recursive:true, mode:0o700 });
 await fs.mkdir(output, { recursive:true, mode:0o700 });
 await fs.chmod(profile, 0o700); await fs.chmod(output, 0o700);
 const run = crypto.randomUUID();
-const result = { run, site, started:new Date().toISOString(), status:'unknown', initialOrigin:url.origin, finalOrigin:null, title:null, evidence:[], headless:true };
+const result = { run, site, started:new Date().toISOString(), status:'unknown', initialOrigin:url.origin, finalOrigin:null, title:null, evidence:[], headless:true, engine:routing.engine, routing_policy:routing.policy_version };
 let context;
 try {
   context = await chromium.launchPersistentContext(profile, {
-    headless:true, executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',
+    headless:true, executablePath,
     args:['--no-sandbox','--disable-dev-shm-usage'],
     viewport:{ width:1280, height:900 },
     acceptDownloads:false
