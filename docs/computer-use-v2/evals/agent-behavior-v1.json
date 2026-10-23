@@ -1,0 +1,1191 @@
+{
+  "schema": "cloud-sandbox.agent-behavior-eval.v1",
+  "version": "2026-10-23",
+  "purpose": "Deterministic behavioral reinforcement for agent browser routing and business-write plans; synthetic scenario fixtures only",
+  "minimum_critical_pass_rate": 1.0,
+  "cases": [
+    {
+      "id": "WEB-001",
+      "failure_prevented": "Reuse existing project Playwright before generic browser tooling",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "isolated",
+          "browser": "chromium"
+        },
+        "capabilities": {
+          "project_playwright_suite": true,
+          "isolated_playwright": true
+        },
+        "plan": {
+          "engine": "playwright_project",
+          "operation": "run_qa"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "WEB-002",
+      "failure_prevented": "Ordinary website navigation must use isolated Playwright",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "isolated",
+          "browser": "chromium"
+        },
+        "capabilities": {
+          "isolated_playwright": true
+        },
+        "plan": {
+          "engine": "playwright_isolated",
+          "operation": "navigate"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "WEB-003",
+      "failure_prevented": "CDP failure in Edge cannot block independent Playwright",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "isolated",
+          "browser": "chromium"
+        },
+        "capabilities": {
+          "isolated_playwright": true,
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "playwright_isolated",
+          "operation": "run_qa"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "EDGE-001",
+      "failure_prevented": "Native Edge with CDP failed can still be inspected without changing profiles",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "inspect",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "EDGE-002",
+      "failure_prevented": "No silent transition from authenticated Edge to anonymous Playwright",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "playwright_isolated",
+          "operation": "inspect",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "ENGINE_POLICY_MISMATCH"
+      }
+    },
+    {
+      "id": "EDGE-003",
+      "failure_prevented": "Never switch authenticated Edge target to Chrome",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "inspect",
+          "target": {
+            "browser": "chrome",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "FRESH_UNIQUE_BROWSER_TARGET_REQUIRED"
+      }
+    },
+    {
+      "id": "EDGE-004",
+      "failure_prevented": "Native visual navigation with scoped delegation and origin allowed",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "EDGE-005",
+      "failure_prevented": "No native click without own delegated session",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "none",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "TASK_SCOPED_DELEGATION_REQUIRED"
+      }
+    },
+    {
+      "id": "EDGE-006",
+      "failure_prevented": "No action if enterprise origin is not allowed",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "denied"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "MUTATION_ORIGIN_NOT_ALLOWED"
+      }
+    },
+    {
+      "id": "EDGE-007",
+      "failure_prevented": "No action with duplicated exact title+URL target",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 2
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "FRESH_UNIQUE_BROWSER_TARGET_REQUIRED"
+      }
+    },
+    {
+      "id": "EDGE-008",
+      "failure_prevented": "No action with stale browser target",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": false,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "FRESH_UNIQUE_BROWSER_TARGET_REQUIRED"
+      }
+    },
+    {
+      "id": "EDGE-009",
+      "failure_prevented": "No action with missing exact title",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "FRESH_UNIQUE_BROWSER_TARGET_REQUIRED"
+      }
+    },
+    {
+      "id": "EDGE-010",
+      "failure_prevented": "No same-origin URL with query or token in the target identity",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time?token=redacted",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "FRESH_UNIQUE_BROWSER_TARGET_REQUIRED"
+      }
+    },
+    {
+      "id": "EDGE-011",
+      "failure_prevented": "Native visual inspection cannot be promoted to semantic QA execution",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "run_qa",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "OPERATION_SCOPE_ESCALATION"
+      }
+    },
+    {
+      "id": "EDGE-012",
+      "failure_prevented": "Native navigation must have explicit task permission",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": false
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BLOCKED_SEMANTIC_BROWSER"
+      }
+    },
+    {
+      "id": "EDGE-013",
+      "failure_prevented": "Do not borrow or terminate another agent delegated session",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "another_agent",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "ACTIVE_OTHER_AGENT_SESSION"
+      }
+    },
+    {
+      "id": "WRITE-001",
+      "failure_prevented": "Planned Save requires post-reload readback and cannot count a click as persistence",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "save",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "PERSISTENCE_PROOF_PLAN_REQUIRED"
+      }
+    },
+    {
+      "id": "WRITE-002",
+      "failure_prevented": "Valid pre-write plan must preserve record, duplicate, coverage and corporate authorization identity",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "save",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "WRITE-003",
+      "failure_prevented": "Do not submit a business record without an additional approval",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "submit_for_approval",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "SUBMIT_NOT_AUTHORIZED"
+      }
+    },
+    {
+      "id": "WRITE-004",
+      "failure_prevented": "Submission with separate explicit approval can pass only the preflight",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true,
+          "submit_explicitly_authorized": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "submit_for_approval",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "submit_authorization": {
+            "ref": "evidence/submit-authorization",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "WRITE-005",
+      "failure_prevented": "Missing project/day/row mapping prevents Save",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "save",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "RECORD_IDENTITY_PROOF_REQUIRED"
+      }
+    },
+    {
+      "id": "WRITE-006",
+      "failure_prevented": "Missing full category/holiday coverage prevents Save",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "save",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "CATEGORY_COVERAGE_REQUIRED"
+      }
+    },
+    {
+      "id": "WRITE-007",
+      "failure_prevented": "Missing corporate policy approval prevents Save",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": false,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "save",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "CORPORATE_APPROVAL_REQUIRED"
+      }
+    },
+    {
+      "id": "WRITE-008",
+      "failure_prevented": "Semantic-only mutation cannot be substituted by native coordinate clicks",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "mutate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "requires_semantic": true,
+          "native_fallback_approved": true,
+          "result_independently_verifiable": true,
+          "requires_corporate_approval": true,
+          "requires_category_coverage": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "save",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/approved-task",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed",
+          "proof_strategy": "reload_readback",
+          "record_identity": {
+            "ref": "evidence/exact-project-date-row",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "duplicate_check": {
+            "ref": "evidence/daily-duplicates",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "category_coverage": {
+            "ref": "evidence/all-work-categories",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "corporate_approval": {
+            "ref": "evidence/corporate-approval",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BLOCKED_SEMANTIC_BROWSER"
+      }
+    },
+    {
+      "id": "AUTH-001",
+      "failure_prevented": "No inferred login handoff between browser profiles",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "isolated",
+          "browser": "chromium",
+          "requires_authenticated_access": true
+        },
+        "capabilities": {
+          "isolated_playwright": true,
+          "isolated_profile_authenticated": false
+        },
+        "plan": {
+          "engine": "playwright_isolated",
+          "operation": "navigate"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "AUTH_REQUIRED"
+      }
+    },
+    {
+      "id": "DESKTOP-001",
+      "failure_prevented": "Browser MCP cannot masquerade as native macOS desktop tool",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "mac_desktop"
+        },
+        "capabilities": {
+          "native_mac_available": false
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "desktop_action"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BLOCKED_NATIVE_DESKTOP"
+      }
+    },
+    {
+      "id": "DESKTOP-002",
+      "failure_prevented": "Native macOS desktop requires a distinct task-scoped grant",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "mac_desktop"
+        },
+        "capabilities": {
+          "native_mac_available": true
+        },
+        "plan": {
+          "engine": "native_mac",
+          "operation": "desktop_action",
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/desktop-grant",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "NATIVE_DESKTOP_PREFLIGHT"
+      }
+    },
+    {
+      "id": "SHELL-001",
+      "failure_prevented": "Deterministic host API uses scoped shell instead of browser keyboard",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "shell_api"
+        },
+        "capabilities": {
+          "shell_api_available": true
+        },
+        "plan": {
+          "engine": "shell_api",
+          "operation": "shell_action"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "SCOPED_SHELL_PREFLIGHT"
+      }
+    }
+  ]
+}

@@ -302,3 +302,28 @@ approval or cross-agent session isolation.
 driver and real Chrome/Edge smoke. Source tests and an installer package
 do not establish live deployment. Full acceptance:
 `docs/computer-use-v2/BROWSER_AUTOMATION_ENFORCEMENT.md`.
+
+
+## Agent behavioral reinforcement (mandatory preflight)
+
+27. Every agent must consult
+`docs/computer-use-v2/AGENT_REINFORCEMENT.md` before choosing a browser
+execution engine for ambiguous or authenticated work. Declare the task,
+actual runtime capabilities and proposed operation; pipe a sanitized JSON
+plan to `npm run -s browser:agent-preflight`. A BLOCKED verdict stops
+that operation. The preflight never grants permission itself.
+28. Before reporting UI/UX or product acceptance, use the actual evidence
+gate and project Graph Harness. An authenticated Edge screenshot can
+support DIAGNOSIS but cannot prove semantic E2E; Save without confirmed
+persisted readback cannot be PASS.
+29. When browser agents repeat a mistake, add a redacted critical scenario
+to `docs/computer-use-v2/evals/agent-behavior-v1.json` and a regression
+test first. Repair the decision boundary, then run
+`npm run test:browser:reinforcement` (100% critical cases required).
+Do not 'fix' failures by deleting negative tests or relaxing expected
+authorization/target/persistence checks.
+30. The shared Claude and Gemini guides explicitly load
+`/workspace/AGENTS.md`; Codex-style agents must likewise read that file
+and the project-specific rules; do not clone separate competing policies.
+An agent that cannot access the shared rules must explicitly say so
+before using authenticated native browser automation.

@@ -5,6 +5,7 @@ import { chromium } from 'playwright-core';
 import fs from 'node:fs/promises';
 import {constants as fsConstants} from 'node:fs';
 import {chooseExecutionEngine} from './engine-router.mjs';
+import {evaluateAgentPlan} from './agent-preflight.mjs';
 import {assessBrowserEvidence} from './acceptance-gate.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -22,11 +23,14 @@ if (url.username || url.password || !['https:'].includes(url.protocol)) throw Er
 const executablePath=process.env.CHROMIUM_PATH || '/usr/bin/chromium';
 const executableAvailable=await fs.access(executablePath,fsConstants.X_OK)
   .then(()=>true).catch(()=>false);
-const routing=chooseExecutionEngine({
-  task:{kind:'web',intent:'navigate',context:'isolated'},
-  capabilities:{isolated_playwright:executableAvailable}
+const task={kind:'web',intent:'navigate',context:'isolated',browser:'chromium'};
+const capabilities={isolated_playwright:executableAvailable};
+const routing=chooseExecutionEngine({task,capabilities});
+const preflight=evaluateAgentPlan({
+  task,capabilities,plan:{engine:routing.engine,operation:'navigate'}
 });
-if(routing.engine!=='playwright_isolated') throw Error(routing.code);
+if(routing.engine!=='playwright_isolated' || preflight.state!=='PLAN_VALIDATED')
+  throw Error(preflight.state==='BLOCKED'?preflight.code:routing.code);
 
 const root = process.env.BROWSER_AUTOMATION_ROOT || '/workspace/.browser-automation';
 const profile = path.join(root, 'profiles', site);
@@ -35,7 +39,7 @@ await fs.mkdir(profile, { recursive:true, mode:0o700 });
 await fs.mkdir(output, { recursive:true, mode:0o700 });
 await fs.chmod(profile, 0o700); await fs.chmod(output, 0o700);
 const run = crypto.randomUUID();
-const result = { run, site, started:new Date().toISOString(), status:'unknown', initialOrigin:url.origin, finalOrigin:null, title:null, evidence:[], headless:true, engine:routing.engine, routing_policy:routing.policy_version, production_go:false };
+const result = { run, site, started:new Date().toISOString(), status:'unknown', initialOrigin:url.origin, finalOrigin:null, title:null, evidence:[], headless:true, engine:routing.engine, routing_policy:routing.policy_version, preflight_status:preflight.state, preflight_code:preflight.code, production_go:false };
 let context;
 try {
   context = await chromium.launchPersistentContext(profile, {

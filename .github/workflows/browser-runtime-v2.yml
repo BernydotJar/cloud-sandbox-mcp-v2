@@ -27,6 +27,11 @@ jobs:
         run: npx --no-install playwright-core install --with-deps chromium
       - name: Mandatory browser policy and evidence acceptance contract
         run: npm run test:browser:policy
+      - name: Mandatory adversarial agent reinforcement evals (100 percent critical)
+        run: |
+          npm run test:browser:reinforcement > "$RUNNER_TEMP/agent-reinforcement-evals.txt"
+          cat "$RUNNER_TEMP/agent-reinforcement-evals.txt"
+          sha256sum "$RUNNER_TEMP/agent-reinforcement-evals.txt"
       - name: Source, native compatibility, real Chromium and 25-context offscreen gesture checks
         run: npm run verify:v2
       - name: Production dependency advisory gate
