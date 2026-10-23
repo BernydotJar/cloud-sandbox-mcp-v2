@@ -36,8 +36,13 @@ may internally use Playwright-over-CDP, but CDP is not required for any
 isolated Playwright task. Never copy cookies, tokens or a browser profile
 to make an isolated browser appear authenticated.
 
+For a user-requested authenticated Mac profile, native read-only screenshots
+are allowed diagnostic observations even with CDP unavailable, but do not
+meet semantic E2E acceptance. Native navigation requires explicit consent;
+native writes require independent readback.
+
 The router returns `BLOCKED_SEMANTIC_BROWSER` for unsupported authenticated
-semantic actions, `AUTH_REQUIRED` for isolated login prerequisites and
+semantic write actions, `AUTH_REQUIRED` for isolated login prerequisites and
 `BLOCKED_EXACT_BROWSER` if an explicitly requested browser channel is not
 available. Native foreground fallback needs separate authorization and
 independent business-result verification; it is never an automatic retry.
@@ -46,3 +51,18 @@ See `docs/computer-use-v2/ENGINE_ROUTING.md` and shared
 `/workspace/AGENTS.md`. Router unit tests are included in `npm run verify`.
 The selector is policy logic, not an installed autonomous MCP routing service:
 agents must act on the decision using the existing appropriate tools.
+
+
+## Enforced evidence gate
+
+The isolated runner now includes `acceptance_gate` and `production_go=false`
+in its JSON output. Successful navigation with a screenshot is a
+*transport-level observation*, not proof of authentication, saved business
+data or product acceptance. An auth redirect remains `AUTH_REQUIRED`.
+For corporate actions, use `assessBrowserEvidence` with before/after
+content-addressed artifacts, authorization, action receipt and an
+independently verified reload readback; the structure-only result is not
+an automatic Graph Harness GO.
+
+Run `npm run test:browser:policy` as a mandatory policy gate. Details:
+`docs/computer-use-v2/BROWSER_AUTOMATION_ENFORCEMENT.md`.

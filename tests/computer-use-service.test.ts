@@ -39,6 +39,32 @@ describe('native Computer Use controller', () => {
     });
     await expect(service.state('edge')).resolves.toMatchObject({browsers: [{browser: 'edge'}]});
   });
+  it('rejects missing title before sending a native action to the Mac bridge', async () => {
+    const service = new ComputerUseService({
+      COMPUTER_USE_ENABLED:true,
+      COMPUTER_USE_BRIDGE_URL:'http://127.0.0.1:1',
+      COMPUTER_USE_BRIDGE_TOKEN:'example-token-0123456789abcdefghijklmn'
+    });
+    await expect(service.action({
+      browser:'edge',window_index:1,tab_index:1,
+      expected_url:'https://wf24.myhcl.com/iTime/ngiTime/home',
+      expected_title:'',
+      action:'press_key',key:'tab',reason:'Navigate a precisely identified timesheet cell'
+    })).rejects.toThrow('EXPECTED_TITLE_REQUIRED');
+  });
+  it('rejects screenshots and focus without a fresh exact title before contacting the host', async () => {
+    const service = new ComputerUseService({
+      COMPUTER_USE_ENABLED:true,
+      COMPUTER_USE_BRIDGE_URL:'http://127.0.0.1:1',
+      COMPUTER_USE_BRIDGE_TOKEN:'example-token-0123456789abcdefghijklmn'
+    });
+    const target = {
+      browser:'edge' as const,window_index:2,tab_index:1,
+      expected_url:'https://wf24.myhcl.com/iTime/ngiTime/home',expected_title:' '
+    };
+    await expect(service.screenshot(target)).rejects.toThrow('EXPECTED_TITLE_REQUIRED');
+    await expect(service.focus(target)).rejects.toThrow('EXPECTED_TITLE_REQUIRED');
+  });
   it('rejects invalid screenshot responses before exposing an MCP image', async () => {
     const url = await mockBridge({ok: true, data: {mime_type: 'image/png', base64: 'not+base64**'}});
     const service = new ComputerUseService({
@@ -46,7 +72,7 @@ describe('native Computer Use controller', () => {
       COMPUTER_USE_BRIDGE_TOKEN: 'example-token-0123456789abcdefghijklmn'
     });
     await expect(service.screenshot({
-      browser: 'edge', window_index: 1, tab_index: 1, expected_url: 'https://admin.microsoft.com/'
+      browser: 'edge', window_index: 1, tab_index: 1, expected_url: 'https://admin.microsoft.com/', expected_title: 'Admin'
     })).rejects.toThrow('Invalid or oversized');
   });
 });

@@ -5,6 +5,7 @@ import { chromium } from 'playwright-core';
 import fs from 'node:fs/promises';
 import {constants as fsConstants} from 'node:fs';
 import {chooseExecutionEngine} from './engine-router.mjs';
+import {assessBrowserEvidence} from './acceptance-gate.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import process from 'node:process';
@@ -34,7 +35,7 @@ await fs.mkdir(profile, { recursive:true, mode:0o700 });
 await fs.mkdir(output, { recursive:true, mode:0o700 });
 await fs.chmod(profile, 0o700); await fs.chmod(output, 0o700);
 const run = crypto.randomUUID();
-const result = { run, site, started:new Date().toISOString(), status:'unknown', initialOrigin:url.origin, finalOrigin:null, title:null, evidence:[], headless:true, engine:routing.engine, routing_policy:routing.policy_version };
+const result = { run, site, started:new Date().toISOString(), status:'unknown', initialOrigin:url.origin, finalOrigin:null, title:null, evidence:[], headless:true, engine:routing.engine, routing_policy:routing.policy_version, production_go:false };
 let context;
 try {
   context = await chromium.launchPersistentContext(profile, {
@@ -55,6 +56,15 @@ try {
   result.status = /(?:sign-in|login|signin|auth)(?:\/|$)/i.test(final.pathname) ? 'auth_required' : 'page_loaded_not_auth_verified';
   const screenshot = path.join(output, `${run}.png`);
   await page.screenshot({ path:screenshot, fullPage:false }); result.evidence.push(screenshot);
+  if(result.status==='page_loaded_not_auth_verified') {
+    result.acceptance_gate=assessBrowserEvidence({
+      task:{kind:'web',intent:'navigate',context:'isolated',browser:'chromium'},
+      decision:routing,
+      evidence:{observed_browser:'chromium',isolated_context:true,
+        after_observation:{ref:'evidence/'+site+'/'+run+'.png',
+          sha256:crypto.createHash('sha256').update(await fs.readFile(screenshot)).digest('hex')}}
+    });
+  }
   const trace = path.join(output, `${run}.zip`);
   await context.tracing.stop({ path:trace }); result.evidence.push(trace);
 } catch (error) {
@@ -62,6 +72,12 @@ try {
   if(context) await context.tracing.stop({path:path.join(output,`${run}-error.zip`)}).catch(()=>{});
 } finally { if(context) await context.close().catch(()=>{}); }
 result.finished = new Date().toISOString();
+if (!result.acceptance_gate) {
+  result.acceptance_gate = {
+    state:'BLOCKED',code:result.status==='auth_required'?'AUTH_REQUIRED':'BROWSER_RUN_NOT_VERIFIED',
+    production_go:false,validation_scope:'transport_only'
+  };
+}
 const report = path.join(output,`${run}.json`);
 await fs.writeFile(report, JSON.stringify(result,null,2),{mode:0o600});
 console.log(JSON.stringify({...result,report},null,2));

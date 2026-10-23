@@ -8,7 +8,7 @@ export interface BrowserTarget {
   window_index: number;
   tab_index: number;
   expected_url: string;
-  expected_title?: string;
+  expected_title: string;
 }
 
 export interface ActionRequest extends BrowserTarget {
@@ -43,11 +43,24 @@ export class ComputerUseService {
     return this.request('/v1/state', browser ? { browser } : {});
   }
 
+  private enforceBrowserTargetIdentity(target: BrowserTarget): void {
+    if (typeof target.expected_title !== 'string' ||
+        target.expected_title.trim().length < 1 ||
+        target.expected_title.length > 300 ||
+        !Number.isSafeInteger(target.window_index) || target.window_index < 1 ||
+        !Number.isSafeInteger(target.tab_index) || target.tab_index < 1) {
+      // Reject before accessing the Mac; do not weaken the host's revalidation.
+      throw new Error('Computer bridge: EXPECTED_TITLE_REQUIRED');
+    }
+  }
+
   async focus(target: BrowserTarget) {
+    this.enforceBrowserTargetIdentity(target);
     return this.request('/v1/focus', target);
   }
 
   async screenshot(target: BrowserTarget): Promise<{ mimeType: 'image/png'; data: string }> {
+    this.enforceBrowserTargetIdentity(target);
     const result = await this.request('/v1/screenshot', target) as { mime_type?: string; base64?: string };
     if (result.mime_type !== 'image/png' || !result.base64 || result.base64.length > 12_000_000 || !/^[A-Za-z0-9+/=]+$/.test(result.base64)) {
       throw new Error('Invalid or oversized image received from computer bridge.');
@@ -56,6 +69,7 @@ export class ComputerUseService {
   }
 
   async action(input: ActionRequest) {
+    this.enforceBrowserTargetIdentity(input);
     return this.request('/v1/action', input);
   }
 

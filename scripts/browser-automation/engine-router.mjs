@@ -87,26 +87,46 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
         bool(capabilities.browser_semantic_available) &&
         bool(capabilities.browser_tab_ref_present)) {
       return chosen('browser_mcp_semantic','AUTHENTICATED_SEMANTIC_BROWSER',
-        'Reuse the exact authenticated tab through Browser MCP; its provider may use Playwright/CDP.',
-        {requires_authorization:true,
+        'Use the exact authenticated tab through Browser MCP. Playwright/CDP is a provider detail, not a global dependency.',
+        {browser,context,requires_authorization:true,
+         allowed_operations:['inspect','screenshot',...((intent==='qa')?[]:['semantic_action'])],
          prerequisites:['fresh_tab_ref_and_revision','task_scoped_browser_grant_for_mutations'],
          evidence:intent==='mutate'?evidenceWrite:evidenceWeb,
-         transport:'provider_managed'});
+         transport:'provider_managed',semantic_evidence:true});
     }
 
-    if (capabilities.browser_provider === 'native' && bool(capabilities.native_browser_available) &&
-        bool(task.native_fallback_approved) && task.requires_semantic === false &&
-        bool(task.result_independently_verifiable)) {
-      return chosen('browser_mcp_native','LIMITED_AUTHENTICATED_NATIVE',
-        'Foreground native browser interaction is explicitly authorized and independently verifiable.',
-        {requires_authorization:true,
-         prerequisites:['fresh_native_tab_target','task_scoped_browser_grant','foreground_acceptable'],
-         evidence:intent==='mutate'?evidenceWrite:evidenceNative,
-         semantic_evidence:false});
+    // Read-only inspection is not a mutation. A CDP failure must not hide
+    // accessible Edge/Chrome screenshots from the agent. Native observations
+    // can support diagnosis, but cannot pass a semantic browser acceptance gate.
+    if (capabilities.browser_provider === 'native' && bool(capabilities.native_browser_available)) {
+      if (intent==='qa') {
+        return chosen('browser_mcp_native','NATIVE_INSPECTION_ONLY',
+          'Read the authenticated native browser state/screenshot; do not claim semantic E2E acceptance.',
+          {browser,context,allowed_operations:['state','screenshot'],
+           acceptance_eligible:false,semantic_evidence:false,
+           evidence:['fresh_native_tab_target','observed_screenshot','unmet_semantic_gates']});
+      }
+      if (intent==='navigate' && bool(task.native_fallback_approved)) {
+        return chosen('browser_mcp_native','AUTHENTICATED_VISUAL_NAVIGATION',
+          'Use scoped native browser navigation, inspect each change, and preserve the original authenticated profile.',
+          {browser,context,requires_authorization:true,semantic_evidence:false,
+           allowed_operations:['state','screenshot','native_action'],
+           prerequisites:['fresh_native_tab_target','task_scoped_browser_grant','foreground_acceptable'],
+           evidence:['fresh_target_identity','post_action_inspection','audit_receipt']});
+      }
+      if (intent==='mutate' && bool(task.native_fallback_approved) &&
+          task.requires_semantic===false && bool(task.result_independently_verifiable)) {
+        return chosen('browser_mcp_native','LIMITED_AUTHENTICATED_NATIVE',
+          'Use a scoped native action only where the business result can be independently verified.',
+          {browser,context,requires_authorization:true,
+           allowed_operations:['state','screenshot','native_action'],
+           prerequisites:['fresh_native_tab_target','task_scoped_browser_grant','foreground_acceptable'],
+           evidence:evidenceWrite,semantic_evidence:false});
+      }
     }
 
     return unavailable('BLOCKED_SEMANTIC_BROWSER',
-      'Authenticated semantic browser capability is unavailable. CDP failure is not an isolated Playwright failure.',
+      'The requested authenticated browser operation lacks an authorized capable provider. CDP failure never blocks independent Playwright.',
       {prerequisites:['verify_browser_runtime_and_tab_capability'],
        evidence:['blocker_with_provider_and_capabilities']});
   }

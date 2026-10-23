@@ -77,3 +77,48 @@ test('invalid/empty requests do not invent availability',()=>{
  assert.equal(route({kind:'web',context:'existing_mac',browser:'chromium',
    explicitly_requested_mac_session:true},{}).code,'INVALID_ROUTING_REQUEST');
 });
+
+test('existing Edge session can be inspected natively even if CDP is broken',()=>{
+ const t={kind:'web',intent:'qa',context:'existing_mac',browser:'edge',
+   explicitly_requested_mac_session:true,requires_semantic:true};
+ const d=route(t,{browser_provider:'native',native_browser_available:true});
+ assert.equal(d.engine,'browser_mcp_native');
+ assert.equal(d.code,'NATIVE_INSPECTION_ONLY');
+ assert.equal(d.acceptance_eligible,false);
+ assert.deepEqual(d.allowed_operations,['state','screenshot']);
+ assert.equal(d.semantic_evidence,false);
+});
+test('native visual navigation proceeds with explicit authorization but no semantic claim',()=>{
+ const t={kind:'web',intent:'navigate',context:'existing_mac',browser:'edge',
+   explicitly_requested_mac_session:true,native_fallback_approved:true};
+ const d=route(t,{browser_provider:'native',native_browser_available:true});
+ assert.equal(d.code,'AUTHENTICATED_VISUAL_NAVIGATION');
+ assert.equal(d.engine,'browser_mcp_native');
+ assert.equal(d.browser,'edge');
+ assert.equal(d.requires_authorization,true);
+ assert.equal(d.semantic_evidence,false);
+ assert(d.allowed_operations.includes('native_action'));
+});
+test('native visual navigation without fallback permission does not dispatch',()=>{
+ const t={kind:'web',intent:'navigate',context:'existing_mac',browser:'edge',
+   explicitly_requested_mac_session:true};
+ const d=route(t,{browser_provider:'native',native_browser_available:true});
+ assert.equal(d.status,'blocked');
+ assert.equal(d.engine,null);
+});
+test('native corporate mutation remains blocked without independent readback',()=>{
+ const t={kind:'web',intent:'mutate',context:'existing_mac',browser:'edge',
+   explicitly_requested_mac_session:true,native_fallback_approved:true,
+   requires_semantic:false,result_independently_verifiable:false};
+ const d=route(t,{browser_provider:'native',native_browser_available:true});
+ assert.equal(d.status,'blocked');
+});
+test('Edge native fallback never silently changes to Chrome persistent profile',()=>{
+ const t={kind:'web',intent:'navigate',context:'existing_mac',browser:'edge',
+   explicitly_requested_mac_session:true,native_fallback_approved:true};
+ const d=route(t,{browser_provider:'native',native_browser_available:true,
+   isolated_chrome:true,isolated_playwright:true});
+ assert.equal(d.browser,'edge');
+ assert.equal(d.context,'existing_mac');
+ assert.equal(d.engine,'browser_mcp_native');
+});

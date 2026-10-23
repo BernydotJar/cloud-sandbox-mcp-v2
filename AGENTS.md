@@ -274,3 +274,31 @@ but this remains **source code** until Mac operator deployment succeeds.
 Do not claim semantic Playwright/ARIA for a native fallback. Do not
 duplicate a UI mutation on uncertain results; re-inspect actual persisted
 business state. Do not touch unrelated browser profiles or active agent grants.
+
+
+## Browser Automation enforcement gates (all agents)
+
+22. For any browser-driven project, use the selection contract at
+`scripts/browser-automation/engine-router.mjs` and documented runtime
+capabilities before executing. Default isolated Playwright unless the user
+expressly requested an existing authenticated Mac Chrome/Edge profile.
+23. A CDP failure does not block native **read-only** tab discovery or
+screenshots on that exact browser profile. Native visual navigation requires
+task-scoped approval; a native click is not a semantic Playwright assertion.
+Do not transfer Edge profiles to Chrome or claim a generic UI tooltip
+identifies a persisted business cell.
+24. Run `npm run test:browser:policy` when changing any routing, native
+browser driver, evidence acceptance or installer code; the same gate runs
+in `npm run verify` and GitHub Actions. Native driver release must
+also compile on macOS and be verified after installation.
+25. For business writes, call the acceptance contract at
+`scripts/browser-automation/acceptance-gate.mjs` with actual content-
+addressed artifacts. Require before and after observations, authorization,
+action audit and separate post-reload persisted readback. A structural
+`EVIDENCE_COMPLETE` is NOT Graph Harness acceptance or production GO.
+Never blindly retry an uncertain UI mutation or bypass domain policy,
+approval or cross-agent session isolation.
+26. Real Mac release still requires an operator-installed, hash-pinned
+driver and real Chrome/Edge smoke. Source tests and an installer package
+do not establish live deployment. Full acceptance:
+`docs/computer-use-v2/BROWSER_AUTOMATION_ENFORCEMENT.md`.

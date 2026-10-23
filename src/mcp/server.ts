@@ -150,7 +150,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
       window_index: z.number().int().min(1),
       tab_index: z.number().int().min(1),
       expected_url: z.string().url().max(2048),
-      expected_title: z.string().min(1).max(300).optional()
+      expected_title: z.string().min(1).max(300)
     };
 
     server.registerTool('computer_use_session_begin', {
@@ -195,14 +195,14 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_focus', {
       title: 'Focus a Mac browser tab',
-      description: 'Focus a Chrome/Edge tab selected by fresh state discovery and verify its expected URL before acting. Does not submit a form.',
+      description: 'Focus the expressly requested Chrome/Edge tab, requiring an exact title, sanitized URL and fresh indices from discovery. Indices are never durable identifiers. Does not submit a form.',
       inputSchema: targetSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async (target) => await safely(() => computer.focus(target)));
 
     server.registerTool('computer_use_screenshot', {
       title: 'Inspect Mac browser window screenshot',
-      description: 'Request a screenshot of a selected authenticated Mac browser window via the native macOS bridge. Requires macOS Screen Recording permission; never stores screenshots in execution logs.',
+      description: 'Capture only the exact title+URL-selected Chrome/Edge tab on the original authenticated profile; requires fresh indices and Screen Recording permission. A screenshot is observational, never proof of semantic E2E or persisted data.',
       inputSchema: targetSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async (target) => {
@@ -216,7 +216,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_action', {
       title: 'Perform an approved Mac UI action',
-      description: 'Click, type or press a key in an authenticated Chrome/Edge tab. Pass session_id from an approved computer_use_session_begin grant on EVERY action for uninterrupted delegated execution. Without session_id, Mac approval is required per action. Rechecks URL and tab identity immediately before acting. Never executes arbitrary JS, scripts or shell commands.',
+      description: 'Click, type or press a key ONLY on a fresh exact-title+URL Chrome/Edge tab in its original profile. Pass a task-scoped delegated session_id or obtain native approval per action; the HTTPS origin allowlist still applies. Rechecks identity before dispatch. performed=true only acknowledges an event; it does NOT prove Save/persisted readback. Never retry an uncertain action blindly or switch browsers. No arbitrary scripts.',
       inputSchema: {
         ...targetSchema,
         action: z.enum(['click', 'type_text', 'press_key']),

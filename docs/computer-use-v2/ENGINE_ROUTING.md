@@ -12,10 +12,13 @@ regression, E2E, accessibility and stress journeys), use Playwright FIRST:
    case: use Browser MCP for that exact authorized session and select its best
    available semantic provider. Do not attempt an anonymous Playwright profile
    and present it as the authenticated session.
-5. If the authenticated Browser MCP provider is unavailable, report a targeted
-   block. Native foreground browser fallback is permissible ONLY when the user
-   authorizes it, the task does not require semantic selectors, and the final
-   business outcome can be verified independently. Coordinates are a LAST resort.
+5. If Browser MCP CDP is unavailable, native read-only screenshots and state
+   inspection may still continue on the expressly requested existing Mac
+   profile; native observations are DIAGNOSTIC ONLY for semantic E2E.
+   Native foreground navigation requires explicit task-scoped permission and
+   fresh exact tab identity. Native writes additionally require the task to
+   allow non-semantic UI and the final business outcome to be independently
+   verifiable. Coordinates are a LAST resort.
 6. For Finder, Terminal, VS Code and other macOS desktop apps use the native
    Mac Computer Use surface, not a browser driver. For deterministic shell/API
    tasks prefer scoped shell/API execution rather than simulating keystrokes.
@@ -150,3 +153,24 @@ See `mac-host/engine-routing.node-test.mjs`,
 `scripts/browser-automation/README.md`,
 `docs/computer-use-v2/OFFSCREEN_QA.md` and the shared
 `/workspace/AGENTS.md` for the agent-facing entrypoint.
+
+
+## Enforced acceptance and CI contract
+
+This repository now has an executable evidence gate:
+`scripts/browser-automation/acceptance-gate.mjs`.
+The generic isolated browser executor applies it to actual screenshot
+artifacts. Native screenshots with `semantic_available=false` can support
+visual troubleshooting but never become passing semantic E2E assertions.
+A business mutation cannot receive evidence-complete status based on
+`performed=true` or a filled field alone: it needs task approval, before
+and after observations, audit receipt, separate post-reload readback and
+matching recorded value digests. A matching digest declaration is still
+only a structural check; Graph Harness must verify provenance and actual
+corporate authorization. The acceptance gate always sets
+`production_go=false`.
+
+`npm run test:browser:policy` executes the routing/acceptance/installer
+policy tests; `npm run verify` runs that suite, and GitHub Actions runs
+the same independent gate plus a syntax-only macOS driver compile.
+See `docs/computer-use-v2/BROWSER_AUTOMATION_ENFORCEMENT.md`.

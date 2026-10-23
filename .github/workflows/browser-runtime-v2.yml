@@ -25,6 +25,8 @@ jobs:
         run: npm ci --ignore-scripts --no-fund --no-audit
       - name: Isolated Chromium fixture dependencies
         run: npx --no-install playwright-core install --with-deps chromium
+      - name: Mandatory browser policy and evidence acceptance contract
+        run: npm run test:browser:policy
       - name: Source, native compatibility, real Chromium and 25-context offscreen gesture checks
         run: npm run verify:v2
       - name: Production dependency advisory gate
@@ -52,6 +54,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Compile and smoke-test native browser identity driver without GUI access
+        run: |
+          osacompile -l JavaScript -o "$RUNNER_TEMP/cloud-sandbox-native.scpt" mac-host/native.jxa
+          output=$(/usr/bin/osascript -l JavaScript mac-host/native.jxa state unsupported-browser)
+          echo "$output" | grep -F '"error":"UNSUPPORTED_BROWSER"'
       - name: Compile and typecheck the native AppKit overlay
         run: |
           xcrun swiftc -typecheck deploy/bridge-toast/bridge-toast.swift -framework AppKit -framework QuartzCore
