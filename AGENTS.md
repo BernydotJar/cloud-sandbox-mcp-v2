@@ -235,3 +235,27 @@ are installed from documentation or code alone.
 ## LinkedIn browser scope
 
 The intended Mac Bridge policy includes both https://www.linkedin.com and https://*.linkedin.com on Chrome and Edge, after the Mac installer reports success.
+
+## Multi-engine routing: CDP is not Playwright
+
+Read /workspace/projects/cloud-sandbox-mcp-v2/docs/computer-use-v2/ENGINE_ROUTING.md
+before operating Chrome, Edge, Playwright or macOS Computer Use.
+The *isolated Playwright QA engine* does not require CDP or an authenticated
+operator browser. The *Browser MCP persistent adapter* currently uses
+playwright-core over CDP for Chrome/Edge; an Edge attach failure does NOT
+imply Playwright QA is broken.
+
+For an authenticated live web edit, inspect browser_runtime_status and
+browser_tabs. Use semantic Browser MCP only when provider=persistent,
+semantic_available=true and a valid tab_ref exist. If provider=native
+and semantic_available=false, native Mac UI is a limited foreground
+fallback requiring authorized task scope, screenshot and independent
+value-persistence verification. Coordinate clicks are last resort.
+Do not transfer personal session cookies to a newly launched browser.
+The installed Mac tools currently support Chrome/Edge browser control,
+NOT general Finder/Terminal/VS Code accessibility trees or window control.
+
+Keep login/auth, browser transport, allowlisted origin, actual row/column
+cell writes, persisted read-back and Graph Harness GH04/GH05 evidence
+distinct. Never infer GO from a connected browser; gates require explicit
+definitions and separately verifiable acceptance results.
