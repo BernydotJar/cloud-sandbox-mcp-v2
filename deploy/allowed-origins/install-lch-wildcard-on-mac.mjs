@@ -17,7 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {TextDecoder} from 'node:util';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {addLchOrigins,LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
+import {addLchOrigins,HCL_ITIME_ORIGIN,LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 import {validAllowlistEntry} from './allowed-origins.mjs';
@@ -181,6 +181,7 @@ async function main(){
   log('ATLASSIAN_APEX',ATLASSIAN_APEX);
   log('ATLASSIAN_WILDCARD',ATLASSIAN_WILDCARD);
   log('TARGET_BROWSERS','CHROME_EDGE_SHARED_ALLOWLIST');
+  log('HCL_ITIME_ORIGIN',HCL_ITIME_ORIGIN);
   log('ORIGINS_BEFORE',next.beforeCount);
   log('ORIGINS_AFTER',next.afterCount);
   log('EXISTING_ORIGINS','PRESERVED');

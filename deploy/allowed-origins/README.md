@@ -174,3 +174,10 @@ and rolls back on failure.
 ## LinkedIn wildcard
 
 Authorize https://www.linkedin.com plus https://*.linkedin.com for both Chrome and Edge. DNS-label boundary checks reject lookalikes, HTTP and nondefault ports. Apply with install-lch-wildcard-on-mac.mjs --activate.
+
+## HCL iTime exact origin
+
+The operator-requested HCL iTime URL is under the exact origin
+https://wf24.myhcl.com. The existing installer now adds only that
+HTTPS origin for Chrome and Edge. The path /iTime/ngiTime/home is
+covered by origin matching; no unrelated myhcl.com subdomains are allowed.
