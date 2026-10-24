@@ -202,13 +202,26 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_screenshot', {
       title: 'Inspect Mac browser window screenshot',
-      description: 'Capture only the exact title+URL-selected Chrome/Edge tab on the original authenticated profile; requires fresh indices and Screen Recording permission. A screenshot is observational, never proof of semantic E2E or persisted data.',
-      inputSchema: targetSchema,
+      description: 'Capture exact title+URL Chrome/Edge tab screenshot. Returns optional geometry metadata with Retina pixel-to-Mac-point scale and ephemeral screenshot_ref. include_ax=true requests a separate native AXUIElement tree restricted to the frontmost URL-bound web area, NOT CDP/Playwright. AX helper must be compiled and authorized by the Mac operator. Screenshot and AX values never prove data persisted.',
+      inputSchema: {...targetSchema, include_ax:z.boolean().optional()},
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
-    }, async (target) => {
+    }, async ({include_ax,...target}) => {
       try {
-        const screenshot = await computer.screenshot(target);
-        return { content: [{ type: 'image' as const, ...screenshot }] };
+        const screenshot = await computer.screenshot(target,{include_ax});
+        // Image is kept unchanged for old clients. Text metadata gives Mac
+        // point geometry and a short-lived opaque image-pixel click reference.
+        const {geometry,ax_snapshot,...image}=screenshot;
+        return { content: [
+          { type:'image' as const,...image },
+          ...(geometry ? [{
+            type:'text' as const,
+            text:JSON.stringify({geometry})
+          }] : []),
+          ...(ax_snapshot ? [{
+            type:'text' as const,
+            text:JSON.stringify({ax_snapshot})
+          }] : [])
+        ] };
       } catch (error) {
         return jsonResult({ error: errorMessage(error) }, true);
       }
@@ -216,12 +229,16 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_action', {
       title: 'Perform an approved Mac UI action',
-      description: 'Click, type or press a key ONLY on a fresh exact-title+URL Chrome/Edge tab in its original profile. Pass a task-scoped delegated session_id or obtain native approval per action; the HTTPS origin allowlist still applies. Rechecks identity before dispatch. performed=true only acknowledges an event; it does NOT prove Save/persisted readback. Never retry an uncertain action blindly or switch browsers. No arbitrary scripts.',
+      description: 'Click, type or press a key ONLY on a fresh exact-title+URL Chrome/Edge tab in its original profile. Pass a task-scoped delegated session_id or obtain native approval per action; the HTTPS origin allowlist still applies. Rechecks identity before dispatch. performed=true only acknowledges an event; it does NOT prove Save/persisted readback. When clicking, coordinate_space=screen_points (legacy) means global Mac points; coordinate_space=screenshot_pixels requires screenshot_ref from a fresh screenshot, and x/y are image-relative pixels transformed using reported Retina scale. For native AX, action=ax_press or ax_set_value uses one-shot ax_node_ref and ax_revision from computer_use_screenshot(include_ax=true); an operator-built AXUIElement helper independently validates frontmost app, URL-bound AXWebArea, revision and role. No CDP claim. Coordinates outside verified frontmost window are rejected. Never retry uncertain actions. No arbitrary scripts.',
       inputSchema: {
         ...targetSchema,
-        action: z.enum(['click', 'type_text', 'press_key']),
-        x: z.number().int().min(0).max(32768).optional(),
-        y: z.number().int().min(0).max(32768).optional(),
+        action: z.enum(['click', 'type_text', 'press_key','ax_press','ax_set_value']),
+        x: z.number().int().min(-32768).max(32768).optional(),
+        y: z.number().int().min(-32768).max(32768).optional(),
+        coordinate_space: z.enum(['screen_points','screenshot_pixels']).optional(),
+        screenshot_ref: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+        ax_node_ref: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+        ax_revision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
         text: z.string().max(2000).optional(),
         key: z.enum(['tab', 'escape', 'enter', 'space', 'backspace', 'up', 'down', 'left', 'right']).optional(),
         reason: z.string().min(10).max(300),

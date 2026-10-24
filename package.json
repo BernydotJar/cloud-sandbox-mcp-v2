@@ -26,7 +26,8 @@
     "test:engine-routing": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs",
     "test:browser:policy": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs scripts/browser-automation/acceptance-gate.node-test.mjs deploy/edge-native-rebind/install.node-test.mjs",
     "test:browser:reinforcement": "node --test scripts/browser-automation/reinforcement-eval.node-test.mjs && node scripts/browser-automation/reinforcement-eval.mjs",
-    "browser:agent-preflight": "node scripts/browser-automation/agent-preflight.mjs"
+    "browser:agent-preflight": "node scripts/browser-automation/agent-preflight.mjs",
+    "test:browser:native-parity": "node --test mac-host/native-targeting.node-test.mjs mac-host/native-ax-provider.node-test.mjs mac-host/bridge.node-test.mjs mac-host/native.node-test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

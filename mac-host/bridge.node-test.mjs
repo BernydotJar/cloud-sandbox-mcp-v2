@@ -66,7 +66,7 @@ test('approved action revalidates native target',async()=>{
   const {post,calls}=await ready({approvalHandler:async()=>true});
   const r=await post('/v1/action',{...target,action:'click',x:12,y:60,reason:'Open settings section'});
   assert.equal(r.status,200);
-  assert.deepEqual(calls.map(x=>x.operation),['inspect','action']);
+  assert.deepEqual(calls.map(x=>x.operation),['inspect','bounds','bounds','action']);
 });
 test('malformed action does not trigger user prompt',async()=>{
   let prompts=0;
@@ -740,4 +740,230 @@ test('screenshot rejects a changed foreground native tab before capture',async()
   assert.equal(result.status,400);
   assert.equal(result.error,'TARGET_CHANGED');
   assert.equal(captures,0);
+});
+
+function retinaFakePng(w,h) {
+  const raw=Buffer.alloc(33);
+  Buffer.from([137,80,78,71,13,10,26,10]).copy(raw,0);
+  raw.writeUInt32BE(13,8);raw.write('IHDR',12,'ascii');
+  raw.writeUInt32BE(w,16);raw.writeUInt32BE(h,20);raw[24]=8;raw[25]=6;
+  return {mime_type:'image/png',base64:raw.toString('base64')};
+}
+test('Retina screenshot contract converts screenshot_pixels to global screen_points before dispatch',async()=>{
+  const dispatch=[];
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    nativeHandler:async(op,...args)=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      dispatch.push({op,args});return {performed:true};
+    },
+    captureHandler:async()=>retinaFakePng(1200,800)
+  });
+  const shot=await post('/v1/screenshot',{...target,expected_title:'Microsoft 365'});
+  assert.equal(shot.status,200);
+  assert.equal(shot.data.geometry.scale.x,2);
+  assert.equal(shot.data.geometry.image_pixels.width,1200);
+  assert.equal(shot.data.geometry.bounds_points.x,100);
+  const action=await post('/v1/action',{
+    ...target,expected_title:'Microsoft 365',action:'click',
+    x:200,y:100,coordinate_space:'screenshot_pixels',
+    screenshot_ref:shot.data.geometry.screenshot_ref,reason:'Click the previously photographed safe test control'
+  });
+  assert.equal(action.status,200);
+  const click=dispatch.find(x=>x.op==='action');
+  assert.deepEqual(click.args.slice(-3),['click','200','130']);
+});
+test('stale screenshot after target window move is denied without any click',async()=>{
+  let windowY=80;let actions=0;
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    nativeHandler:async(op)=>{
+      if(op==='bounds')return {x:100,y:windowY,width:600,height:400};
+      if(op==='action')actions++;
+      return {performed:true};
+    },
+    captureHandler:async()=>retinaFakePng(1200,800)
+  });
+  const s=await post('/v1/screenshot',{...target,expected_title:'Microsoft 365'});
+  windowY=82;
+  const act=await post('/v1/action',{...target,expected_title:'Microsoft 365',
+    action:'click',x:200,y:100,coordinate_space:'screenshot_pixels',
+    screenshot_ref:s.data.geometry.screenshot_ref,reason:'Attempt expired moved screenshot coordinate'});
+  assert.equal(act.error,'STALE_SCREENSHOT_GEOMETRY');
+  assert.equal(actions,0);
+});
+test('mismatched browser/title screenshot ref fails closed',async()=>{
+  let actions=0;
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    nativeHandler:async(op)=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      if(op==='action')actions++;
+      return {performed:true};
+    },
+    captureHandler:async()=>retinaFakePng(1200,800)
+  });
+  const s=await post('/v1/screenshot',{...target,expected_title:'Microsoft 365'});
+  const act=await post('/v1/action',{...target,expected_title:'Other Page',
+    action:'click',x:200,y:100,coordinate_space:'screenshot_pixels',
+    screenshot_ref:s.data.geometry.screenshot_ref,reason:'Attempt to click a different page'});
+  assert.equal(act.error,'SCREENSHOT_TARGET_MISMATCH');
+  assert.equal(actions,0);
+});
+test('legacy global screen_points must fall inside actual frontmost window',async()=>{
+  let actions=0;
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    nativeHandler:async(op)=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      if(op==='action')actions++;
+      return {performed:true};
+    }
+  });
+  const act=await post('/v1/action',{...target,
+    action:'click',x:12,y:60,coordinate_space:'screen_points',
+    reason:'Unsafe old image-local coordinates misidentified as global'});
+  assert.equal(act.error,'COORDINATES_OUTSIDE_TARGET');
+  assert.equal(actions,0);
+});
+test('screenshot ref revoked when delegated task session ends',async()=>{
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    nativeHandler:async(op)=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      return {performed:true};
+    },
+    captureHandler:async()=>retinaFakePng(1200,800)
+  });
+  const ss=await post('/v1/session/begin',{scope:'edge',duration_minutes:10,max_actions:10,purpose:'Test delegated screenshot reference expiration'});
+  assert.equal(ss.status,200);
+  const s=await post('/v1/screenshot',{...target,expected_title:'Microsoft 365'});
+  await post('/v1/session/end',{session_id:ss.data.session_id});
+  const a=await post('/v1/action',{...target,expected_title:'Microsoft 365',
+    action:'click',x:30,y:30,coordinate_space:'screenshot_pixels',
+    screenshot_ref:s.data.geometry.screenshot_ref,reason:'Test revoked temporary screenshot reference'});
+  assert.equal(a.error,'STALE_SCREENSHOT_REF');
+});
+
+test('native AX screenshot exposes bounded opaque node refs and presses only verified node',async()=>{
+  const pressed=[];
+  const rows={provider:'native_ax',revision:'a'.repeat(64),nodes:[
+    {path:[2,3],role:'AXButton',name:'Cancel Editing',enabled:true,
+     fingerprint:'b'.repeat(64),
+     frame_points:{x:120,y:100,width:65,height:25}}
+  ]};
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    captureHandler:async()=>retinaFakePng(1200,800),
+    nativeHandler:async op=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      if(op==='action')throw Error('Native coordinate fallback forbidden');
+      return {performed:true};
+    },
+    axHandler:async(op,args)=>{
+      if(op==='snapshot')return rows;
+      pressed.push({op,args});
+      return {performed:true,provider:'native_ax',action:'press'};
+    }
+  });
+  const t={...target,expected_title:'Microsoft 365'};
+  const snapshot=await post('/v1/screenshot',{...t,include_ax:true});
+  assert.equal(snapshot.status,200);
+  assert.equal(snapshot.data.ax_snapshot.provider,'native_ax');
+  assert.equal(snapshot.data.ax_snapshot.nodes[0].name,'Cancel Editing');
+  assert.equal(JSON.stringify(snapshot.data.ax_snapshot).includes('fingerprint'),false);
+  const act=await post('/v1/action',{...t,action:'ax_press',
+    ax_node_ref:snapshot.data.ax_snapshot.nodes[0].node_ref,
+    ax_revision:snapshot.data.ax_snapshot.ax_revision,
+    reason:'Press the unique authorized Cancel Editing AX button, without saving any data'});
+  assert.equal(act.status,200);
+  assert.equal(pressed.length,1);
+  assert.equal(pressed[0].args.action,'press');
+  assert.deepEqual(pressed[0].args.path,[2,3]);
+  const replay=await post('/v1/action',{...t,action:'ax_press',
+    ax_node_ref:snapshot.data.ax_snapshot.nodes[0].node_ref,
+    ax_revision:snapshot.data.ax_snapshot.ax_revision,
+    reason:'Attempt to replay the same AX press after dispatch'});
+  assert.equal(replay.error,'STALE_AX_NODE');
+  assert.equal(pressed.length,1);
+});
+test('native AX snapshot requires real provider and never silently clicks by coordinates',async()=>{
+  let nativeClicks=0;
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    captureHandler:async()=>retinaFakePng(1200,800),
+    nativeHandler:async op=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      if(op==='action')nativeClicks++;
+      return {performed:true};
+    },
+    axHandler:async()=>{throw Error('NATIVE_AX_UNAVAILABLE');}
+  });
+  const t={...target,expected_title:'Microsoft 365'};
+  const r=await post('/v1/screenshot',{...t,include_ax:true});
+  assert.equal(r.error,'NATIVE_AX_UNAVAILABLE');
+  const a=await post('/v1/action',{...t,action:'ax_press',
+    ax_node_ref:'b'.repeat(64),ax_revision:'a'.repeat(64),
+    reason:'Attempt AX action without real snapshot'});
+  assert.equal(a.error,'STALE_AX_NODE');
+  assert.equal(nativeClicks,0);
+});
+test('native AX node is invalidated on changed window dimensions before dispatch',async()=>{
+  let bounds={x:100,y:80,width:600,height:400},acts=0;
+  const t={...target,expected_title:'Microsoft 365'};
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    captureHandler:async()=>retinaFakePng(1200,800),
+    nativeHandler:async op=>{
+      if(op==='bounds')return bounds;
+      return {performed:true};
+    },
+    axHandler:async op=>{
+      if(op==='snapshot')return {provider:'native_ax',revision:'a'.repeat(64),nodes:[
+        {path:[1],role:'AXButton',name:'Open Editor',enabled:true,
+         fingerprint:'b'.repeat(64),frame_points:{x:120,y:100,width:60,height:25}}
+      ]};
+      acts++;return {performed:true};
+    }
+  });
+  const s=await post('/v1/screenshot',{...t,include_ax:true});
+  bounds={...bounds,width:601};
+  const a=await post('/v1/action',{...t,action:'ax_press',
+    ax_node_ref:s.data.ax_snapshot.nodes[0].node_ref,
+    ax_revision:s.data.ax_snapshot.ax_revision,
+    reason:'Attempt stale AX button after window resize'});
+  assert.equal(a.error,'AX_WINDOW_CHANGED');
+  assert.equal(acts,0);
+});
+test('native AX node cannot set protected fields or borrow a different profile',async()=>{
+  let acts=0;
+  const t={...target,expected_title:'Microsoft 365'};
+  const {post}=await ready({
+    approvalHandler:async()=>true,
+    captureHandler:async()=>retinaFakePng(1200,800),
+    nativeHandler:async op=>{
+      if(op==='bounds')return {x:100,y:80,width:600,height:400};
+      return {performed:true};
+    },
+    axHandler:async op=>{
+      if(op==='snapshot')return {provider:'native_ax',revision:'a'.repeat(64),nodes:[
+        {path:[1],role:'AXTextField',name:'Monday hours',enabled:true,
+         fingerprint:'b'.repeat(64),frame_points:{x:120,y:100,width:60,height:25}}
+      ]};
+      acts++;return {performed:true};
+    }
+  });
+  const s=await post('/v1/screenshot',{...t,include_ax:true});
+  const other=await post('/v1/action',{...t,browser:'chrome',
+    action:'ax_set_value',ax_node_ref:s.data.ax_snapshot.nodes[0].node_ref,
+    ax_revision:s.data.ax_snapshot.ax_revision,text:'8',
+    reason:'Attempt to act on a field through the wrong browser profile'});
+  assert.equal(other.error,'AX_TARGET_MISMATCH');
+  assert.equal(acts,0);
+  const invalid=await post('/v1/action',{...t,action:'ax_press',
+    ax_node_ref:s.data.ax_snapshot.nodes[0].node_ref,
+    ax_revision:s.data.ax_snapshot.ax_revision,
+    reason:'Attempt to press a text field rather than fill'});
+  assert.equal(invalid.error,'AX_ACTION_NOT_SUPPORTED');
+  assert.equal(acts,0);
 });

@@ -2,14 +2,18 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import {setTimeout as timeoutCallback,clearTimeout as clearCallback} from 'node:timers';
 import { createSessionStore } from './autonomy-session.mjs';
 import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runtime.mjs';
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
 import { RuntimeFault } from './browser-runtime/contracts.mjs';
+import {AxNodeReferences} from './native-ax-provider.mjs';
+import {geometryFromCapture,checkedScreenPoint,screenshotPixelToScreenPoint,
+        ScreenshotReferences,sameWindowBounds} from './native-targeting.mjs';
 // LCH_ORIGIN_WILDCARD_V1
 import {allowsWebOrigin,validAllowlistEntry,LCH_WILDCARD} from './allowed-origins.mjs';
 import os from 'node:os';
@@ -192,6 +196,44 @@ async function native(op, ...args) {
   if (result.ok !== true) throw new Error(result.error || 'NATIVE_FAILED');
   return result.data;
 }
+// A fixed, operator-compiled AXUIElement binary; never accepts user-supplied
+// executable paths or shell commands. Sensitive action text travels on stdin,
+// never command-line arguments, audit fields or process titles.
+async function nativeAX(operation,input) {
+  const exe=path.join(here,'native-ax','bin','ax-browser-helper');
+  return new Promise((resolve,reject)=>{
+    const child=spawn(exe,[],{stdio:['pipe','pipe','ignore']});
+    let done=false,size=0;
+    const chunks=[];
+    const finish=(error,result)=>{
+      if(done)return;done=true;clearCallback(timer);
+      if(error)reject(error);else resolve(result);
+    };
+    const timer=timeoutCallback(()=>{child.kill('SIGKILL');
+      finish(new Error('NATIVE_AX_UNAVAILABLE'));},10000);
+    child.on('error',()=>finish(new Error('NATIVE_AX_UNAVAILABLE')));
+    child.stdout.on('data',buffer=>{
+      size+=buffer.length;
+      if(size>130000){child.kill('SIGKILL');
+        finish(new Error('AX_OUTPUT_LIMIT'));return;}
+      chunks.push(buffer);
+    });
+    child.on('close',()=>{
+      if(done)return;
+      try {
+        const result=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if(result?.ok!==true) {
+          const code=typeof result?.error==='string' &&
+            /^[A-Z_]{3,45}$/.test(result.error) ? result.error:'NATIVE_AX_UNAVAILABLE';
+          finish(new Error(code));return;
+        }
+        finish(null,result.data);
+      }catch{finish(new Error('NATIVE_AX_UNAVAILABLE'));}
+    });
+    child.stdin.on('error',()=>{});
+    child.stdin.end(JSON.stringify({mode:operation,...input}));
+  });
+}
 function verifyTarget(t, origins, dynamicTabs, restrictMutation = false) {
   if (!browsers.has(t.browser) || !Number.isInteger(t.window_index) ||
       !Number.isInteger(t.tab_index) || t.window_index < 1 || t.tab_index < 1 ||
@@ -230,7 +272,8 @@ async function approve(message) {
 async function capture(bounds) {
   const {default: os} = await import('node:os');
   const {x,y,width,height} = bounds;
-  if (![x,y,width,height].every(v => Number.isFinite(v) && v >= 0) ||
+  if (![x,y,width,height].every(Number.isFinite) ||
+      Math.abs(x)>32768 || Math.abs(y)>32768 ||
       width < 1 || height < 1 || width > 5000 || height > 4000) throw new Error('INVALID_BOUNDS');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cloud-mac-capture-'));
   const file = path.join(dir, 'window.png');
@@ -250,7 +293,7 @@ async function capture(bounds) {
 export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
                                    restrictBrowserWrites = false, nativeHandler = native,
                                    approvalHandler = approve, captureHandler = capture,
-                                   auditHandler = async () => {}, platform = process.platform,
+                                   axHandler = nativeAX, auditHandler = async () => {}, platform = process.platform,
                                    sessionStore = createSessionStore(), browserProviders = {},
                                    enableBrowserRuntime = false, browserAudit = auditHandler,
                                    browserRouting = 'native_first',
@@ -277,6 +320,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
     restrictMutationsToAllowlist: restrictBrowserWrites }) : null;
   let busy = false;
   let bridgeToastShown = false;
+  const screenshotReferences=new ScreenshotReferences();
+  const axReferences=new AxNodeReferences();
   const routingMetrics = { native_discoveries:0, persistent_discoveries:0,
     persistent_fallbacks:0, native_discovery_failures:0 };
   const server = http.createServer(async (req, res) => {
@@ -413,6 +458,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       }
       if (req.url === '/v1/session/end') {
         const result=sessionStore.end(input.session_id);
+        screenshotReferences.revokeAll();
+        axReferences.revokeAll();
         try {await auditHandler({action:'session_end',outcome:'revoked'});}catch{ /* Revocation must not depend on audit availability. */ }
         reply(res,200,{ok:true,data:result}); return;
       }
@@ -519,18 +566,77 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         if (req.url === '/v1/screenshot') {
           const region = await nativeHandler('bounds',...args);
           const image = await captureHandler(region);
-          reply(res,200,{ok:true,data:image}); return;
+          // A stale focus or relocated window invalidates the entire image.
+          const current = await nativeHandler('bounds',...args);
+          if(!sameWindowBounds(region,current))throw new Error('STALE_SCREENSHOT_GEOMETRY');
+          let geometry;
+          try {
+            geometry=geometryFromCapture(region,image);
+          } catch(error) {
+            // A legacy/mock PNG without a complete IHDR can still be shown,
+            // but MUST NOT mint a geometry ref for clicking.
+            if(error?.message!=='SCREENSHOT_GEOMETRY_UNAVAILABLE')throw error;
+          }
+          let ax_snapshot;
+          if(input.include_ax===true){
+            if(geometry===undefined)throw new Error('SCREENSHOT_GEOMETRY_UNAVAILABLE');
+            const raw=await axHandler('snapshot',{
+              browser:input.browser, expected_url:input.expected_url,
+              expected_title:input.expected_title,bounds_points:region
+            });
+            ax_snapshot=axReferences.snapshot(raw,input,region);
+            const stable=await nativeHandler('bounds',...args);
+            if(!sameWindowBounds(region,stable)){
+              axReferences.revokeAll();
+              throw new Error('AX_WINDOW_CHANGED');
+            }
+          }else if(input.include_ax!==undefined && input.include_ax!==false)
+            throw new Error('INVALID_AX_REQUEST');
+          if(geometry) {
+            const screenshot_ref=screenshotReferences.create(input,geometry);
+            reply(res,200,{ok:true,data:{...image,geometry:{...geometry,screenshot_ref},
+              ...(ax_snapshot?{ax_snapshot}:{})}});
+          } else reply(res,200,{ok:true,data:{...image,geometry_available:false}});
+          return;
         }
         if (req.url === '/v1/action') {
-          if (!['click','type_text','press_key'].includes(input.action) ||
+          if (!['click','type_text','press_key','ax_press','ax_set_value'].includes(input.action) ||
               typeof input.reason !== 'string' || input.reason.length < 10 ||
               input.reason.length > 300) throw new Error('INVALID_ACTION');
+          const usesSession=input.session_id!==undefined;
+          // Validate scope/ownership before evaluating screen geometry or AX.
+          if(usesSession) sessionStore.authorize(input.session_id,input.browser);
           let eventArguments;
           if (input.action === 'click') {
-            if (![input.x,input.y].every(n => Number.isInteger(n) && n >= 0 && n <= 32768)) {
+            if(![input.x,input.y].every(Number.isInteger))
               throw new Error('INVALID_COORDINATES');
+            if(!['screen_points','screenshot_pixels',undefined].includes(input.coordinate_space))
+              throw new Error('INVALID_COORDINATE_SPACE');
+            // Bind all clicks to the currently observed frontmost window.
+            // Browser title+URL are revalidated again inside native JXA.
+            const currentBounds=await nativeHandler('bounds',...args);
+            let point;
+            if(input.coordinate_space==='screenshot_pixels') {
+              const geometry=screenshotReferences.resolve(input.screenshot_ref,input,currentBounds);
+              point=screenshotPixelToScreenPoint(input.x,input.y,geometry);
+            }else {
+              if(input.screenshot_ref!==undefined)throw new Error('INVALID_COORDINATE_SPACE');
+              point=checkedScreenPoint(input.x,input.y,{bounds_points:currentBounds});
             }
-            eventArguments = [String(input.x),String(input.y)];
+            eventArguments=[String(point.x),String(point.y)];
+          } else if(input.action==='ax_press' || input.action==='ax_set_value') {
+            if(input.coordinate_space!==undefined || input.x!==undefined ||
+               input.y!==undefined || input.screenshot_ref!==undefined)
+              throw new Error('INVALID_AX_REQUEST');
+            if(input.action==='ax_set_value' &&
+               (typeof input.text!=='string'||input.text.length<1||input.text.length>2000))
+              throw new Error('INVALID_TEXT');
+            if(input.action==='ax_press' && input.text!==undefined)
+              throw new Error('INVALID_AX_REQUEST');
+            const bounds=await nativeHandler('bounds',...args);
+            const node=axReferences.resolve(input.ax_node_ref,input.ax_revision,input,
+              bounds,input.action);
+            eventArguments=[node];
           } else if (input.action === 'type_text') {
             if (typeof input.text !== 'string' || input.text.length < 1 || input.text.length > 2000) {
               throw new Error('INVALID_TEXT');
@@ -546,8 +652,6 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             'This can submit forms or change accounts. Confirm the intended effect before approving.';
           const audit = {browser:input.browser,origin:new URL(input.expected_url).origin,
             action:input.action};
-          const usesSession=input.session_id!==undefined;
-          if(usesSession) sessionStore.authorize(input.session_id,input.browser);
           if (!usesSession) {
             if (!await approvalHandler(prompt)) {
               await auditHandler({...audit,outcome:'denied'});
@@ -556,14 +660,40 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           }
           await auditHandler({...audit,outcome:usesSession?'session_authorized':'approved',
             approval_mode:usesSession?'delegated_session':'per_action'});
-          // The second session check happens immediately before dispatch so a
-          // local revoke or expiry while inspecting a tab fails closed.
+          // The session check and target bounds are independently rechecked
+          // immediately before dispatch, after a potentially long approval.
+          if(input.action==='click') {
+            const latest=await nativeHandler('bounds',...args);
+            if(input.coordinate_space==='screenshot_pixels') {
+              screenshotReferences.resolve(input.screenshot_ref,input,latest);
+            }else {
+              checkedScreenPoint(Number(eventArguments[0]),Number(eventArguments[1]),
+                {bounds_points:latest});
+            }
+          }
+          if(input.action==='ax_press'||input.action==='ax_set_value'){
+            const latest=await nativeHandler('bounds',...args);
+            axReferences.resolve(input.ax_node_ref,input.ax_revision,input,
+              latest,input.action);
+          }
           const delegated=usesSession ?
             sessionStore.authorize(input.session_id,input.browser,{consume:true}) : null;
-          // Native JXA independently verifies title+URL just before the OS event.
+          // Native JXA or AX helper independently verifies the frontmost
+          // browser and target before dispatch. AX nodes are one-shot.
           let result;
           try {
-            result = await nativeHandler('action',...args,input.action,...eventArguments);
+            if(input.action==='ax_press'||input.action==='ax_set_value'){
+              const node=eventArguments[0];
+              axReferences.consume(input.ax_node_ref);
+              result=await axHandler('action',{
+                browser:input.browser,expected_url:input.expected_url,
+                expected_title:input.expected_title,bounds_points:node.bounds,
+                expected_revision:node.revision,path:node.path,
+                fingerprint:node.fingerprint,
+                action:input.action==='ax_press'?'press':'set_value',
+                ...(input.action==='ax_set_value'?{value:input.text}:{})
+              });
+            }else result = await nativeHandler('action',...args,input.action,...eventArguments);
           } catch (error) {
             await auditHandler({...audit,outcome:'failed'});
             throw error;
@@ -584,7 +714,15 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
     } catch (error) {
       // Never return OS diagnostics, personal URLs with query strings, tokens, or typed text.
       const allowedErrors = new Set(['INVALID_TARGET','INVALID_ACTION','INVALID_TEXT','INVALID_KEY',
-        'INVALID_COORDINATES','INVALID_BODY','INVALID_BROWSER','USER_DENIED_ACTION','REQUEST_TOO_LARGE',
+        'INVALID_COORDINATES','COORDINATES_OUTSIDE_TARGET','INVALID_SCREENSHOT_COORDINATES',
+        'INVALID_COORDINATE_SPACE','SCREENSHOT_GEOMETRY_UNAVAILABLE','SCREENSHOT_SCALE_UNSUPPORTED',
+        'STALE_SCREENSHOT_REF','SCREENSHOT_TARGET_MISMATCH','STALE_SCREENSHOT_GEOMETRY','INVALID_BOUNDS',
+        'NATIVE_AX_UNAVAILABLE','AX_INVALID_SNAPSHOT','AX_INVALID_TARGET','AX_OUTPUT_LIMIT',
+        'AX_PERMISSION_DENIED','AX_NO_FOCUSED_WINDOW','AX_INVALID_WINDOW_BOUNDS',
+        'AX_WINDOW_CHANGED','AX_WEB_AREA_UNAVAILABLE','AX_WEB_AREA_AMBIGUOUS',
+        'AX_WEB_AREA_OUTSIDE_WINDOW','AX_NODE_STALE_OR_UNSAFE','AX_NODE_UNSAFE',
+        'AX_NODE_STALE','STALE_AX_NODE','AX_TARGET_MISMATCH','AX_ACTION_NOT_SUPPORTED',
+        'AX_INPUT_NOT_SUPPORTED','AX_ACTION_FAILED','AX_TREE_STALE','INVALID_AX_REQUEST','INVALID_BODY','INVALID_BROWSER','USER_DENIED_ACTION','REQUEST_TOO_LARGE',
         'STALE_WINDOW','STALE_TAB','STALE_URL','STALE_TITLE','AMBIGUOUS_NATIVE_TARGET',
         'TARGET_CHANGED','BROWSER_NOT_RUNNING',
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',

@@ -1,7 +1,15 @@
 import type { AppConfig } from '../config.js';
 
 export type ComputerBrowser = 'chrome' | 'edge';
-export type ComputerAction = 'click' | 'type_text' | 'press_key';
+export type ComputerAction = 'click' | 'type_text' | 'press_key' | 'ax_press' | 'ax_set_value';
+export type ComputerScreenshotGeometry = {
+  coordinate_contract: 'mac-screen-points.v1';
+  screenshot_ref: string;
+  bounds_points: {x: number; y: number; width: number; height: number};
+  image_pixels: {width: number; height: number};
+  scale: {x: number; y: number};
+  expires_in_ms: number;
+};
 
 export interface BrowserTarget {
   browser: ComputerBrowser;
@@ -15,6 +23,10 @@ export interface ActionRequest extends BrowserTarget {
   action: ComputerAction;
   x?: number;
   y?: number;
+  coordinate_space?: 'screen_points' | 'screenshot_pixels';
+  screenshot_ref?: string;
+  ax_node_ref?: string;
+  ax_revision?: string;
   text?: string;
   key?: 'tab' | 'escape' | 'enter' | 'space' | 'backspace' | 'up' | 'down' | 'left' | 'right';
   reason: string;
@@ -59,13 +71,50 @@ export class ComputerUseService {
     return this.request('/v1/focus', target);
   }
 
-  async screenshot(target: BrowserTarget): Promise<{ mimeType: 'image/png'; data: string }> {
+  async screenshot(target: BrowserTarget, options?:{include_ax?: boolean}): Promise<{
+    mimeType: 'image/png'; data: string; geometry?: ComputerScreenshotGeometry;
+    ax_snapshot?: {
+      provider:'native_ax';ax_revision:string;expires_in_ms:number;
+      nodes:Array<{node_ref:string;role:string;name:string;enabled:boolean;
+        parent_path?:number[]|null;frame_points?:{x:number;y:number;width:number;height:number}}>
+    }
+  }> {
     this.enforceBrowserTargetIdentity(target);
-    const result = await this.request('/v1/screenshot', target) as { mime_type?: string; base64?: string };
+    const result = await this.request('/v1/screenshot',
+      {...target,...(options?.include_ax?{include_ax:true}:{})}) as {
+      mime_type?: string; base64?: string; geometry?: ComputerScreenshotGeometry;
+      ax_snapshot?: {
+        provider:'native_ax';ax_revision:string;expires_in_ms:number;
+        nodes:Array<{node_ref:string;role:string;name:string;enabled:boolean;
+          parent_path?:number[]|null;frame_points?:{x:number;y:number;width:number;height:number}}>
+      }
+    };
     if (result.mime_type !== 'image/png' || !result.base64 || result.base64.length > 12_000_000 || !/^[A-Za-z0-9+/=]+$/.test(result.base64)) {
       throw new Error('Invalid or oversized image received from computer bridge.');
     }
-    return { mimeType: 'image/png', data: result.base64 };
+    const geo=result.geometry;
+    if(geo !== undefined && (
+      geo?.coordinate_contract!=='mac-screen-points.v1' ||
+      typeof geo.screenshot_ref!=='string' || !/^[a-f0-9]{64}$/.test(geo.screenshot_ref) ||
+      !Object.values(geo.bounds_points||{}).every(Number.isFinite) ||
+      !['x','y','width','height'].every(k=>Number.isInteger(geo.bounds_points?.[k as keyof typeof geo.bounds_points])) ||
+      !Number.isSafeInteger(geo.image_pixels?.width) || !Number.isSafeInteger(geo.image_pixels?.height) ||
+      geo.image_pixels.width<=0 || geo.image_pixels.height<=0 ||
+      !Number.isFinite(geo.scale?.x) || !Number.isFinite(geo.scale?.y) ||
+      geo.scale.x<=0 || geo.scale.y<=0 || !Number.isInteger(geo.expires_in_ms) ||
+      geo.expires_in_ms<1 || geo.expires_in_ms>60000
+    ))throw new Error('Invalid screenshot geometry from computer bridge.');
+    const ax=result.ax_snapshot;
+    if(ax!==undefined && (ax.provider!=='native_ax' ||
+      !/^[a-f0-9]{64}$/.test(String(ax.ax_revision)) ||
+      !Number.isInteger(ax.expires_in_ms) || ax.expires_in_ms<1 || ax.expires_in_ms>60000 ||
+      !Array.isArray(ax.nodes) || ax.nodes.length>450 ||
+      ax.nodes.some(n=>!n || !/^[a-f0-9]{64}$/.test(n.node_ref) ||
+        typeof n.role!=='string'||n.role.length>50||
+        typeof n.name!=='string'||n.name.length>120||typeof n.enabled!=='boolean')))
+      throw new Error('Invalid AX snapshot received from computer bridge.');
+    return { mimeType: 'image/png', data: result.base64,
+      ...(geo?{geometry:geo}:{}),...(ax?{ax_snapshot:ax}:{}) };
   }
 
   async action(input: ActionRequest) {

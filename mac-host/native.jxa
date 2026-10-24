@@ -110,7 +110,7 @@ function run(argv) {
     // Before mutating a global GUI, require a single identity even when the
     // original index still matches. Two identically titled URLs in different
     // windows are not distinguishable by the current MCP input contract.
-    if (operation === 'action' && !selected.rebound) {
+    if ((operation === 'action' || operation === 'bounds') && !selected.rebound) {
       let matches=0;
       for (const candidateWindow of windows) {
         let candidates;
@@ -178,7 +178,7 @@ function run(argv) {
       const action = String(argv[6] || '');
       if (action === 'click') {
         const x = Number(argv[7]), y = Number(argv[8]);
-        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 32768 || y > 32768) return fail('INVALID_COORDINATES');
+        if (!Number.isInteger(x) || !Number.isInteger(y) || Math.abs(x) > 32768 || Math.abs(y) > 32768) return fail('INVALID_COORDINATES');
         proc.click({at: [x, y]});
       } else if (action === 'type_text') {
         const value = String(argv[7] || '');

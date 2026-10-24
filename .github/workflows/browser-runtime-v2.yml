@@ -32,6 +32,8 @@ jobs:
           npm run test:browser:reinforcement > "$RUNNER_TEMP/agent-reinforcement-evals.txt"
           cat "$RUNNER_TEMP/agent-reinforcement-evals.txt"
           sha256sum "$RUNNER_TEMP/agent-reinforcement-evals.txt"
+      - name: Native Retina geometry, AX node guards and current bridge compatibility
+        run: npm run test:browser:native-parity
       - name: Source, native compatibility, real Chromium and 25-context offscreen gesture checks
         run: npm run verify:v2
       - name: Production dependency advisory gate
@@ -48,6 +50,8 @@ jobs:
         run: |
           node deploy/browser-hardening/build-release.mjs "$RUNNER_TEMP/computer-use-29-hardening"
           node deploy/browser-hardening/verify-release.mjs "$RUNNER_TEMP/computer-use-29-hardening"
+      - name: Stage verified browser-native AX/Retina review bundle, never install on Mac
+        run: node deploy/browser-native-targeting-parity/build-release.mjs "$RUNNER_TEMP/native-targeting-parity"
       - name: Confirm no generated files changed tracked source
         run: git diff --exit-code
 
@@ -64,6 +68,11 @@ jobs:
           osacompile -l JavaScript -o "$RUNNER_TEMP/cloud-sandbox-native.scpt" mac-host/native.jxa
           output=$(/usr/bin/osascript -l JavaScript mac-host/native.jxa state unsupported-browser)
           echo "$output" | grep -F '"error":"UNSUPPORTED_BROWSER"'
+      - name: Typecheck and compile AXUIElement helper without running it or changing browser permissions
+        run: |
+          xcrun swiftc -typecheck mac-host/native-ax/AXBrowserHelper.swift
+          xcrun swiftc -O mac-host/native-ax/AXBrowserHelper.swift -o "$RUNNER_TEMP/ax-browser-helper"
+          test -s "$RUNNER_TEMP/ax-browser-helper"
       - name: Compile and typecheck the native AppKit overlay
         run: |
           xcrun swiftc -typecheck deploy/bridge-toast/bridge-toast.swift -framework AppKit -framework QuartzCore

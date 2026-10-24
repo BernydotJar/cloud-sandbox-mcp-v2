@@ -327,3 +327,23 @@ authorization/target/persistence checks.
 and the project-specific rules; do not clone separate competing policies.
 An agent that cannot access the shared rules must explicitly say so
 before using authenticated native browser automation.
+
+
+## Native Browser Targeting parity (Mac AX / Retina)
+
+31. For screenshot-originated native clicks, use screenshot geometry
+`coordinate_contract=mac-screen-points.v1` and a fresh
+`screenshot_ref` with `coordinate_space=screenshot_pixels`.
+Raw `x,y` in a screenshot are PIXELS, while macOS native click defaults
+to GLOBAL SCREEN POINTS. Never treat performed=true as control activated.
+32. On an operator-compiled and verified native AX bridge, request
+`computer_use_screenshot(include_ax=true)` and select by unique opaque
+`ax_node_ref` plus `ax_revision`; only `ax_press` or `ax_set_value`
+with the existing task grant may mutate. A missing/unavailable AX tree
+must not be simulated with coordinates, stale paths or a Chrome profile
+substitution. The AX helper is a distinct provider, not CDP/Playwright.
+33. Source-only changes are not Mac deployment. Before live use read
+`docs/computer-use-v2/NATIVE_AX_TARGETING.md` and the operator handoff,
+verify actual installed package, protected enterprise sessions and
+independent benign Mac acceptance. Preserve the 29-tool customized
+controller and concurrent Edge doctor WIP.

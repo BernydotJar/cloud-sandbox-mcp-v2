@@ -20,6 +20,13 @@ describe('Cloud Sandbox native MCP tool registry',()=>{
       await client.connect(clientTransport);
       const advertised = (await client.listTools()).tools;
       const tools = advertised.map(t=>t.name);
+      const snapshotSchema=advertised.find(t=>t.name==='computer_use_screenshot')?.inputSchema;
+      expect(snapshotSchema?.properties).toHaveProperty('include_ax');
+      const actionSchema=advertised.find(t=>t.name==='computer_use_action')?.inputSchema;
+      expect(actionSchema?.properties).toHaveProperty('ax_node_ref');
+      expect(actionSchema?.properties).toHaveProperty('ax_revision');
+      expect(actionSchema?.properties).toHaveProperty('coordinate_space');
+      expect(actionSchema?.properties).toHaveProperty('screenshot_ref');
       for(const name of ['computer_use_focus','computer_use_screenshot','computer_use_action']){
         const schema=advertised.find(t=>t.name===name)?.inputSchema;
         expect(schema?.required).toContain('expected_title');
