@@ -347,3 +347,30 @@ substitution. The AX helper is a distinct provider, not CDP/Playwright.
 verify actual installed package, protected enterprise sessions and
 independent benign Mac acceptance. Preserve the 29-tool customized
 controller and concurrent Edge doctor WIP.
+
+
+## Required background execution isolation
+
+34. When the operator requires nonintrusive work, set
+`task.background_required=true` and read
+`docs/computer-use-v2/BACKGROUND_EXECUTION.md` before selecting a tool.
+Default mode is isolated headless Playwright, not foreground browser CUA.
+35. Never use `computer_use_focus`, native screenshot (which can focus a
+window), native AX click, System Events global keyboard or coordinate
+navigation under a background-only task. The updated MCP schema defaults
+native target actions to `background_required=true` and rejects them.
+Only a separately approved foreground task may explicitly set false.
+36. The CUA `getAXState` handoff provides control identity, not background
+GUI isolation. Background Desktop CUA needs a separate macOS GUI session
+with independent pointer and input; a missing worker blocks the task,
+without falling back to global keystrokes.
+37. Mac Terminal **GUI** CUA and headless Mac host command execution are
+different backends. A command intended for macOS must not be sent to the
+Linux workspace as if it ran on Mac. Use only a verified, scoped, audited
+Mac host command runner if available. Never invent one.
+38. For a current authenticated Mac browser only an explicitly approved
+`background_mode=focus_preserving` and verified persistent semantic
+provider may proceed without physical mouse or keyboard events; existing
+tab contents are NOT independent of the operator. Block a native fallback.
+39. Follow BKG01-BKG09 acceptance gates. Source tests and an agent
+process running unattended are not proof that a Mac desktop is independent.

@@ -445,6 +445,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           discovery_mode:dynamicTabs ? 'all_web_tabs' : 'allowlist',
           title_identity_required:dynamicTabs,
           mutation_policy:restrictBrowserWrites?'allowlist_only':'session_scoped',
+          native_display_behavior:'foreground_only',
+          background_native_actions_supported:false,
           approval_modes:['per_action','delegated_session'],
           trusted_delegation_notice:{
             enabled:trustedSessionNoticeEnabled,seconds:20,closable:true,
@@ -553,6 +555,15 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         }
         reply(res, 200, {ok:true,data:{browsers:discovered}}); return;
       }
+      // A native screenshot can activate Edge/Chrome just like a click:
+      // JXA bounds/action targets the frontmost shared macOS desktop.
+      // Strict background tasks must use the isolated/headless or verified
+      // focus-preserving semantic provider instead of this native path.
+      if(input.background_required===true)
+        throw new Error('BACKGROUND_NATIVE_FOREGROUND_REQUIRED');
+      if(input.background_required!==undefined &&
+         typeof input.background_required!=='boolean')
+        throw new Error('INVALID_BACKGROUND_REQUEST');
       const args = verifyTarget(input,allowedOrigins,dynamicTabs,
         req.url === '/v1/action' && restrictBrowserWrites);
       if (busy) { reply(res,409,{ok:false,error:'COMPUTER_BUSY'}); return; }
@@ -722,7 +733,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         'AX_WINDOW_CHANGED','AX_WEB_AREA_UNAVAILABLE','AX_WEB_AREA_AMBIGUOUS',
         'AX_WEB_AREA_OUTSIDE_WINDOW','AX_NODE_STALE_OR_UNSAFE','AX_NODE_UNSAFE',
         'AX_NODE_STALE','STALE_AX_NODE','AX_TARGET_MISMATCH','AX_ACTION_NOT_SUPPORTED',
-        'AX_INPUT_NOT_SUPPORTED','AX_ACTION_FAILED','AX_TREE_STALE','INVALID_AX_REQUEST','INVALID_BODY','INVALID_BROWSER','USER_DENIED_ACTION','REQUEST_TOO_LARGE',
+        'AX_INPUT_NOT_SUPPORTED','AX_ACTION_FAILED','AX_TREE_STALE','INVALID_AX_REQUEST',
+        'BACKGROUND_NATIVE_FOREGROUND_REQUIRED','INVALID_BACKGROUND_REQUEST','INVALID_BODY','INVALID_BROWSER','USER_DENIED_ACTION','REQUEST_TOO_LARGE',
         'STALE_WINDOW','STALE_TAB','STALE_URL','STALE_TITLE','AMBIGUOUS_NATIVE_TARGET',
         'TARGET_CHANGED','BROWSER_NOT_RUNNING',
         'MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR','EXPECTED_TITLE_REQUIRED',

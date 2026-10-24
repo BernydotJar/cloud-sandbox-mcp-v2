@@ -122,3 +122,80 @@ test('Edge native fallback never silently changes to Chrome persistent profile',
  assert.equal(d.context,'existing_mac');
  assert.equal(d.engine,'browser_mcp_native');
 });
+
+test('background web QA uses only a verified headless and isolated Playwright engine',()=>{
+ const t={kind:'web',intent:'qa',context:'isolated',background_required:true};
+ const c={isolated_playwright:true,isolated_playwright_headless:true};
+ const decision=route(t,c);
+ assert.equal(decision.status,'selected');
+ assert.equal(decision.engine,'playwright_isolated');
+ assert.equal(decision.focus_impact,'none');
+ assert.equal(decision.fully_isolated,true);
+ assert.equal(decision.background_mode,'isolated');
+});
+test('headed project suite cannot be mislabeled as background automation',()=>{
+ const t={kind:'web',intent:'qa',context:'isolated',background_required:true};
+ const c={project_playwright_suite:true,project_suite_headless:false,
+   isolated_playwright:true,isolated_playwright_headless:true};
+ assert.equal(route(t,c).engine,'playwright_isolated');
+ assert.equal(route(t,{...c,isolated_playwright_headless:false}).code,
+   'BACKGROUND_HEADLESS_PLAYWRIGHT_REQUIRED');
+});
+test('background project suite works only with confirmed headless support',()=>{
+ const t={kind:'web',intent:'qa',context:'isolated',background_required:true};
+ assert.equal(route(t,{project_playwright_suite:true,project_suite_headless:true}).engine,'playwright_project');
+});
+test('default isolated background forbids personal authenticated Mac tabs even with CDP',()=>{
+ const t={...mac,background_required:true};
+ const c={browser_provider:'persistent',browser_semantic_available:true,
+   browser_tab_ref_present:true,browser_focus_preserving_verified:true};
+ assert.equal(route(t,c).code,'BACKGROUND_PERSONAL_BROWSER_NOT_ISOLATED');
+});
+test('focus-preserving existing Mac browsing requires attested semantic transport',()=>{
+ const t={...mac,background_required:true,background_mode:'focus_preserving'};
+ const c={browser_provider:'persistent',browser_semantic_available:true,
+   browser_tab_ref_present:true,browser_focus_preserving_verified:true};
+ const allow=route(t,c);
+ assert.equal(allow.engine,'browser_mcp_semantic');
+ assert.equal(allow.fully_isolated,false);
+ assert.equal(allow.focus_impact,'os_focus_not_required');
+ assert.equal(route(t,{...c,browser_focus_preserving_verified:false}).code,
+   'BACKGROUND_SEMANTIC_BROWSER_REQUIRED');
+ assert.equal(route(t,{...c,browser_provider:'native',native_browser_available:true}).code,
+   'BACKGROUND_SEMANTIC_BROWSER_REQUIRED');
+});
+test('active desktop CUA is not a background engine even when AX exists',()=>{
+ const t={kind:'mac_desktop',background_required:true};
+ assert.equal(route(t,{native_mac_available:true,native_mac_ax_available:true}).code,
+   'BACKGROUND_MAC_DESKTOP_ISOLATION_REQUIRED');
+ assert.equal(route({...t,background_mode:'focus_preserving'},{
+   native_mac_isolated_session:true,native_mac_independent_input:true,
+   native_mac_ax_available:true}).code,'BACKGROUND_MAC_DESKTOP_ISOLATION_REQUIRED');
+});
+test('isolated Mac GUI is a future distinct provider, not current shared CUA',()=>{
+ const t={kind:'mac_desktop',background_required:true,
+   isolated_desktop_authorized:true};
+ const c={native_mac_isolated_session:true,native_mac_independent_input:true,
+   native_mac_ax_available:true};
+ const r=route(t,c);
+ assert.equal(r.engine,'native_mac_isolated');
+ assert.equal(r.focus_impact,'isolated_mac_gui');
+ assert.equal(r.requires_authorization,true);
+ assert.equal(route({...t,isolated_desktop_authorized:false},c).code,
+   'BACKGROUND_MAC_DESKTOP_ISOLATION_REQUIRED');
+});
+test('a Mac Terminal command cannot be falsely routed to the Linux workstation',()=>{
+ const t={kind:'shell_api',background_required:true,target_host:'macos'};
+ assert.equal(route(t,{shell_api_available:true,mac_host_scoped_command_runner_available:false}).code,
+   'BACKGROUND_MAC_COMMAND_RUNNER_UNAVAILABLE');
+ const r=route(t,{mac_host_scoped_command_runner_available:true});
+ assert.equal(r.engine,'mac_host_scoped_api');
+ assert.equal(r.focus_impact,'none');
+ assert.equal(r.requires_authorization,true);
+});
+test('non-Mac deterministic shell remains a focus-free background option',()=>{
+ const t={kind:'shell_api',background_required:true,target_host:'sandbox'};
+ const r=route(t,{shell_api_available:true});
+ assert.equal(r.engine,'shell_api');
+ assert.equal(r.focus_impact,'none');
+});

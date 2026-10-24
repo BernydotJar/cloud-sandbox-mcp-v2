@@ -1,6 +1,6 @@
 {
   "schema": "cloud-sandbox.agent-behavior-eval.v1",
-  "version": "2026-10-23",
+  "version": "2026-10-23-bg1",
   "purpose": "Deterministic behavioral reinforcement for agent browser routing and business-write plans; synthetic scenario fixtures only",
   "minimum_critical_pass_rate": 1.0,
   "cases": [
@@ -1179,6 +1179,317 @@
         },
         "plan": {
           "engine": "shell_api",
+          "operation": "shell_action"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "SCOPED_SHELL_PREFLIGHT"
+      }
+    },
+    {
+      "id": "BG-001",
+      "failure_prevented": "Offscreen Playwright is permitted when headless was observed",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "isolated",
+          "browser": "chromium",
+          "background_required": true
+        },
+        "capabilities": {
+          "isolated_playwright": true,
+          "isolated_playwright_headless": true
+        },
+        "plan": {
+          "engine": "playwright_isolated",
+          "operation": "run_qa"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "BG-002",
+      "failure_prevented": "A headed browser cannot be presented as background Playwright",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "qa",
+          "context": "isolated",
+          "browser": "chromium",
+          "background_required": true
+        },
+        "capabilities": {
+          "isolated_playwright": true,
+          "isolated_playwright_headless": false
+        },
+        "plan": {
+          "engine": "playwright_isolated",
+          "operation": "run_qa"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BACKGROUND_HEADLESS_PLAYWRIGHT_REQUIRED"
+      }
+    },
+    {
+      "id": "BG-003",
+      "failure_prevented": "Authenticated Mac Edge is not an isolated background browser",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "background_required": true
+        },
+        "capabilities": {
+          "browser_provider": "persistent",
+          "browser_semantic_available": true,
+          "browser_tab_ref_present": true,
+          "browser_focus_preserving_verified": true
+        },
+        "plan": {
+          "engine": "browser_mcp_semantic",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BACKGROUND_PERSONAL_BROWSER_NOT_ISOLATED"
+      }
+    },
+    {
+      "id": "BG-004",
+      "failure_prevented": "Native Edge fallback cannot send clicks into a background-required workflow",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "background_required": true,
+          "background_mode": "focus_preserving",
+          "native_fallback_approved": true
+        },
+        "capabilities": {
+          "browser_provider": "native",
+          "native_browser_available": true
+        },
+        "plan": {
+          "engine": "browser_mcp_native",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BACKGROUND_SEMANTIC_BROWSER_REQUIRED"
+      }
+    },
+    {
+      "id": "BG-005",
+      "failure_prevented": "A verified CDP semantic adapter may preserve OS focus without isolating existing page",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "background_required": true,
+          "background_mode": "focus_preserving"
+        },
+        "capabilities": {
+          "browser_provider": "persistent",
+          "browser_semantic_available": true,
+          "browser_tab_ref_present": true,
+          "browser_focus_preserving_verified": true
+        },
+        "plan": {
+          "engine": "browser_mcp_semantic",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          },
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/browser-grant",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "origin_allowlist_status": "allowed"
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "BROWSER_PREFLIGHT"
+      }
+    },
+    {
+      "id": "BG-006",
+      "failure_prevented": "Never assume the CDP provider is focus preserving from a connection status alone",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "web",
+          "intent": "navigate",
+          "context": "existing_mac",
+          "browser": "edge",
+          "explicitly_requested_mac_session": true,
+          "background_required": true,
+          "background_mode": "focus_preserving"
+        },
+        "capabilities": {
+          "browser_provider": "persistent",
+          "browser_semantic_available": true,
+          "browser_tab_ref_present": true,
+          "browser_focus_preserving_verified": false
+        },
+        "plan": {
+          "engine": "browser_mcp_semantic",
+          "operation": "navigate",
+          "target": {
+            "browser": "edge",
+            "window_index": 2,
+            "tab_index": 3,
+            "expected_url": "https://example.test/corporate/time",
+            "expected_title": "Corporate Timesheets",
+            "fresh_observation": true,
+            "exact_match_count": 1
+          }
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BACKGROUND_SEMANTIC_BROWSER_REQUIRED"
+      }
+    },
+    {
+      "id": "BG-007",
+      "failure_prevented": "Active macOS CUA AX cannot safely type in the background without isolated display",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "mac_desktop",
+          "background_required": true
+        },
+        "capabilities": {
+          "native_mac_available": true,
+          "native_mac_ax_available": true
+        },
+        "plan": {
+          "engine": "native_mac",
+          "operation": "desktop_action"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BACKGROUND_MAC_DESKTOP_ISOLATION_REQUIRED"
+      }
+    },
+    {
+      "id": "BG-008",
+      "failure_prevented": "A background Mac Terminal operation must not be routed to Linux workspace shell",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "shell_api",
+          "background_required": true,
+          "target_host": "macos"
+        },
+        "capabilities": {
+          "shell_api_available": true
+        },
+        "plan": {
+          "engine": "shell_api",
+          "operation": "shell_action"
+        }
+      },
+      "expected": {
+        "state": "BLOCKED",
+        "code": "BACKGROUND_MAC_COMMAND_RUNNER_UNAVAILABLE"
+      }
+    },
+    {
+      "id": "BG-009",
+      "failure_prevented": "An isolated Mac GUI worker requires explicit independent-input approval",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "mac_desktop",
+          "background_required": true,
+          "isolated_desktop_authorized": true
+        },
+        "capabilities": {
+          "native_mac_isolated_session": true,
+          "native_mac_independent_input": true,
+          "native_mac_ax_available": true
+        },
+        "plan": {
+          "engine": "native_mac_isolated",
+          "operation": "desktop_action",
+          "delegated_session_ownership": "active_own",
+          "authorization": {
+            "ref": "evidence/isolated-gui-grant",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      },
+      "expected": {
+        "state": "PLAN_VALIDATED",
+        "code": "NATIVE_DESKTOP_PREFLIGHT"
+      }
+    },
+    {
+      "id": "BG-010",
+      "failure_prevented": "Explicitly scoped Mac host command runner does not require Terminal UI",
+      "critical": true,
+      "input": {
+        "task": {
+          "kind": "shell_api",
+          "background_required": true,
+          "target_host": "macos"
+        },
+        "capabilities": {
+          "mac_host_scoped_command_runner_available": true
+        },
+        "plan": {
+          "engine": "mac_host_scoped_api",
           "operation": "shell_action"
         }
       },

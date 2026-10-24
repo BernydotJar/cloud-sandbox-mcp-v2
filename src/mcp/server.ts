@@ -150,7 +150,8 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
       window_index: z.number().int().min(1),
       tab_index: z.number().int().min(1),
       expected_url: z.string().url().max(2048),
-      expected_title: z.string().min(1).max(300)
+      expected_title: z.string().min(1).max(300),
+      background_required: z.boolean().default(true)
     };
 
     server.registerTool('computer_use_session_begin', {
@@ -195,14 +196,14 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_focus', {
       title: 'Focus a Mac browser tab',
-      description: 'Focus the expressly requested Chrome/Edge tab, requiring an exact title, sanitized URL and fresh indices from discovery. Indices are never durable identifiers. Does not submit a form.',
+      description: 'FOREGROUND ONLY: focus activates a shared Mac Chrome/Edge window. Defaults background_required=true and fails closed. Set background_required=false ONLY for an explicitly approved foreground task. Requires exact URL, title and fresh tab identity.',
       inputSchema: targetSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async (target) => await safely(() => computer.focus(target)));
 
     server.registerTool('computer_use_screenshot', {
       title: 'Inspect Mac browser window screenshot',
-      description: 'Capture exact title+URL Chrome/Edge tab screenshot. Returns optional geometry metadata with Retina pixel-to-Mac-point scale and ephemeral screenshot_ref. include_ax=true requests a separate native AXUIElement tree restricted to the frontmost URL-bound web area, NOT CDP/Playwright. AX helper must be compiled and authorized by the Mac operator. Screenshot and AX values never prove data persisted.',
+      description: 'FOREGROUND POSSIBLE: native screenshot may activate the Mac browser window. Defaults background_required=true and rejects native capture. For expressly approved foreground use background_required=false, exact tab identity and optional include_ax. This is not isolated/background CUA or CDP.',
       inputSchema: {...targetSchema, include_ax:z.boolean().optional()},
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async ({include_ax,...target}) => {
@@ -229,7 +230,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_action', {
       title: 'Perform an approved Mac UI action',
-      description: 'Click, type or press a key ONLY on a fresh exact-title+URL Chrome/Edge tab in its original profile. Pass a task-scoped delegated session_id or obtain native approval per action; the HTTPS origin allowlist still applies. Rechecks identity before dispatch. performed=true only acknowledges an event; it does NOT prove Save/persisted readback. When clicking, coordinate_space=screen_points (legacy) means global Mac points; coordinate_space=screenshot_pixels requires screenshot_ref from a fresh screenshot, and x/y are image-relative pixels transformed using reported Retina scale. For native AX, action=ax_press or ax_set_value uses one-shot ax_node_ref and ax_revision from computer_use_screenshot(include_ax=true); an operator-built AXUIElement helper independently validates frontmost app, URL-bound AXWebArea, revision and role. No CDP claim. Coordinates outside verified frontmost window are rejected. Never retry uncertain actions. No arbitrary scripts.',
+      description: 'FOREGROUND ONLY: the native macOS event may activate a window or send global keystrokes. Defaults background_required=true and fails closed. background_required=false is allowed only for explicitly approved foreground UI work, exact tab identity, task grant and allowlist. AX refs require separately deployed helper; native is NOT an offscreen executor, CDP or Playwright. performed=true is not persisted readback.',
       inputSchema: {
         ...targetSchema,
         action: z.enum(['click', 'type_text', 'press_key','ax_press','ax_set_value']),

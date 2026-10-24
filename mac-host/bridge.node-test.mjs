@@ -967,3 +967,35 @@ test('native AX node cannot set protected fields or borrow a different profile',
   assert.equal(invalid.error,'AX_ACTION_NOT_SUPPORTED');
   assert.equal(acts,0);
 });
+
+test('background_required=true blocks native focus, screenshots and global input before OS dispatch',async()=>{
+  let prompts=0;
+  const {post,calls}=await ready({approvalHandler:async()=>{prompts++;return true;}});
+  const requests=[
+    ['/v1/focus',{...target,background_required:true}],
+    ['/v1/screenshot',{...target,background_required:true}],
+    ['/v1/action',{...target,background_required:true,
+      action:'press_key',key:'tab',reason:'Attempt background time entry using global Mac keyboard'}],
+    ['/v1/action',{...target,background_required:true,
+      action:'click',x:12,y:60,reason:'Attempt background time entry using global Mac cursor'}]
+  ];
+  for(const [endpoint,body] of requests) {
+    const r=await post(endpoint,body);
+    assert.equal(r.error,'BACKGROUND_NATIVE_FOREGROUND_REQUIRED');
+    assert.equal(r.status,400);
+  }
+  assert.equal(prompts,0);
+  assert.equal(calls.length,0);
+});
+test('background_required must be a boolean when a native target is requested',async()=>{
+  const {post,calls}=await ready();
+  const r=await post('/v1/screenshot',{...target,background_required:'false'});
+  assert.equal(r.error,'INVALID_BACKGROUND_REQUEST');
+  assert.equal(calls.length,0);
+});
+test('native host status explicitly reports foreground-only capability',async()=>{
+  const {post}=await ready();
+  const r=await post('/v1/status',{});
+  assert.equal(r.data.native_display_behavior,'foreground_only');
+  assert.equal(r.data.background_native_actions_supported,false);
+});

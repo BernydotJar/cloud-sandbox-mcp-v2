@@ -22,6 +22,11 @@ describe('Cloud Sandbox native MCP tool registry',()=>{
       const tools = advertised.map(t=>t.name);
       const snapshotSchema=advertised.find(t=>t.name==='computer_use_screenshot')?.inputSchema;
       expect(snapshotSchema?.properties).toHaveProperty('include_ax');
+      for(const tool of ['computer_use_focus','computer_use_screenshot','computer_use_action']){
+        const prop=advertised.find(t=>t.name===tool)?.inputSchema?.properties?.background_required;
+        expect(prop).toBeDefined();
+        expect(prop).toHaveProperty('default',true);
+      }
       const actionSchema=advertised.find(t=>t.name==='computer_use_action')?.inputSchema;
       expect(actionSchema?.properties).toHaveProperty('ax_node_ref');
       expect(actionSchema?.properties).toHaveProperty('ax_revision');

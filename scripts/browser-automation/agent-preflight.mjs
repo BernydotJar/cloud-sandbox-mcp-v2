@@ -57,6 +57,12 @@ export function evaluateAgentPlan({task,capabilities,plan}={}) {
   const decision=chooseExecutionEngine({task,capabilities});
   if(decision.status!=='selected')
     return block(decision.code,decision.engine,decision.prerequisites||[]);
+  // Defense-in-depth. Native CUA on the shared display cannot be
+  // silently relabeled a background executor by an agent's plan.
+  if(task?.background_required===true &&
+     !['none','os_focus_not_required','isolated_mac_gui'].includes(decision.focus_impact))
+    return block('BACKGROUND_EXECUTION_NOT_ATTESTED',decision.engine,
+      ['verified_focus_isolation_or_semantic_focus_preservation']);
   if(!plan || typeof plan!=='object' || Array.isArray(plan) ||
     !proposedOperations.has(plan.operation))
     return block('INVALID_AGENT_PLAN',decision.engine,['operation']);
@@ -68,9 +74,12 @@ export function evaluateAgentPlan({task,capabilities,plan}={}) {
     if(plan.delegated_session_ownership!=='active_own' ||
       evidenceReference(plan.authorization)!==true)
       return block('MAC_DESKTOP_AUTHORIZATION_REQUIRED',decision.engine,['own_mac_session','authorization_ref']);
-    return outcome('PLAN_VALIDATED','NATIVE_DESKTOP_PREFLIGHT',decision.engine,{evidence_status:'metadata_only'});
+    return outcome('PLAN_VALIDATED','NATIVE_DESKTOP_PREFLIGHT',decision.engine,
+      {evidence_status:'metadata_only',background_mode:decision.background_mode??null,
+       focus_impact:decision.focus_impact??'may_focus_shared_desktop'});
   }
-  if(task.kind==='shell_api') return outcome('PLAN_VALIDATED','SCOPED_SHELL_PREFLIGHT',decision.engine);
+  if(task.kind==='shell_api') return outcome('PLAN_VALIDATED','SCOPED_SHELL_PREFLIGHT',decision.engine,
+    {background_mode:decision.background_mode??null,focus_impact:decision.focus_impact??null});
 
   if(task.context==='existing_mac') {
     if(!['chrome','edge'].includes(task.browser) ||
@@ -115,6 +124,7 @@ export function evaluateAgentPlan({task,capabilities,plan}={}) {
 
   return outcome('PLAN_VALIDATED','BROWSER_PREFLIGHT',decision.engine,{
     evidence_status:'metadata_only',semantic_evidence:decision.semantic_evidence??null,
+    background_mode:decision.background_mode??null,focus_impact:decision.focus_impact??null,
     next_step:'Host still enforces grants, exact target and origin; independently verify effects.'
   });
 }

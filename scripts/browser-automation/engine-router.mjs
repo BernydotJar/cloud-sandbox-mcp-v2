@@ -10,7 +10,7 @@ import {pathToFileURL} from 'node:url';
 import console from 'node:console';
 import process from 'node:process';
 
-export const ROUTING_POLICY_VERSION = '1.0.0';
+export const ROUTING_POLICY_VERSION = '1.1.0';
 const webIntents = new Set(['qa', 'navigate', 'mutate']);
 const browsers = new Set(['chromium', 'chrome', 'edge']);
 const evidenceWeb = Object.freeze(['observed_ui', 'business_assertions', 'screenshot_or_trace']);
@@ -39,14 +39,22 @@ const bool = x => x === true;
  *   explicitly_requested_mac_session: boolean,
  *   requires_semantic: boolean,
  *   native_fallback_approved: boolean,
- *   result_independently_verifiable: boolean
+ *   result_independently_verifiable: boolean,
+ *   background_required: boolean,
+ *   background_mode: isolated | focus_preserving (isolated by default),
+ *   target_host: macos | sandbox,
+ *   isolated_desktop_authorized: boolean
  * }
  * capabilities = {
  *   project_playwright_suite, project_suite_supports_browser,
  *   isolated_playwright, isolated_chrome, isolated_edge,
  *   isolated_profile_authenticated, browser_provider,
  *   browser_semantic_available, browser_tab_ref_present,
- *   native_browser_available, native_mac_available, shell_api_available
+ *   native_browser_available, native_mac_available, shell_api_available,
+ *   isolated_playwright_headless, project_suite_headless,
+ *   browser_focus_preserving_verified, native_mac_isolated_session,
+ *   native_mac_independent_input, native_mac_ax_available,
+ *   mac_host_scoped_command_runner_available
  * }
  */
 export function chooseExecutionEngine({task={},capabilities={}}={}) {
@@ -55,14 +63,45 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
     return unavailable('INVALID_ROUTING_REQUEST','A task and capabilities object are required.');
 
   const kind=task.kind ?? 'web';
+  const background=task.background_required===true;
+  const backgroundMode=task.background_mode??'isolated';
+  if(background && !['isolated','focus_preserving'].includes(backgroundMode))
+    return unavailable('INVALID_BACKGROUND_MODE',
+      'Choose isolated or explicitly requested focus_preserving; never infer another mode.');
   if (kind === 'shell_api') {
+    if(background && task.target_host==='macos') {
+      if(!bool(capabilities.mac_host_scoped_command_runner_available))
+        return unavailable('BACKGROUND_MAC_COMMAND_RUNNER_UNAVAILABLE',
+          'Mac Terminal CUA is interactive. Run a scoped, authorized host command runner with no GUI instead.');
+      return chosen('mac_host_scoped_api','BACKGROUND_MAC_SCOPED_COMMAND',
+        'Execute an explicitly scoped macOS command without opening or focusing Terminal.',
+        {requires_authorization:true,prerequisites:['authorized_mac_host_command','no_interactive_terminal'],
+         background_mode:'isolated',focus_impact:'none',evidence:['command_exit_code','redacted_output']});
+    }
     return bool(capabilities.shell_api_available)
       ? chosen('shell_api','DETERMINISTIC_EXECUTION','Use a scoped deterministic CLI or API action.',
-          {evidence:['command_exit_code','observed_business_result']})
+          {evidence:['command_exit_code','observed_business_result'],
+           ...(background?{background_mode:'isolated',focus_impact:'none',
+             fully_isolated:true}: {})})
       : unavailable('SHELL_API_UNAVAILABLE','The requested deterministic tool is not available.');
   }
 
   if (kind === 'mac_desktop') {
+    if(background){
+      if(backgroundMode!=='isolated' ||
+         !bool(capabilities.native_mac_isolated_session) ||
+         !bool(capabilities.native_mac_independent_input) ||
+         !bool(capabilities.native_mac_ax_available) ||
+         !bool(task.isolated_desktop_authorized))
+        return unavailable('BACKGROUND_MAC_DESKTOP_ISOLATION_REQUIRED',
+          'Native macOS AX and global keyboard actions on the active desktop can steal focus. Require a separately authorized isolated macOS GUI session with independent input.',
+          {prerequisites:['separate_macos_gui_session','independent_input','native_ax','explicit_isolated_desktop_authorization']});
+      return chosen('native_mac_isolated','BACKGROUND_NATIVE_DESKTOP',
+        'Use only the independently isolated and authorized Mac GUI session.',
+        {requires_authorization:true,background_mode:'isolated',focus_impact:'isolated_mac_gui',
+         prerequisites:['verified_isolated_gui_identity','task_scoped_mac_consent','fresh_window_and_ax_identity'],
+         evidence:[...evidenceNative,'no_user_desktop_focus_change']});
+    }
     if (!bool(capabilities.native_mac_available))
       return unavailable('BLOCKED_NATIVE_DESKTOP','The general native Mac application driver is not exposed to this agent.');
     return chosen('native_mac','NATIVE_DESKTOP','Use macOS Accessibility against a fresh, allowlisted application/window.',
@@ -78,6 +117,15 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
     return unavailable('INVALID_ROUTING_REQUEST','Unsupported web intent, browser, or execution context.');
 
   if (context === 'existing_mac') {
+    if(background && backgroundMode==='isolated')
+      return unavailable('BACKGROUND_PERSONAL_BROWSER_NOT_ISOLATED',
+        'An attached personal Mac tab is not an isolated background session. Use headless Playwright with a separately authorized isolated profile.');
+    if(background && (capabilities.browser_provider!=='persistent' ||
+        !bool(capabilities.browser_semantic_available) ||
+        !bool(capabilities.browser_tab_ref_present) ||
+        !bool(capabilities.browser_focus_preserving_verified)))
+      return unavailable('BACKGROUND_SEMANTIC_BROWSER_REQUIRED',
+        'Do not fall back to native screenshot/keyboard/AX on the active Mac desktop. Confirm a focus-preserving persistent semantic provider or use an isolated headless browser.');
     if (!bool(task.explicitly_requested_mac_session))
       return unavailable('MAC_BROWSER_CONSENT_REQUIRED','A personal/authenticated Mac browser session must be explicitly requested.');
     if (browser === 'chromium')
@@ -92,7 +140,10 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
          allowed_operations:['inspect','screenshot',...((intent==='qa')?[]:['semantic_action'])],
          prerequisites:['fresh_tab_ref_and_revision','task_scoped_browser_grant_for_mutations'],
          evidence:intent==='mutate'?evidenceWrite:evidenceWeb,
-         transport:'provider_managed',semantic_evidence:true});
+         transport:'provider_managed',semantic_evidence:true,
+         ...(background ? {background_mode:'focus_preserving',
+           focus_impact:'os_focus_not_required',fully_isolated:false,
+           caveat:'Existing browser tab content can still change; user must not share this tab concurrently.'} : {})});
     }
 
     // Read-only inspection is not a mutation. A CDP failure must not hide
@@ -132,6 +183,13 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
   }
 
   // DEFAULT for ALL ordinary web UI: isolated Playwright, never personal Mac tabs.
+  // A project suite that opens a headed window is not background automation.
+  // Prefer its truly headless execution, otherwise use isolated headless runner.
+  if(background && !bool(capabilities.isolated_playwright_headless) &&
+     !(intent==='qa' && bool(capabilities.project_playwright_suite) &&
+       bool(capabilities.project_suite_headless)))
+    return unavailable('BACKGROUND_HEADLESS_PLAYWRIGHT_REQUIRED',
+      'A background-only web task must have a verified headless project suite or isolated Playwright runtime.');
   const exactBrowser=browser==='chrome'?'isolated_chrome':browser==='edge'?'isolated_edge':null;
   if (exactBrowser && !bool(capabilities[exactBrowser])) {
     return unavailable('BLOCKED_EXACT_BROWSER',
@@ -143,17 +201,23 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
       {prerequisites:['isolated_login_handoff','recheck_authentication']});
   }
   if (intent==='qa' && bool(capabilities.project_playwright_suite) &&
+      (!background || bool(capabilities.project_suite_headless)) &&
       (browser==='chromium' || bool(capabilities.project_suite_supports_browser))) {
     return chosen('playwright_project','PLAYWRIGHT_PROJECT_FIRST',
       'Run the existing project Playwright suite with isolated test identities.',
-      {evidence:evidenceWeb, browser});
+      {evidence:evidenceWeb, browser,
+       ...(background?{background_mode:'isolated',focus_impact:'none',
+         fully_isolated:true}: {})});
   }
-  if (bool(capabilities.isolated_playwright)) {
+  if (bool(capabilities.isolated_playwright) &&
+      (!background||bool(capabilities.isolated_playwright_headless))) {
     return chosen('playwright_isolated','PLAYWRIGHT_DEFAULT',
       'Use isolated headless Playwright; no Mac Chrome/Edge session or CDP attachment is required.',
       {requires_authorization:intent==='mutate',
        prerequisites:intent==='mutate'?['explicit_user_authorization','approved_environment']:[],
-       evidence:intent==='mutate'?evidenceWrite:evidenceWeb, browser});
+       evidence:intent==='mutate'?evidenceWrite:evidenceWeb, browser,
+       ...(background?{background_mode:'isolated',focus_impact:'none',
+         fully_isolated:true}: {})});
   }
   return unavailable('BLOCKED_PLAYWRIGHT_UNAVAILABLE',
     'The isolated Playwright runtime is unavailable; never automatically access personal browser sessions.');

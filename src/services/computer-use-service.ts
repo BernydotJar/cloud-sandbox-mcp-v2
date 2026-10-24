@@ -13,6 +13,8 @@ export type ComputerScreenshotGeometry = {
 
 export interface BrowserTarget {
   browser: ComputerBrowser;
+  /** true prohibits focus-changing native CUA operations on the shared Mac desktop. */
+  background_required?: boolean;
   window_index: number;
   tab_index: number;
   expected_url: string;

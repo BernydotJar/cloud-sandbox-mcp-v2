@@ -23,8 +23,10 @@ if (url.username || url.password || !['https:'].includes(url.protocol)) throw Er
 const executablePath=process.env.CHROMIUM_PATH || '/usr/bin/chromium';
 const executableAvailable=await fs.access(executablePath,fsConstants.X_OK)
   .then(()=>true).catch(()=>false);
-const task={kind:'web',intent:'navigate',context:'isolated',browser:'chromium'};
-const capabilities={isolated_playwright:executableAvailable};
+const task={kind:'web',intent:'navigate',context:'isolated',browser:'chromium',
+  background_required:true,background_mode:'isolated'};
+const capabilities={isolated_playwright:executableAvailable,
+  isolated_playwright_headless:executableAvailable};
 const routing=chooseExecutionEngine({task,capabilities});
 const preflight=evaluateAgentPlan({
   task,capabilities,plan:{engine:routing.engine,operation:'navigate'}
