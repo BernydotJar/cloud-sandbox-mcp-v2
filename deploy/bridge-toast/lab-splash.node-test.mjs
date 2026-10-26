@@ -33,6 +33,20 @@ test('alert modes have bounded lifetime, restricted codes and actionable native 
   assert.doesNotMatch(swift,/shell -c|Process\(\)|URLSession/);
 });
 
+test('all global values constructed from private Swift view types are also private',()=>{
+  const privateTypes=[...swift.matchAll(/^private (?:final )?class (\w+)/gm)]
+    .map(m=>m[1]);
+  for(const type of privateTypes){
+    const declarations=[...swift.matchAll(
+      new RegExp('^(?:private )?let \\w+ = '+type+'\\(', 'gm'))];
+    for(const match of declarations){
+      assert(match[0].startsWith('private let '),
+        'private '+type+' must not leak through a non-private global binding');
+    }
+  }
+  assert.match(swift,/private let burst = LabBurstView\(/);
+});
+
 test('Mac preview exposes Swift diagnostics instead of swallowing stderr',()=>{
   const script=fs.readFileSync(path.join(root,'preview-on-mac.mjs'),'utf8');
   assert.match(script,/SWIFT_DIAGNOSTIC/);

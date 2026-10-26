@@ -205,7 +205,7 @@ accent.layer?.backgroundColor = NSColor.systemPink.withAlphaComponent(0.84).cgCo
 accent.layer?.cornerRadius = 1.5
 glass.addSubview(accent)
 
-let burst = LabBurstView(frame: NSRect(x: 0, y: 0, width: 116,
+private let burst = LabBurstView(frame: NSRect(x: 0, y: 0, width: 116,
                                          height: noticeHeight))
 glass.addSubview(burst)
 
