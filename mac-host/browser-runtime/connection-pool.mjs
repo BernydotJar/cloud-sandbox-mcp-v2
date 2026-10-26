@@ -1,10 +1,39 @@
 import { RuntimeFault, fail, browserName } from './contracts.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 // Playwright 1.64+ can resolve a running Chromium channel through that
 // profile's DevToolsActivePort file after the operator explicitly enables
 // chrome://inspect/#remote-debugging. Unlike numeric CDP URLs, the runtime
 // never needs to discover, allocate, or publish a debugging port.
 const LOCAL_CHANNEL = Object.freeze({ chrome: 'chrome', edge: 'msedge' });
+
+// Read-only Mac channel preflight. No port scanning, no profile modifications,
+// browser relaunch, debugger URL disclosure or unexpected Chrome/Edge changes.
+export function channelMarkerState(browser, {
+  home=os.homedir(), readFile=(file)=>fs.readFileSync(file,'utf8')
+}={}) {
+  browserName(browser);
+  const location=browser==='edge'
+    ? 'Library/Application Support/Microsoft Edge/DevToolsActivePort'
+    : 'Library/Application Support/Google/Chrome/DevToolsActivePort';
+  try {
+    const value=readFile(path.join(home,location));
+    const text=Buffer.isBuffer(value)?value.toString('utf8'):String(value);
+    const first=text.split(/\r?\n/,1)[0];
+    return /^\d{4,5}$/.test(first) && Number(first)>=1024 &&
+      Number(first)<=65535 ? 'valid' : 'invalid';
+  }catch(e){return e?.code==='ENOENT'?'missing':'unavailable';}
+}
+export function channelRemediation({connected,attachFailure,marker}={}) {
+  if(connected)return 'NONE';
+  if(!attachFailure)return 'NOT_TESTED';
+  if(marker==='missing')return 'OPERATOR_ENABLE_REMOTE_DEBUGGING_NO_BROWSER_RESTART_AUTOMATION';
+  if(marker==='invalid')return 'INVALID_DEBUG_MARKER_DO_NOT_GUESS_PORT';
+  return 'READ_ONLY_MAC_CHANNEL_DIAGNOSTIC_REQUIRED';
+}
+
 export function validateEndpoint(value, protocol = 'cdp', browser) {
   if (value === 'chrome' || value === 'msedge') {
     if (protocol !== 'cdp' || (browser !== undefined && LOCAL_CHANNEL[browser] !== value)) {
@@ -132,6 +161,12 @@ export class ConnectionPool {
       return { browser: name, protocol: config.protocol, configured: true,
         connected: Boolean(slot.connection?.isConnected()), epoch: slot.epoch,
         attach_failure_code: slot.lastFailureCode,
+        channel_marker: config.endpoint === LOCAL_CHANNEL[name] && process.platform==='darwin'
+          ? channelMarkerState(name) : 'not_applicable',
+        remediation: channelRemediation({connected:Boolean(slot.connection?.isConnected()),
+          attachFailure:slot.lastFailureCode,
+          marker:config.endpoint === LOCAL_CHANNEL[name] && process.platform==='darwin'
+            ? channelMarkerState(name) : 'not_applicable'}),
         failed_attach_attempts: slot.failedAttempts,
         retry_after_ms: Math.max(0, slot.retryAt - this.now()) };
     }), metrics: { ...this.metrics } };

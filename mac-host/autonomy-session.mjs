@@ -17,7 +17,7 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
   let active = null;
   function current() {
     if (active && (now() >= active.expires_at_ms ||
-        (!active.unlimited_actions && active.remaining_actions <= 0))) active = null;
+        active.remaining_actions <= 0)) active = null;
     return active;
   }
   function publicStatus() {
@@ -34,14 +34,14 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
     if (current()) throw new Error('SESSION_ALREADY_ACTIVE');
     if (!scopes.has(scope) || !validRange(duration_minutes,1,MAX_SESSION_MINUTES) ||
         !validRange(max_actions,1,MAX_SESSION_ACTIONS) ||
-        typeof unlimited_actions !== 'boolean' ||
+        unlimited_actions !== false ||
         typeof purpose!=='string' || purpose.length < 10 || purpose.length > 300) {
       throw new Error('INVALID_SESSION_REQUEST');
     }
     const id=randomId();
     if (typeof id !== 'string' || !/^[a-f0-9]{32,128}$/.test(id)) throw new Error('INVALID_SESSION_ID');
     active={
-      id,scope,remaining_actions:unlimited_actions?null:max_actions,unlimited_actions,
+      id,scope,remaining_actions:max_actions,unlimited_actions:false,
       expires_at_ms:now()+duration_minutes*60_000,
       purpose
     };
@@ -64,7 +64,7 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
       throw new Error('SESSION_NOT_ACTIVE');
     }
     if (s.scope!=='both' && s.scope!==browser) throw new Error('SESSION_SCOPE_MISMATCH');
-    if(consume && !s.unlimited_actions) s.remaining_actions--;
+    if(consume) s.remaining_actions--;
     return {
       scope:s.scope,
       remaining_actions:s.remaining_actions,unlimited_actions:s.unlimited_actions,

@@ -32,6 +32,18 @@ export function assessBrowserEvidence({task={},decision={},evidence={}}={}) {
       !decision || typeof decision!=='object' || Array.isArray(decision) ||
       !evidence || typeof evidence!=='object' || Array.isArray(evidence))
     return blocked('INVALID_EVIDENCE_REQUEST');
+  // An uncertain CDP/native dispatch is never a retry authorization.
+  // A separate reloaded application observation is required before an
+  // outcome can be classified (still evidence-only, not production GO).
+  if(['uncertain','inflight_on_restart'].includes(evidence.dispatch_outcome)) {
+    const resolution=evidence.uncertainty_resolution;
+    if(!resolution || resolution.source!=='application_reloaded' ||
+      resolution.independent!==true || !evidenceRef(resolution.artifact) ||
+      !digest.test(String(resolution.expected_effect_sha256||'')) ||
+      resolution.expected_effect_sha256!==resolution.observed_effect_sha256)
+      return blocked('UNCERTAIN_DISPATCH_REQUIRES_INDEPENDENT_READBACK',
+        ['application_reloaded','independent_resolution','matching_effect_digest']);
+  }
   if(decision.status!=='selected' || !engines.has(decision.engine))
     return blocked('ROUTING_NOT_AUTHORIZED');
   const context=task.context||'isolated';

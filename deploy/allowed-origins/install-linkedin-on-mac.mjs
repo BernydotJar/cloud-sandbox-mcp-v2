@@ -75,7 +75,11 @@ function assertPolicy(current,expectedCount){
      current?.mutation_policy!=='allowlist_only' ||
      current?.trusted_delegation_notice?.enabled!==true ||
      current?.trusted_delegation_notice?.max_minutes!==30 ||
-     current?.trusted_delegation_notice?.unlimited_actions!==true)
+     !(current?.trusted_delegation_notice?.unlimited_actions===true ||
+       (current?.trusted_delegation_notice?.unlimited_actions===false &&
+        Number.isInteger(current?.trusted_delegation_notice?.max_actions) &&
+        current?.trusted_delegation_notice?.max_actions>=1 &&
+        current?.trusted_delegation_notice?.max_actions<=200)))
      fail('UNEXPECTED_BRIDGE_POLICY_OR_ORIGIN_COUNT');
 }
 async function main(){

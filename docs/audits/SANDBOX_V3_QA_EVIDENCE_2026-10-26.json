@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-26",
+  "source_base_sha": "8789952dd2e559c6df3465573407bab7ecfa1f30",
+  "worktree_modified": true,
+  "release_sha": null,
+  "scope": "local source acceptance and live read-only Mac browser probe; no deployment",
+  "engine_observations": {
+    "chrome_cdp": "PASS_READ_ONLY_SEMANTIC",
+    "edge_cdp": "BLOCKED_ATTACH_FAILED",
+    "edge_native": "PASS_DISCOVERY_SCREENSHOT_NOT_SEMANTIC_E2E",
+    "isolated_browser_runtime_e2e": "PASS_16_CHECKS",
+    "isolated_offscreen_smoke": "PASS_1_ITERATION"
+  },
+  "tests": {
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "mac_host": {
+      "pass": 209,
+      "skip": 1,
+      "fail": 0
+    },
+    "browser_policy": {
+      "pass": 49,
+      "fail": 0
+    },
+    "storage_monitor": {
+      "pass": 4,
+      "fail": 0
+    },
+    "vitest": {
+      "pass": 33,
+      "fail": 0
+    },
+    "audit_recovery": {
+      "pass": 2,
+      "fail": 0
+    }
+  },
+  "storage": {
+    "available_gib": 20.32,
+    "used_percent": 96,
+    "critical": true
+  },
+  "known_gaps": [
+    "live Edge CDP",
+    "Mac host source rollout",
+    "historical uncertain action resolution",
+    "full release build under capacity gate",
+    "commit and SHA attestation"
+  ],
+  "no_browser_profile_mutation": true,
+  "no_docker_prune": true,
+  "unverified_claims_not_promoted": true
+}

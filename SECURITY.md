@@ -18,7 +18,7 @@ Workstation mode prioritizes agent autonomy inside a bounded environment.
 - arbitrary host filesystem mounts;
 - controller environment or secrets;
 - direct GitHub token access used by `git_push`;
-- access to other workspace directories.
+- isolation from other projects is **not guaranteed** in the current single-workstation deployment: multiple project checkouts may share /workspace/projects, and the shell runs as root. Treat all projects inside dev-main as one trust domain, not separate security tenants. This is an intentional single-operator architectural choice: preserve root access, Docker access, and persistent shared storage.
 
 A privileged container is not equivalent to a strong VM boundary. For untrusted code or production credentials, run the controller and workstations inside a dedicated VM or dedicated cloud host.
 

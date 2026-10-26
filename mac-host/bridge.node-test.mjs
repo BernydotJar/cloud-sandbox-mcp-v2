@@ -467,8 +467,8 @@ test('trusted Edge delegation emits an optional 20-second notice without approva
   });
   const bridgeStatus=await post('/v1/status');
   assert.deepEqual(bridgeStatus.data.trusted_delegation_notice,
-    {enabled:true,seconds:20,closable:true,max_minutes:30,max_actions:null,
-      unlimited_actions:true,scope:'single_browser'});
+    {enabled:true,seconds:20,closable:true,max_minutes:30,max_actions:200,
+      unlimited_actions:false,scope:'single_browser'});
   const requested={scope:'edge',duration_minutes:5,max_actions:4,
     purpose:'Reload only the Meridian Edge tab for verified QA'};
   const granted=await post('/v1/session/begin',requested);
@@ -476,17 +476,17 @@ test('trusted Edge delegation emits an optional 20-second notice without approva
   assert.equal(granted.data.approval_mode,'configured_trust');
   assert.equal(granted.data.notice_seconds,20);
   assert.equal(modalCalls,0);
-  assert.equal(granted.data.remaining_actions,null);
-  assert.equal(granted.data.unlimited_actions,true);
+  assert.equal(granted.data.remaining_actions,4);
+  assert.equal(granted.data.unlimited_actions,false);
   await new Promise(resolve=>setImmediate(resolve));
-  assert.deepEqual(notices,[{scope:'edge',duration_minutes:5,max_actions:null}]);
+  assert.deepEqual(notices,[{scope:'edge',duration_minutes:5,max_actions:4}]);
   assert(audit.some(e=>e.action==='trusted_session_intent'&&e.outcome==='prepared'));
   const action=await post('/v1/action',{
     ...target,session_id:granted.data.session_id,action:'press_key',key:'tab',
     reason:'Read the allowed Microsoft 365 example application'});
   assert.equal(action.status,200);
   assert.equal(action.data.approval_mode,'delegated_session');
-  assert.equal(action.data.remaining_session_actions,null);
+  assert.equal(action.data.remaining_session_actions,3);
   assert.equal(modalCalls,0);
   assert.equal(calls.filter(c=>c.operation==='action').length,1);
   const denied=await post('/v1/action',{
@@ -547,7 +547,7 @@ test('trusted grants fail closed for both browsers and oversized requests',async
   assert.equal((await post('/v1/session/status')).data.active,false);
 });
 
-test('trusted 30-minute grant is genuinely unlimited by action count',async()=>{
+test('trusted 30-minute grant uses a finite action budget',async()=>{
   const {post}=await ready({
     trustedSessionNoticeEnabled:true,
     restrictBrowserWrites:true,
@@ -557,10 +557,10 @@ test('trusted 30-minute grant is genuinely unlimited by action count',async()=>{
     scope:'edge',duration_minutes:30,max_actions:200,
     purpose:'Use an allowlisted single Edge browser for authorized application QA'});
   assert.equal(started.status,200);
-  assert.equal(started.data.unlimited_actions,true);
-  assert.equal(started.data.remaining_actions,null);
-  assert.equal((await post('/v1/session/status')).data.unlimited_actions,true);
-  assert.equal((await post('/v1/session/status')).data.remaining_actions,null);
+  assert.equal(started.data.unlimited_actions,false);
+  assert.equal(started.data.remaining_actions,200);
+  assert.equal((await post('/v1/session/status')).data.unlimited_actions,false);
+  assert.equal((await post('/v1/session/status')).data.remaining_actions,200);
   assert.equal(started.data.approval_mode,'configured_trust');
   const ended=await post('/v1/session/end',{session_id:started.data.session_id});
   assert.equal(ended.status,200);
@@ -601,7 +601,7 @@ test('operator-added exact LinkedIn origin permits scoped Chrome actions but not
     purpose:'Verify delegated LinkedIn navigation within the exact permitted origin'
   });
   assert.equal(grant.status,200);
-  assert.equal(grant.data.unlimited_actions,true);
+  assert.equal(grant.data.unlimited_actions,false);
   const exact={browser:'chrome',window_index:1,tab_index:2,
     expected_title:'LinkedIn Feed',expected_url:'https://www.linkedin.com/feed/',
     session_id:grant.data.session_id,action:'press_key',key:'tab',
@@ -645,11 +645,11 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
     assert.equal(status.data.lch_app_cloud_wildcard_enabled,true);
     assert.equal(status.data.allowlisted_origins,8);
     const grant=await post('/v1/session/begin',{
-      scope:browser,duration_minutes:10,max_actions:1,
+      scope:browser,duration_minutes:10,max_actions:15,
       purpose:'Verify test-only wildcard origin policy for both supported browsers'
     });
     assert.equal(grant.status,200);
-    assert.equal(grant.data.unlimited_actions,true);
+    assert.equal(grant.data.unlimited_actions,false);
     for(const url of [
       'https://lch-app.cloud/',
       'https://luma.lch-app.cloud/studio',
@@ -667,7 +667,7 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
       });
       assert.equal(data.status,200,url);
       assert.equal(data.data.approval_mode,'delegated_session');
-      assert.equal(data.data.remaining_session_actions,null);
+      assert(data.data.remaining_session_actions>=0 && data.data.remaining_session_actions<15);
     }
     const count=calls.filter(e=>e.operation==='action').length;
     for(const url of [

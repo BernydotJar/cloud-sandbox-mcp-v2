@@ -75,7 +75,7 @@ interrupt the browser.
 For a Mac workstation whose operator explicitly opted in to
 `COMPUTER_USE_TRUSTED_SESSION_NOTICE=true`, start every authorized
 native browser workflow using a scoped `computer_use_session_begin`
-(max 30 minutes, unlimited actions, one browser at a time). The Bridge issues
+(max 30 minutes, up to 200 actions per grant, one browser at a time). The Bridge issues
 a bounded allowlisted capability and displays a top-right **Edu!** notice
 for **20 seconds** with a dismiss button. This does **not** require CDP;
 do not open Chrome or change browser profiles merely for the notice.
@@ -91,7 +91,7 @@ Read `docs/computer-use-v2/TERMINAL_SANDBOX_CONTRACT.md` before asserting
 that a Mac Terminal `sandbox` or `sandbox -c` session inherits ChatGPT's
 Mac Bridge configuration. The **installed host Bridge**, not the shell
 command or model, owns the trusted delegation policy: operator opt-in,
-30-minute maximum, unlimited actions, 20-second closable Edu notice,
+30-minute maximum, finite 1..200 action grant, 20-second closable Edu notice,
 HTTPS mutation allowlist and audit. Any tool client connected to the same
 Bridge shares that policy, but session grants are task-scoped and may not
 be shared across agents.
@@ -99,8 +99,7 @@ be shared across agents.
 Check `computer_use_status` read-only at the start of a task that needs
 authenticated Mac browser access. The tool's published schema may still
 accept/restrict `max_actions` (1..200); pass an allowed value for
-compatibility. The Mac trusted runtime ignores this request-side counter
-and reports `unlimited_actions=true` and `remaining_actions=null`.
+compatibility. The source hardening revision enforces the requested counter also in trusted mode, and reports `unlimited_actions=false` with a finite `remaining_actions`. Verify the installed Mac Bridge version; older deployments still report unlimited grants.
 Do not alter a running Chrome/Edge session or restart the Bridge to refresh
 help text. Do not assume the Mac `sandbox` shell definition exists in this
 Linux workspace; its actual alias/function/executable must be checked on Mac.

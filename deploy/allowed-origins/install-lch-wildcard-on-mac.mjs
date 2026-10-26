@@ -99,7 +99,11 @@ function policyCheck(snapshot,expectedCount,wildcardEnabled){
      native?.mutation_policy!=='allowlist_only' ||
      native?.trusted_delegation_notice?.enabled!==true ||
      native?.trusted_delegation_notice?.max_minutes!==30 ||
-     native?.trusted_delegation_notice?.unlimited_actions!==true ||
+     !(native?.trusted_delegation_notice?.unlimited_actions===true ||
+       (native?.trusted_delegation_notice?.unlimited_actions===false &&
+        Number.isInteger(native?.trusted_delegation_notice?.max_actions) &&
+        native?.trusted_delegation_notice?.max_actions>=1 &&
+        native?.trusted_delegation_notice?.max_actions<=200)) ||
      runtime?.enabled!==true ||
      runtime?.mutation_policy!=='allowlist_only')
     fail('BRIDGE_POLICY_OR_COUNT_MISMATCH');

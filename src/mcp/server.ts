@@ -168,7 +168,7 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
 
     server.registerTool('computer_use_session_status', {
       title: 'Check delegated Computer Use session',
-      description: 'Read the delegated session scope and expiry. In trusted mode unlimited_actions=true and remaining_actions=null indicate no per-session action quota; otherwise remaining_actions is a finite budget. Does not expose the session token.',
+      description: 'Read the delegated session scope and expiry. Trusted operator sessions also enforce a finite per-session action budget (1..200), while avoiding per-action approval prompts. Does not expose the session token.',
       inputSchema: {},
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     }, async () => await safely(() => computer.sessionStatus()));

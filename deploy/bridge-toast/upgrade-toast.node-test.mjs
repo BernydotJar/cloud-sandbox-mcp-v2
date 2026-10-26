@@ -213,8 +213,8 @@ test('terminal and shared agent policy reinforce the live Mac Bridge contract wi
   assert(doc.includes('do not define its implementation or flags'));
   assert(doc.includes('not machine-learning') || doc.includes('not machine-learning'));
   assert(guide.includes('TERMINAL_SANDBOX_CONTRACT.md'));
-  assert(guide.includes('unlimited_actions=true'));
-  assert(registered.includes('unlimited actions without modal approval'));
+  assert(guide.includes('unlimited_actions=false'));
+  assert(registered.includes('finite per-session action budget'));
 });
 
 

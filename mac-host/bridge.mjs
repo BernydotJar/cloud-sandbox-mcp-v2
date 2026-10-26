@@ -450,7 +450,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           approval_modes:['per_action','delegated_session'],
           trusted_delegation_notice:{
             enabled:trustedSessionNoticeEnabled,seconds:20,closable:true,
-            max_minutes:30,max_actions:null,unlimited_actions:true,scope:'single_browser'
+            max_minutes:30,max_actions:200,unlimited_actions:false,scope:'single_browser'
           },
           delegated_session:sessionStore.status()}});
         return;
@@ -498,17 +498,15 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           // Fail closed if the audit cannot record intent BEFORE creating authority.
           try { await auditHandler({action:'trusted_session_intent',
             outcome:'prepared',scope:input.scope,
-            duration_minutes:input.duration_minutes,unlimited_actions:true}); }
+            duration_minutes:input.duration_minutes,max_actions:input.max_actions,unlimited_actions:false}); }
           catch { throw new Error('AUDIT_UNAVAILABLE'); }
         } else if(!await approvalHandler(prompt))throw new Error('USER_DENIED_SESSION');
-          const session=sessionStore.begin(trusted
-            ? {...input,unlimited_actions:true}
-            : input);
+          const session=sessionStore.begin(input);
           let auditSaved=true;
           try {await auditHandler({action:'session_begin',scope:input.scope,
             outcome:'approved',duration_minutes:input.duration_minutes,
-            max_actions:trusted?null:input.max_actions,
-            unlimited_actions:trusted});}catch{auditSaved=false;}
+            max_actions:input.max_actions,
+            unlimited_actions:false});}catch{auditSaved=false;}
           if(trusted && !auditSaved) {
             sessionStore.end(session.session_id);
             throw new Error('AUDIT_UNAVAILABLE');
@@ -518,7 +516,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             bridgeToastShown=true;
             void Promise.resolve().then(()=>trustedSessionNoticeHandler({
               scope:input.scope,duration_minutes:input.duration_minutes,
-              max_actions:null})).catch(()=>{});
+              max_actions:input.max_actions})).catch(()=>{});
           }
           reply(res,200,{ok:true,data:{...session,
             ...(trusted?{approval_mode:'configured_trust',notice_seconds:20}:{}),

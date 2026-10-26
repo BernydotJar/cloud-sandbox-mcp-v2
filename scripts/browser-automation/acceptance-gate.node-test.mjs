@@ -118,3 +118,28 @@ test('the same after screenshot cannot masquerade as a separate reload verificat
      ...writeEvidence.persisted_readback,artifact:writeEvidence.after_observation}}});
  assert.equal(d.code,'PERSISTENCE_NOT_VERIFIED');
 });
+
+test('unknown or interrupted browser dispatch cannot be promoted to success without readback',()=>{
+ const base={task,decision:nativeRoute,evidence:writeEvidence};
+ for(const dispatch_outcome of ['uncertain','inflight_on_restart']) {
+   const blocked=assessBrowserEvidence({...base,evidence:{
+     ...writeEvidence,dispatch_outcome}});
+   assert.equal(blocked.code,'UNCERTAIN_DISPATCH_REQUIRES_INDEPENDENT_READBACK');
+   assert.equal(blocked.production_go,false);
+   const resolved=assessBrowserEvidence({...base,evidence:{
+     ...writeEvidence,dispatch_outcome,
+     uncertainty_resolution:{source:'application_reloaded',independent:true,
+       artifact:artifact('independent-reloaded-state'),
+       expected_effect_sha256:hash('08'),observed_effect_sha256:hash('08')}}});
+   assert.equal(resolved.state,'EVIDENCE_COMPLETE');
+   assert.equal(resolved.production_go,false);
+ }
+});
+test('mismatched uncertainty readback is blocked even when other structural evidence looks complete',()=>{
+ const verdict=assessBrowserEvidence({task,decision:nativeRoute,evidence:{
+   ...writeEvidence,dispatch_outcome:'uncertain',
+   uncertainty_resolution:{source:'application_reloaded',independent:true,
+     artifact:artifact('independent-reloaded-state'),
+     expected_effect_sha256:hash('08'),observed_effect_sha256:hash('00')}}});
+ assert.equal(verdict.code,'UNCERTAIN_DISPATCH_REQUIRES_INDEPENDENT_READBACK');
+});

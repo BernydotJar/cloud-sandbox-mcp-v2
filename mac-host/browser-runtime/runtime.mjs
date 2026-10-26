@@ -244,7 +244,8 @@ export class BrowserRuntime {
       // Never auto-retry or switch to a native coordinate fallback here.
       this.metrics.uncertain++;
       result = { request_id: input.request_id, outcome: 'uncertain',
-        code: 'DISPATCH_OUTCOME_UNKNOWN', requires_business_verification: true, automatic_retry: false };
+        code: 'DISPATCH_OUTCOME_UNKNOWN', requires_business_verification: true,
+        required_resolution: 'application_reloaded_independent_readback', automatic_retry: false };
     } finally {
       if(cdpDriver)await cdpDriver.close().catch(()=>{});
       this.busy.delete(input.browser);
