@@ -211,3 +211,13 @@ Use the no-argument command to preview the 5-second connection splash.
 The 20-second alert has a working read-only **Ver registros** control.
 This is visual verification, not an installation. No browser debugging is
 enabled by this preview.
+
+### macOS Swift compiler failure diagnosis
+
+The original preview wrapper suppressed \`swiftc\` stderr and printed only
+\`STOP=Command failed: /usr/bin/xcrun ...\`. The updated preview prints
+\`SWIFT_TOOLCHAIN\`, \`SWIFT_TYPECHECK\`, \`SWIFT_COMPILE\`, and up to 65
+sanitized \`SWIFT_DIAGNOSTIC\` lines. A macOS compile result remains
+unknown until the operator executes this candidate in the Mac session.
+Do not enable browser debugging or change Xcode developer-directory
+selection automatically to address a compiler error.

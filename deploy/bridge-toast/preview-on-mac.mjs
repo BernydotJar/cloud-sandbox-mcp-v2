@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Self-contained macOS screen preview for Akira laboratory splash.
- * No Bridge restart, browser startup/debugging, installation or config writes.
- * Compiles to a disposable private temp directory; validates source digest.
+ * Standalone native macOS splash preview (does not install the Bridge).
+ * The Swift compiler output is surfaced and redacted on failures.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,17 +17,48 @@ const source=path.join(root,'bridge-toast.swift');
 const manifest=path.join(root,'bridge-toast.sha256');
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const say=(k,v)=>console.log('[Akira Preview] '+k+'='+String(v));
+
+function compilerDiagnostic(error){
+  const message=String(error?.stderr || error?.stdout || error?.message ||
+    'UNKNOWN_SWIFT_ERROR').slice(0,14000);
+  return message
+    .replaceAll(source,'bridge-toast.swift')
+    .replaceAll(os.homedir(),'~')
+    .replace(/\/private\/var\/folders\/[^\s:]+/g,'[MAC_TEMP]')
+    .split(/\r?\n/)
+    .map(line=>Array.from(line).map(char=>{
+      const code=char.charCodeAt(0);
+      return code<32||code===127?' ':char;
+    }).join('').trim())
+    .filter(Boolean).slice(0,65);
+}
+function compilerStep(name,args){
+  try{
+    execFileSync('/usr/bin/xcrun',args,{
+      timeout:120000,encoding:'utf8',stdio:['ignore','pipe','pipe'],
+      maxBuffer:1024*1024
+    });
+    say(name,'PASS');
+  }catch(error){
+    say(name,'FAIL');
+    say('COMPILER_EXIT',error?.status ?? error?.code ?? 'UNKNOWN');
+    for(const line of compilerDiagnostic(error))say('SWIFT_DIAGNOSTIC',line);
+    throw Error('SWIFT_BUILD_FAILED_AT_'+name);
+  }
+}
 function verify(){
   const st=fs.lstatSync(source);
-  if(!st.isFile()||st.isSymbolicLink()||st.size>250000)throw Error('UNSAFE_SWIFT_SOURCE');
+  if(!st.isFile()||st.isSymbolicLink()||st.size>250000)
+    throw Error('UNSAFE_SWIFT_SOURCE');
   const expected=fs.readFileSync(manifest,'utf8').trim();
-  if(!/^[a-f0-9]{64}$/.test(expected)||hash(fs.readFileSync(source))!==expected)
+  if(!/^[a-f0-9]{64}$/.test(expected)||
+      hash(fs.readFileSync(source))!==expected)
     throw Error('SOURCE_DIGEST_MISMATCH');
   return expected;
 }
 async function main(){
   const digest=verify();
-  if(process.argv.length===3 && process.argv[2]==='--inspect'){
+  if(process.argv.length===3&&process.argv[2]==='--inspect'){
     say('SOURCE_SHA256',digest);
     say('ON_SCREEN_PREVIEW_AVAILABLE',process.platform==='darwin'?'YES':'NO');
     say('NO_BROWSER_DEBUGGING','YES');
@@ -37,19 +67,19 @@ async function main(){
   }
   if(process.platform!=='darwin')throw Error('MACOS_ONLY');
   const args=process.argv.slice(2);
-  const allowed=args.length===0 || 
-    (args.length===2&&args[0]==='--status-alert' &&
-     ['storage','edge','terminal','recovery'].includes(args[1]));
+  const allowed=args.length===0||
+    (args.length===2&&args[0]==='--status-alert'&&
+      ['storage','edge','terminal','recovery'].includes(args[1]));
   if(!allowed)throw Error('INVALID_PREVIEW_MODE');
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'akira-splash-preview-'));
   fs.chmodSync(temp,0o700);
   try{
     const binary=path.join(temp,'akira-preview');
-    execFileSync('/usr/bin/xcrun',['swiftc','-typecheck',source,
-      '-framework','AppKit','-framework','QuartzCore'],{timeout:120000,stdio:'pipe'});
-    say('SWIFT_TYPECHECK','PASS');
-    execFileSync('/usr/bin/xcrun',['swiftc',source,'-o',binary,
-      '-framework','AppKit','-framework','QuartzCore'],{timeout:120000,stdio:'pipe'});
+    compilerStep('SWIFT_TOOLCHAIN',['--find','swiftc']);
+    compilerStep('SWIFT_TYPECHECK',['swiftc','-typecheck',source,
+      '-framework','AppKit','-framework','QuartzCore']);
+    compilerStep('SWIFT_COMPILE',['swiftc',source,'-o',binary,
+      '-framework','AppKit','-framework','QuartzCore']);
     say('SCREEN_PREVIEW','SHOWING');
     execFileSync(binary,args,{timeout:45000,stdio:'inherit'});
     say('SCREEN_PREVIEW','COMPLETED');
@@ -58,7 +88,7 @@ async function main(){
     fs.rmSync(temp,{recursive:true,force:true});
   }
 }
-main().catch(e=>{
-  say('STOP',String(e?.message||e?.code||'UNKNOWN').split('\n')[0].slice(0,150));
+main().catch(error=>{
+  say('STOP',String(error?.message||error?.code||'UNKNOWN').split('\n')[0].slice(0,150));
   process.exitCode=1;
 });

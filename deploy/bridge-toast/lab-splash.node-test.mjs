@@ -32,3 +32,15 @@ test('alert modes have bounded lifetime, restricted codes and actionable native 
   assert.match(swift,/closing revokes a session|closing revokes a session|closing revokes a session/i);
   assert.doesNotMatch(swift,/shell -c|Process\(\)|URLSession/);
 });
+
+test('Mac preview exposes Swift diagnostics instead of swallowing stderr',()=>{
+  const script=fs.readFileSync(path.join(root,'preview-on-mac.mjs'),'utf8');
+  assert.match(script,/SWIFT_DIAGNOSTIC/);
+  assert.match(script,/error\?\.stderr/);
+  assert.match(script,/compilerStep\('SWIFT_TOOLCHAIN'/);
+  assert.match(script,/compilerStep\('SWIFT_TYPECHECK'/);
+  assert.match(script,/compilerStep\('SWIFT_COMPILE'/);
+  assert.match(script,/SOURCE_DIGEST_MISMATCH/);
+  assert.match(script,/INSTALLED_BRIDGE_UNCHANGED/);
+  assert.doesNotMatch(script,/xcode-select\s+--switch|--remote-debugging/);
+});
