@@ -15,7 +15,7 @@
     "eslint": "PASS",
     "typescript": "PASS",
     "mac_host": {
-      "pass": 209,
+      "pass": 211,
       "skip": 1,
       "fail": 0
     },
@@ -52,6 +52,11 @@
   "no_docker_prune": true,
   "unverified_claims_not_promoted": true,
   "code_commit_sha": "e337f85e4fd9ff0c4715849586aea7a7215516f0",
-  "release_candidate_status": "LOCAL_SOURCE_VERIFIED_MAC_ROLLOUT_PENDING",
-  "qa_manifest_sha256": "0e371902c948853fd58d16879ca557d5538ab4c1287255f54f2795badcf46e5a"
+  "release_candidate_status": "LOCAL_SOURCE_AND_INSTALLER_VALIDATED_MAC_OPERATOR_PREFLIGHT_PENDING",
+  "qa_manifest_sha256": "fe685790faa9d11ff8ef27110d1096ff44f137590e81e0a1261b85f93a600ca6",
+  "mac_host_patched_installer_candidate_sha": "245dd71801310a2f3170c94d028d462ae7a4ae64",
+  "operator_mac_bridge_source_deployed": false,
+  "edge_cdp_live_verified": false,
+  "edge_doctor_handoff_ready": true,
+  "bounded_session_handoff_ready": true
 }

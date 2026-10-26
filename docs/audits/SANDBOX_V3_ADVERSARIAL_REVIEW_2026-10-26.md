@@ -85,3 +85,10 @@ No deletion, prune, token rotation, tunnel restart, bridge mutation, or auth-bre
 - Maximum 30 minutes, requested 1..200 actions, noninteractive trusted mode preserved.
 - Installation is a separate Mac-only operator action. Current live Bridge still reports unlimited actions; do not infer otherwise from source tests.
 - Built-in rollback, source-hash preflight, inactive delegation requirement and no browser restart.
+
+## MAC operator rollout artifacts
+- Guarded bounded-session installer source candidate: `245dd71801310a2f3170c94d028d462ae7a4ae64`.
+- Bounded session handoff: `/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-bounded-sessions-20261026-245dd71`.
+- Edge CDP read-only doctor handoff: `/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-edge-cdp-doctor-20261026`.
+- Source-only runtime acceptance now 211 Mac tests PASS, 1 SKIP.
+- No Mac installation has been performed; CDP Edge remains unavailable.
