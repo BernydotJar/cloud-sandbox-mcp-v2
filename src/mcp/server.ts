@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { WorkspaceService } from '../services/workspace-service.js';
 import { ComputerUseService } from '../services/computer-use-service.js';
+import { BackgroundMacService } from '../services/background-mac-service.js';
 import { errorMessage } from '../utils/errors.js';
 
 function jsonResult(data: unknown, isError = false) {
@@ -20,7 +21,8 @@ async function safely(action: () => Promise<unknown>) {
   }
 }
 
-export function createMcpServer(service: WorkspaceService, computer?: ComputerUseService): McpServer {
+export function createMcpServer(service: WorkspaceService,
+  computer?: ComputerUseService, backgroundMac?: BackgroundMacService): McpServer {
   const server = new McpServer({ name: 'cloud-sandbox-mcp', version: '0.2.0' });
 
   server.registerTool('workspace_create', {
@@ -247,6 +249,50 @@ export function createMcpServer(service: WorkspaceService, computer?: ComputerUs
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
     }, async (input) => await safely(() => computer.action(input)));
+  }
+
+  if(backgroundMac){
+    server.registerTool('mac_background_cua_status',{
+      title:'Isolated macOS Desktop CUA worker status',
+      description:'Check the independently identified macOS worker, GUI session and AX readiness. Does not control the operator desktop. Ready=false means the P0 is not yet operational.',
+      inputSchema:{},
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
+    },async()=>await safely(()=>backgroundMac.status()));
+    server.registerTool('mac_background_cua_snapshot',{
+      title:'Inspect an isolated macOS application AX tree',
+      description:'Read a named application window on the independent macOS GUI worker, not the operator Mac. Requires worker identity, GUI session and Accessibility readiness.',
+      inputSchema:{
+        bundle_id:z.string().min(8).max(120).regex(/^[a-zA-Z0-9.-]+$/),
+        window_title:z.string().min(1).max(120)
+      },
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
+    },async(input)=>await safely(()=>backgroundMac.snapshot(input)));
+    server.registerTool('mac_background_cua_screenshot',{
+      title:'Capture screen of isolated macOS worker',
+      description:'Screen recording of the separate macOS GUI worker only. This never captures the operator desktop, does not focus windows, and fails closed if guest recording permission is unavailable.',
+      inputSchema:{},
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
+    },async()=>{
+      try {
+        const image=await backgroundMac.screenshot();
+        return {content:[{type:'image' as const,...image}]};
+      }catch(error){return jsonResult({error:errorMessage(error)},true);}
+    });
+    server.registerTool('mac_background_cua_action',{
+      title:'Execute a targeted AX action on isolated Mac worker',
+      description:'Perform AXPress or AXSetValue using a fresh opaque node reference on the verified separate macOS machine. No global host keyboard or mouse. Request IDs are durable and replay-blocked; dispatch is not proof of persisted business state.',
+      inputSchema:{
+        bundle_id:z.string().min(8).max(120).regex(/^[a-zA-Z0-9.-]+$/),
+        window_title:z.string().min(1).max(120),
+        action:z.enum(['press','set_value']),
+        node_ref:z.string().regex(/^[a-f0-9]{64}$/),
+        expected_revision:z.string().regex(/^[a-f0-9]{64}$/),
+        request_id:z.string().regex(/^[a-f0-9]{64}$/),
+        reason:z.string().min(10).max(300),
+        value:z.string().min(1).max(2000).optional()
+      },
+      annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
+    },async(input)=>await safely(()=>backgroundMac.action(input)));
   }
 
   return server;

@@ -30,7 +30,11 @@ const envSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   COMPUTER_USE_ENABLED: booleanString,
   COMPUTER_USE_BRIDGE_URL: z.string().default('http://host.docker.internal:9764'),
-  COMPUTER_USE_BRIDGE_TOKEN: z.string().optional()
+  COMPUTER_USE_BRIDGE_TOKEN: z.string().optional(),
+  MAC_BACKGROUND_CUA_ENABLED: booleanString,
+  MAC_BACKGROUND_CUA_URL: z.string().default('http://host.docker.internal:9777'),
+  MAC_BACKGROUND_CUA_TOKEN: z.string().optional(),
+  MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST: z.string().optional()
 });
 
 const parsed = envSchema.parse(process.env);
@@ -47,6 +51,18 @@ if (parsed.COMPUTER_USE_ENABLED) {
   if (bridge.protocol !== 'http:' || bridge.username || bridge.password || bridge.pathname !== '/' || bridge.search || bridge.hash || !['host.docker.internal', '127.0.0.1', 'localhost'].includes(bridge.hostname)) {
     throw new Error('COMPUTER_USE_BRIDGE_URL must use an approved local Docker host endpoint.');
   }
+}
+if(parsed.MAC_BACKGROUND_CUA_ENABLED){
+  const guest=new URL(parsed.MAC_BACKGROUND_CUA_URL);
+  if(guest.protocol!=='http:'||
+     !['host.docker.internal','127.0.0.1','localhost'].includes(guest.hostname)||
+     guest.port!=='9777'||guest.pathname!=='/'||
+     guest.search||guest.hash||guest.username||guest.password)
+    throw Error('MAC_BACKGROUND_CUA_URL_LOCAL_ONLY');
+  if(!parsed.MAC_BACKGROUND_CUA_TOKEN||
+     parsed.MAC_BACKGROUND_CUA_TOKEN.length<32||
+     !/^[a-f0-9]{64}$/.test(parsed.MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST||''))
+    throw Error('MAC_BACKGROUND_CUA_CREDENTIALS_REQUIRED');
 }
 const dataDir = path.resolve(parsed.MCP_DATA_DIR);
 const hostDataDir = path.resolve(parsed.HOST_DATA_DIR ?? parsed.MCP_DATA_DIR);

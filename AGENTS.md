@@ -11,6 +11,20 @@ When using this MCP server:
 7. Use `git_push` only after explicit authorization and only when enabled by the operator.
 8. Report commands, exit codes, changed files, tests, assumptions, and remaining risks.
 
+## Isolated native Mac CUA (source candidate, 2026-10-26)
+
+The independent macOS GUI worker source resides in
+\`mac-host/isolated-desktop/\`; see its README and
+\`docs/computer-use-v2/BACKGROUND_EXECUTION.md\`.
+It provides a separate-machine native AX worker, guest-only screenshot,
+per-request receipt ledger and optional MCP controller tools.
+The installed Mac Bridge still controls the operator's shared desktop;
+NEVER use browser native CUA as an invisible background fallback.
+Until the independent GUI worker is installed and its live acceptance
+passes, return \`BACKGROUND_MAC_DESKTOP_ISOLATION_REQUIRED\`.
+No blind Tab/Arrow/Enter discovery, no debugger/profile changes,
+and no real corporate timesheet modification for pilot acceptance.
+
 ## Operator policy — native Mac splash, no debugging, privileged workstation (2026-10-26)
 
 The existing Akira splash is a **real AppKit macOS screen overlay** at

@@ -9,6 +9,23 @@ keyboard focus, windows, active tabs or work context without explicit opt-in.
 
 This contract keeps two independent subsystems separate.
 
+## 2026-10-26 isolated macOS worker implementation update
+
+A new candidate has been implemented under
+\`mac-host/isolated-desktop/\`, including native Swift AX inspection/actions,
+a disposable AppKit fixture, a loopback-authenticated guest service,
+machine-identity separation, durable anti-replay audit, guest-only screen
+capture, four optional MCP tools and an on-device preflight/acceptance kit.
+
+**Do not label this deployed**: macOS guest provisioning, guest Swift
+compilation/TCC, trusted SSH forwarding, Mac controller promotion and a live
+no-interference acceptance remain OPEN. The currently active 29-tool
+controller remains unchanged.
+
+Run the read-only operator preflight first, then use the exact acceptance
+workflow in \`mac-host/isolated-desktop/README.md\`. No browser debugging
+and no corporate website mutations are needed.
+
 ## 1. Browser Automation (Playwright / Browser MCP)
 
 **Fully isolated:** prefer the project's headless Playwright suite or an
