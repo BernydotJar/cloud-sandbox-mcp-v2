@@ -166,9 +166,9 @@ test('delegated Edu notification is 20 seconds and dismissible without ending se
   assert.match(swift,/actionsLabel/);
   assert.match(swift,/acciones sin límite/);
   assert.match(swift,/--session-notice/);
-  assert.match(swift,/let heading = NSTextField\(labelWithString: "Edu!"\)/);
-  assert.match(swift,/Tu enfoque abre posibilidades/);
-  assert.match(swift,/Introducción a la PNL/);
+  assert.match(swift,/let brand = NSTextField/);
+  assert.match(swift,/Edu!.*SANDBOX V3/);
+  assert.match(swift,/Sesión delegada activa/);
   assert.match(swift,/class NoticeDismissal/);
   assert.match(swift,/close\.setAccessibilityLabel\("Cerrar aviso"\)/);
   assert.match(swift,/panel\.ignoresMouseEvents = !\(delegated \|\| alerted\)/);

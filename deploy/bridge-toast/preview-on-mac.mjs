@@ -69,7 +69,7 @@ async function main(){
   const args=process.argv.slice(2);
   const allowed=args.length===0||
     (args.length===2&&args[0]==='--status-alert'&&
-      ['storage','edge','terminal','recovery'].includes(args[1]));
+      ['storage','storage-warning','edge','terminal','recovery'].includes(args[1]));
   if(!allowed)throw Error('INVALID_PREVIEW_MODE');
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'akira-splash-preview-'));
   fs.chmodSync(temp,0o700);

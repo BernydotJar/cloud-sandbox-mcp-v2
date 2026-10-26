@@ -49,3 +49,32 @@ Compile and visually inspect on actual Mac before any installation.
 Do not claim installed splash or Mac Terminal P0 capability based on source
 checks alone. Do not modify the existing Bridge until exact installed baseline
 is understood and a rollback is ready.
+
+
+## Quiet Glass revision (source candidate)
+- Replaced thick saturated purple edge with neutral 0.65-point stroke.
+- Adaptive popover blur and soft inner specular highlight.
+- Akira character remains, 15 two-cycle low-saturation particles.
+- Compact actionable glass log button and circular dismiss control.
+- Smaller Edu! branding, stronger operational title and clearer hierarchy.
+- Optional macOS launchd storage watcher reads authoritative Linux
+  /workspace via nonmutating Docker exec and rate-limits local alerts.
+- UI-only installer compiles, snapshots, atomically promotes and can roll
+  back the single splash executable without restarting any browser/Bridge.
+- Compilation and visual acceptance on physical Mac remain unverified.
+
+
+## Quiet Glass verification — candidate prepared for macOS
+- \`npm run test:mac\`: 227 tests, 226 PASS, 0 FAIL, 1 macOS-only SKIP.
+- \`npm run test:browser:policy\`: 49 PASS, 0 FAIL.
+- \`npm run typecheck\`: PASS.
+- \`npm run lint\`: PASS.
+- \`git diff --check\`: PASS.
+- Direct native Xcode Swift typecheck and visual contrast/hover/position
+  acceptance are pending the actual Mac, **not claimed as PASS**.
+- UI-only installer: existing splash binary backup, atomic upgrade,
+  native display smoke, single-file rollback; no Bridge restart.
+- Optional local six-hour warning/critical notifier uses Docker \`df -Pk\`
+  read-only, suppresses repeats and cannot clean files.
+- No remote debugging, browser profile changes, credentials, or running
+  Mac delegated session was touched in this candidate.

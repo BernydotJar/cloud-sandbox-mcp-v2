@@ -1,5 +1,63 @@
 # Akira · Mac Bridge status splash
 
+## Akira Quiet Glass (2026-10-26)
+
+**Current source candidate; not yet deployed to macOS.** The popup remains a
+**real AppKit overlay on the desktop**, not a web page. Compared with the
+original screenshot, the update uses adaptive \`NSVisualEffectView.material =
+.popover\`, behind-window blur, a restrained internal highlight and a
+0.65-pt translucent neutral border (no magenta outline). It preserves
+**Edu!** as subtle branding, promotes the actual status as the title,
+contains 15 soft particles to Akira's left-hand illustration zone,
+and uses a compact secondary glass button. Native Reduce Motion is respected.
+
+The original five-second click-through connection state and the 20-second
+delegated-session notice are preserved. Alert panels support
+\`storage\`, \`storage-warning\`, \`edge\`, \`terminal\`, and \`recovery\`.
+They have **Ver registros** (opens the local audit directory in Finder)
+and an accessible, circular **Cerrar aviso** button. Dismissal never revokes
+a live delegated session.
+
+**Standalone Mac rollout:** \`install-glass-on-mac.mjs --install\` first
+compiles and type-checks Swift, snapshots the existing executable with SHA-256,
+then atomically replaces **only the Mac splash executable**. It runs a
+non-destructive 20-second UI smoke test, rolls back if the binary fails,
+and supports \`--rollback\`. It never edits or restarts the Bridge, Docker,
+Chrome or Edge, and never enables Remote Debugging. Unknown Bridge JS
+baselines are irrelevant to this UI-only deployment.
+
+### On-device storage alerts (optional)
+
+\`storage-watch-on-mac.mjs\` is an opt-in **user LaunchAgent**, every six
+hours. It runs exactly \`docker exec cloud-sandbox-dev-main df -Pk /workspace\`
+as the Mac user; it never prunes, deletes, or mutates Docker. It classifies
+WARNING below 80 GiB or at least 90% used and CRITICAL below 30 GiB or at
+least 95% used. It displays the native Akira alert only when severity changes
+or free space drops at least another 5 GiB. Its measurement is the real
+Linux \`/workspace\` (not an inferred Mac APFS path).
+
+The native alerts are **not automatic until the separate LaunchAgent is
+enabled on macOS**; preparing the source and release does not activate it.
+The existing ChatGPT six-hour storage watch remains independent.
+
+After a successful visual preview, the Mac commands are:
+
+\`\`\`bash
+BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/akira-lab-splash-20261026"
+node "$BASE/install-glass-on-mac.mjs" --install
+node "$BASE/storage-watch-on-mac.mjs" --enable
+\`\`\`
+
+Both are explicit operator actions. To disable the optional periodic alert:
+\`node "$BASE/storage-watch-on-mac.mjs" --disable\`. To restore the previous
+splash binary without changing the Bridge:
+\`node "$BASE/install-glass-on-mac.mjs" --rollback\`.
+
+**Release gate:** successful native Swift typecheck and visual inspection
+on the actual Mac, including dark/light appearance, readability, accessible
+controls and no focus theft. Passing Linux static tests is not macOS proof.
+The Mac Terminal CUA P0 remains a separate project.
+
 **2026-10-26 source candidate (NOT deployed):** The AppKit on-screen splash
 adds an original colorful laboratory particle burst; it remains focus-safe
 and honors macOS Reduce Motion. A third, explicit mode

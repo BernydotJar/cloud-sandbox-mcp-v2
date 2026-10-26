@@ -53,3 +53,29 @@ erase it, and do not tie tool acceptance to an old commit alone.
 3. Verify Mac Terminal P0 independently from Linux shell execution.
 4. Correlate storage watch to explicit native status alerts without launching
    windows repeatedly or occupying the user's desktop.
+
+
+## Quiet Glass design revision and automatic alerts
+
+The source-only candidate now uses a neutral glass rim (0.65 pt),
+popover blur plus top specular reflection, a 15-particle restrained burst,
+small **Edu!** branding, semibold functional title, readable 2-line body,
+and two working controls (audit directory and dismiss). Alerts are
+nonactivating. This is an AppKit approximation with broad macOS compatibility,
+not a claim that an unavailable \`NSGlassEffectView\` SDK has been installed.
+
+\`deploy/bridge-toast/install-glass-on-mac.mjs\` performs a UI-only Mac
+executable upgrade with compilation, pre-change backup, atomic replacement,
+smoke and rollback, **without the Bridge baseline constraints** of the
+unrelated delegated-session patch. It does not alter the Bridge itself.
+
+\`deploy/bridge-toast/storage-watch-on-mac.mjs\` is optional and not yet
+enabled: a user-level LaunchAgent can check authoritative Linux workspace
+free space every six hours using Docker read-only \`df -Pk\`, then
+request only severity-changing/5-GiB-worse native notices. Never run a
+destructive cleanup from this mechanism. The user's existing ChatGPT
+storage watch is separate.
+
+Do not claim this candidate is installed merely because it was copied to
+the shared-auth handoff. Mac Swift typecheck, live visual QA, and successful
+Mac installer output establish native acceptance.
