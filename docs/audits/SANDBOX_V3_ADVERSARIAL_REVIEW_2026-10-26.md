@@ -79,3 +79,9 @@ No deletion, prune, token rotation, tunnel restart, bridge mutation, or auth-bre
 - Release candidate status: source-only; no production/tag SHA or Mac Bridge deployment attested.
 - Operator Mac diagnostic handoff prepared under `/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-edge-cdp-doctor-20261026` with SHA-256 manifest.
 - The 29 MCP tools remain connected to the existing Mac Bridge process; source changes do not imply live installation.
+
+## Mac Bridge limited-action deployment readiness
+- Added guarded installer: `deploy/session-budget/install-on-mac.mjs`, surgical patcher and tests.
+- Maximum 30 minutes, requested 1..200 actions, noninteractive trusted mode preserved.
+- Installation is a separate Mac-only operator action. Current live Bridge still reports unlimited actions; do not infer otherwise from source tests.
+- Built-in rollback, source-hash preflight, inactive delegation requirement and no browser restart.
