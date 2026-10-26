@@ -5,11 +5,34 @@ When using this MCP server:
 1. Create or resume one workspace per task.
 2. Inspect `workspace_status`, repository instructions, and current diffs before editing.
 3. Prefer `file_apply_patch` or `file_write` with `expected_sha256` for controlled edits.
-4. Use `workspace_exec` for repository inspection and development commands; do not attempt Docker, sudo, or git push there.
+4. Use `workspace_exec` for repository inspection and development commands, including Docker and privileged workstation operations when task-appropriate; use the dedicated audited Git push tool rather than a shell push.
 5. Run `project_verify` and inspect failures before claiming completion.
 6. Review `git_diff`, then create a local commit.
 7. Use `git_push` only after explicit authorization and only when enabled by the operator.
 8. Report commands, exit codes, changed files, tests, assumptions, and remaining risks.
+
+## Operator policy — native Mac splash, no debugging, privileged workstation (2026-10-26)
+
+The existing Akira splash is a **real AppKit macOS screen overlay** at
+`deploy/bridge-toast/bridge-toast.swift`; it is not a website. A colorful
+laboratory-burst design and read-only alert panel are staged in source and
+must not be described as installed on Mac without macOS compile and visual QA.
+Do not steal focus or change the 5-second nonmodal connection notification.
+An alert panel has a real local `Ver registros` action, but a dismiss click
+does **not** revoke a delegated session.
+
+The operator refuses to enable Remote Debugging. Do not activate inspect
+pages, debugging flags, new ports, dedicated debugging profiles, or restart
+Chrome/Edge to repair CDP. Mac browser automation is native-first; reuse a
+previously functioning persistent provider without altering it when available.
+Use isolated Playwright for ordinary QA. The 12 October pilot handoff is
+historical, not the 26 October browser health state.
+
+`workspace_exec` provides privileged Linux workstation execution with
+Docker and persistent shared storage intentionally retained. **It is not
+Terminal.app on the Mac.** Native Terminal CUA and a separately audited macOS
+host command executor remain a P0 feature, not a presently exposed MCP tool.
+See `docs/computer-use-v2/MAC_NATIVE_TERMINAL_P0.md`.
 
 ## Playwright-first web automation (all projects)
 

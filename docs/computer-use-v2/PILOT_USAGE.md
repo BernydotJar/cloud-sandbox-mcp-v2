@@ -1,5 +1,7 @@
 # Computer Use — piloto operativo (12 de octubre de 2026)
 
+> **Actualización del 26 de octubre de 2026 — evidencia del runtime:** esta página conserva el estado histórico del piloto del 12 de octubre. En la sesión actual Chrome devolvió `provider=persistent` y una inspección semántica válida con `inspection_mode=cdp_ax_fallback`; Edge devolvió `provider=native`, `semantic_available=false` y `fallback_reason=PERSISTENT_BROWSER_UNAVAILABLE`. El Mac Bridge sigue conectado. La conexión persistente de Edge NO ha sido reparada. No se activó Remote Debugging. La política preferida por el operador es **no habilitar depuración**: reutilizar únicamente una conexión ya existente si funciona, dar prioridad al control nativo para las pestañas autenticadas y ejecutar QA con Playwright aislado. El piloto continúa siendo utilizable sin exigir CDP.
+
 **Estado:** LISTO PARA USO SUPERVISADO / ENTERPRISE RELEASE EN ESPERA.
 
 La implementación actual en la Mac no necesita un upgrade para iniciar pruebas o inspecciones. Usar el Cloud Sandbox MCP V2 conectado y no el código candidato para dirigir acciones reales hasta que se apruebe un despliegue independiente.

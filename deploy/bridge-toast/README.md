@@ -1,5 +1,24 @@
 # Akira · Mac Bridge status splash
 
+**2026-10-26 source candidate (NOT deployed):** The AppKit on-screen splash
+adds an original colorful laboratory particle burst; it remains focus-safe
+and honors macOS Reduce Motion. A third, explicit mode
+`bridge-toast --status-alert <storage|edge|terminal|recovery>` displays a
+20-second interactive native notice with a working **Ver registros** control
+(which opens the local audit directory in Finder) and Close.
+The original connection splash stays five-second, click-through and
+nonmodal. The delegated session notice remains 20 seconds; closing a
+notice never revokes authority. These are **Mac-only** UI features,
+not a web app, and require an independent macOS Swift compile, visual
+inspection, checksum-based release and deployment before use.
+
+The status alert mode is a renderer accepting fixed status codes. It is
+**not yet wired** to live telemetry or the six-hour disk watch; do not
+claim it will pop up automatically. It does not start browsers, switch
+CDP routing, enable debugging, or change operator permissions.
+Refer to `docs/computer-use-v2/SCREEN_SPLASH_NO_DEBUGGING_20261026.md`.
+
+
 **Design:** a compact, cute, native macOS glass splash with an original lilac Akira mascot and a small coral accent. It appears in the **upper-right screen corner** after the first successful **dedicated Chrome Playwright/CDP connection**. The only copy is “Bridge listo ✨” and “Chrome conectado · Playwright”.
 
 **Timing:** visible for **5.0 seconds** starting when shown, with ~280 ms fade-in and 320 ms fade-out. The overlay is click-through, non-modal, non-activating, does not steal focus, and respects macOS Reduce Motion. It is shown **at most once per live Bridge service process**, rather than every tool call.
@@ -172,3 +191,23 @@ parses the upgraded JS, then checks `/v1/status` after LaunchAgent restart
 before confirming success. If anything fails, the session store, Bridge and
 environment are restored. The installer does **not** modify CDP or Playwright
 runtime when installing this Bridge-only trusted notice mode.
+
+### On-screen preview without installation (macOS)
+
+This staged preview compiles the native Swift window to a disposable private
+macOS temporary directory and removes the preview executable afterward.
+It never modifies the installed Bridge or browser configuration.
+
+In the operator's Mac Terminal, after the reviewed candidate is copied to
+the shared-auth handoff directory:
+
+```sh
+BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/akira-lab-splash-20261026"
+node "$BASE/preview-on-mac.mjs" --inspect
+node "$BASE/preview-on-mac.mjs" --status-alert edge
+```
+
+Use the no-argument command to preview the 5-second connection splash.
+The 20-second alert has a working read-only **Ver registros** control.
+This is visual verification, not an installation. No browser debugging is
+enabled by this preview.

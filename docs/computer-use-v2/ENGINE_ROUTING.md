@@ -1,5 +1,30 @@
 # Cloud Sandbox MCP V2 - capability-based engine routing
 
+## Operator preference: NO new Remote Debugging (2026-10-26)
+
+The operator explicitly does **not** want Remote Debugging enabled or
+browser profiles restarted/reconfigured for automation. This preference
+takes precedence over the desire to repair Edge CDP. The supported path is:
+
+- Project UI and E2E QA: isolated Playwright Chromium, with no Mac browser use.
+- Existing authenticated Mac Chrome/Edge: native-first browser discovery and
+  macOS Accessibility/AX for tasks that can be verified. Do not ask the operator
+  to enable `chrome://inspect`, `edge://inspect`, remote debugging flags/ports,
+  or new dedicated browser profiles.
+- If an already-working persistent CDP adapter is present, it may be reused
+  without reconfiguration, but CDP is **optional** and its status is measured
+  independently for each browser. A browser that falls back to `provider=native`
+  must report `semantic_available=false` unless a separately verified AX
+  contract is available. Do not claim an ARIA E2E pass based on native tab lists.
+- Source default `COMPUTER_USE_BROWSER_ROUTING=native_first` already supports
+  no-debug operation. The live Mac Bridge may still be configured
+  `prefer_persistent`; do not rewrite its environment or restart it during
+  another agent's session. Never auto-launch a CDP-enabled profile.
+
+The native on-screen Akira splash is an AppKit window, not a web dashboard.
+See `docs/computer-use-v2/SCREEN_SPLASH_NO_DEBUGGING_20261026.md`.
+Native Mac Terminal automation is a distinct P0, not `workspace_exec`.
+
 ## Normative default: Playwright-first for web UI
 
 For ALL ordinary web UI tasks (navigation, forms, visual inspection, UI/UX,

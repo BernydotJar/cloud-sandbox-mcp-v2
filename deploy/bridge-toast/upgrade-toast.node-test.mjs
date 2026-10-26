@@ -108,7 +108,7 @@ test('Akira splash is a 5-second click-through nonmodal overlay at upper right',
   assert.match(swift,/area\.maxX - AkiraSplash\.width - AkiraSplash\.margin/);
   assert.match(swift,/area\.maxY - noticeHeight - AkiraSplash\.margin/);
   assert.match(swift,/\.nonactivatingPanel/);
-  assert.match(swift,/panel\.ignoresMouseEvents = !delegated/);
+  assert.match(swift,/panel\.ignoresMouseEvents = !\(delegated \|\| alerted\)/);
   assert.match(swift,/\.accessory/);
   assert.match(swift,/accessibilityDisplayShouldReduceMotion/);
   assert.match(swift,/asyncAfter\(deadline: \.now\(\) \+ noticeLifetime\)/);
@@ -171,7 +171,7 @@ test('delegated Edu notification is 20 seconds and dismissible without ending se
   assert.match(swift,/Introducción a la PNL/);
   assert.match(swift,/class NoticeDismissal/);
   assert.match(swift,/close\.setAccessibilityLabel\("Cerrar aviso"\)/);
-  assert.match(swift,/panel\.ignoresMouseEvents = !delegated/);
+  assert.match(swift,/panel\.ignoresMouseEvents = !\(delegated \|\| alerted\)/);
   assert.doesNotMatch(swift,/NSAlert|NSCriticalAlertStyle|UIAlertController/);
 });
 
