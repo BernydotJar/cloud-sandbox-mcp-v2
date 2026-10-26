@@ -66,10 +66,16 @@ No deletion, prune, token rotation, tunnel restart, bridge mutation, or auth-bre
 - One-iteration isolated Chromium smoke: PASS, including keyboard/desktop gesture, accessibility names and isolated context; mobile touch not tested in one iteration.
 - Independent Chromium/CDP Browser Runtime E2E: PASS, 16 checks; p50 warm discovery 0.54 ms / p95 0.77 ms in that fixture; NOT a Mac Edge test.
 - Source tests: npm run lint PASS, npm run typecheck PASS, npm run test:mac 209 pass / 1 skip / 0 fail, npm run test:browser:policy 49 pass, npm run test:ops:storage 4 pass, npm test (Vitest) 33 pass, audit recovery 2 pass.
-- Full heavy build/release and Mac Bridge deployment not attempted: existing storage-guard requires 80 GiB free, current 20.32 GiB; do not bypass or run prune. No Git commit, push or deployment is claimed.
+- Full heavy build/release and Mac Bridge deployment not attempted: existing storage-guard requires 80 GiB free, current 20.32 GiB; do not bypass or run prune. Source changes committed locally in e337f85e4fd9ff0c4715849586aea7a7215516f0; no push or Mac Bridge deployment is claimed.
 
 ### Remaining acceptance gates
 1. Run the Mac Edge CDP doctor on the operator host. If DevToolsActivePort is absent, operator must enable remote debugging for the existing Edge instance via the supported browser mechanism; do not restart Edge or migrate its profile automatically.
 2. Install the bounded-session bridge patch on Mac only after a verified source baseline, backup, no active delegation and rollback plan. Then confirm the live status reports finite remaining_actions.
 3. Review Mac audit-v2 ledger for the five historical uncertain events and collect independent application readback where appropriate.
 4. Restore safe storage headroom, then run the full SHA-pinned build, adversarial suites and recovery gates. A passing isolated fixture is not a production release GO.
+
+## Evidence-to-code provenance
+- Verified code commit: `e337f85e4fd9ff0c4715849586aea7a7215516f0` (local branch feat/computer-use-runtime-v2).
+- Release candidate status: source-only; no production/tag SHA or Mac Bridge deployment attested.
+- Operator Mac diagnostic handoff prepared under `/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-edge-cdp-doctor-20261026` with SHA-256 manifest.
+- The 29 MCP tools remain connected to the existing Mac Bridge process; source changes do not imply live installation.

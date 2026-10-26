@@ -50,5 +50,8 @@
   ],
   "no_browser_profile_mutation": true,
   "no_docker_prune": true,
-  "unverified_claims_not_promoted": true
+  "unverified_claims_not_promoted": true,
+  "code_commit_sha": "e337f85e4fd9ff0c4715849586aea7a7215516f0",
+  "release_candidate_status": "LOCAL_SOURCE_VERIFIED_MAC_ROLLOUT_PENDING",
+  "qa_manifest_sha256": "0e371902c948853fd58d16879ca557d5538ab4c1287255f54f2795badcf46e5a"
 }
