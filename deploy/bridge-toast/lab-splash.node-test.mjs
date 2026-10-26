@@ -59,16 +59,27 @@ test('Mac preview exposes Swift diagnostics instead of swallowing stderr',()=>{
   assert.match(script,/compilerStep\('SWIFT_COMPILE'/);
   assert.match(script,/SOURCE_DIGEST_MISMATCH/);
   assert.match(script,/INSTALLED_BRIDGE_UNCHANGED/);
+  assert.match(script,/NATIVE_GLASS_SDK_AND_OS_READY/);
+  assert.match(script,/SWIFT_VERSION/);
   assert.doesNotMatch(script,/xcode-select\s+--switch|--remote-debugging/);
 });
 
-test('premium glass uses adaptive popover material and a restrained neutral edge',()=>{
-  assert.match(swift,/glass\.material = \.popover/);
-  assert.match(swift,/glass\.blendingMode = \.behindWindow/);
-  assert.match(swift,/glass\.layer\?\.borderWidth = 0\.65/);
+test('real Apple Liquid Glass is used on supported macOS/SDK with graceful older fallback',()=>{
+  assert.match(swift,/#if compiler\(>=6\.2\)/);
+  assert.match(swift,/if #available\(macOS 26\.0, \*\)/);
+  assert.match(swift,/NSGlassEffectView\(frame: glass\.bounds\)/);
+  assert.match(swift,/liquid\.contentView = glass/);
+  assert.match(swift,/liquid\.style = \.clear/);
+  assert.match(swift,/MATERIAL=NATIVE_LIQUID_GLASS/);
+  assert.match(swift,/fallback\.material = \.popover/);
+  assert.match(swift,/MATERIAL=LEGACY_SDK/);
+  assert.doesNotMatch(swift,/CAFilter\(|setValue\(.*glassBackground|--remote-debugging/);
+});
+test('fallback preserves quiet neutral rim, not neon outline',()=>{
+  assert.match(swift,/fallback\.blendingMode = \.behindWindow/);
+  assert.match(swift,/fallback\.layer\?\.borderWidth = 0\.65/);
   assert.match(swift,/NSColor\.white\.withAlphaComponent\(0\.30\)\.cgColor/);
   assert.match(swift,/CAGradientLayer\(\)/);
-  assert.match(swift,/reflection\.startPoint/);
   assert.doesNotMatch(swift,/systemPurple\.withAlphaComponent\(0\.31\)|systemPink\.withAlphaComponent\(0\.84\)/);
 });
 test('title leads content and glass controls are compact, semantic and actionable',()=>{

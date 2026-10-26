@@ -63,6 +63,22 @@ async function main(){
     say('ON_SCREEN_PREVIEW_AVAILABLE',process.platform==='darwin'?'YES':'NO');
     say('NO_BROWSER_DEBUGGING','YES');
     say('NO_DEPLOYMENT','YES');
+    if(process.platform==='darwin'){
+      const version=(bin,args)=>{
+        try{return execFileSync(bin,args,{encoding:'utf8',timeout:5000,
+          stdio:['ignore','pipe','pipe']}).trim().slice(0,120);}
+        catch{return 'UNAVAILABLE';}
+      };
+      const osVersion=version('/usr/bin/sw_vers',['-productVersion']);
+      const sdkVersion=version('/usr/bin/xcrun',['--sdk','macosx','--show-sdk-version']);
+      const compiler=version('/usr/bin/xcrun',['swiftc','--version']);
+      say('MACOS_VERSION',osVersion);
+      say('SDK_VERSION',sdkVersion);
+      say('SWIFT_VERSION',compiler.split('\n')[0]);
+      const major=v=>Number.parseInt(v.split('.')[0],10);
+      say('NATIVE_GLASS_SDK_AND_OS_READY',
+        major(osVersion)>=26 && major(sdkVersion)>=26 ? 'YES' : 'NO_OR_UNKNOWN');
+    }
     return;
   }
   if(process.platform!=='darwin')throw Error('MACOS_ONLY');

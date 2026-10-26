@@ -279,3 +279,18 @@ sanitized \`SWIFT_DIAGNOSTIC\` lines. A macOS compile result remains
 unknown until the operator executes this candidate in the Mac session.
 Do not enable browser debugging or change Xcode developer-directory
 selection automatically to address a compiler error.
+
+
+## Native Apple Liquid Glass (macOS 26+)
+
+The new **source candidate** uses Apple's \`NSGlassEffectView\` on
+macOS 26+ when the Mac builds with Xcode 26 / Swift 6.2. The real view
+owns \`contentView\` so system optical effects can sample the desktop.
+The source fallback uses \`NSVisualEffectView\` when the runtime/SDK is
+older. This does not use private \`CAFilter\` properties.
+
+The preview logs the **actual** material: \`MATERIAL=NATIVE_LIQUID_GLASS\`,
+\`LEGACY_VIBRANCY\` or \`LEGACY_SDK\`. In \`--inspect\` mode on Mac, the
+preview also reports macOS version, SDK version and Swift toolchain.
+Only the on-device output plus visual inspection establishes whether the
+native material was selected. No browser debugging or Bridge restart.

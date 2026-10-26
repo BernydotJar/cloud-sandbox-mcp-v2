@@ -12,6 +12,37 @@ function intersects(a,b) {
     a.x < b.x+b.width && b.x<a.x+a.width &&
     a.y < b.y+b.height && b.y<a.y+a.height;
 }
+// Explicitly bounded, nonsecret value readback for verified form fields.
+// No AXValue strings, tokens, arbitrary free text, or opaque raw attributes.
+export function validatedAxValueObservation(value,role) {
+  if(value===undefined)return undefined;
+  if(!value||typeof value!=='object'||Array.isArray(value)||
+     Object.keys(value).some(k=>!['kind','value','has_value'].includes(k)))
+    throw new Error('AX_INVALID_VALUE_OBSERVATION');
+  switch(value.kind){
+    case 'boolean':
+      if(!['AXCheckBox','AXRadioButton'].includes(role)||
+         typeof value.value!=='boolean'||value.has_value!==undefined)
+        throw new Error('AX_INVALID_VALUE_OBSERVATION');
+      return {kind:'boolean',value:value.value};
+    case 'hours_numeric':
+      if(!['AXTextField','AXTextArea','AXComboBox'].includes(role)||
+         typeof value.value!=='string'||
+         !/^[0-9]{1,3}(?:\.[0-9]{1,2})?$/.test(value.value)||
+         Number(value.value)>168||value.has_value!==true)
+        throw new Error('AX_INVALID_VALUE_OBSERVATION');
+      return {kind:'hours_numeric',value:value.value,has_value:true};
+    case 'empty':
+      if(value.value!==undefined||value.has_value!==false)
+        throw new Error('AX_INVALID_VALUE_OBSERVATION');
+      return {kind:'empty',has_value:false};
+    case 'redacted':
+      if(value.value!==undefined||value.has_value!==true)
+        throw new Error('AX_INVALID_VALUE_OBSERVATION');
+      return {kind:'redacted',has_value:true};
+    default:throw new Error('AX_INVALID_VALUE_OBSERVATION');
+  }
+}
 export class AxNodeReferences {
   #refs=new Map();
   #time;
@@ -33,6 +64,9 @@ export class AxNodeReferences {
         throw new Error('AX_INVALID_SNAPSHOT');
       if(node.protected===true || /secure|password|passcode|one.time|otp|security.code|credit.card|cvv/i.test(node.role+' '+node.name))
         throw new Error('AX_INVALID_SNAPSHOT');
+      if(Object.hasOwn(node,'value') || Object.hasOwn(node,'AXValue') ||
+         Object.hasOwn(node,'raw_value'))throw new Error('AX_INVALID_VALUE_OBSERVATION');
+      const valueObservation=validatedAxValueObservation(node.value_observation,node.role);
       const key=node.path.join('.');
       if(seen.has(key))throw new Error('AX_INVALID_SNAPSHOT');
       seen.add(key);
@@ -46,7 +80,8 @@ export class AxNodeReferences {
         bounds:{...bounds},frame,expires:now+SCREENSHOT_TTL_MS,used:false});
       nodes.push({node_ref:ref,role:node.role,name:node.name,enabled:node.enabled,
         parent_path:node.path.length?node.path.slice(0,-1):null,
-        ...(frame?{frame_points:frame}:{})});
+        ...(frame?{frame_points:frame}:{}),
+        ...(valueObservation?{value_observation:valueObservation}:{})});
     }
     return {provider:'native_ax',ax_revision:raw.revision,
       expires_in_ms:SCREENSHOT_TTL_MS,nodes};

@@ -1,5 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {URL} from 'node:url';
 import {AxNodeReferences} from './native-ax-provider.mjs';
 const bounds={x:100,y:80,width:600,height:400};
 const target={browser:'edge',expected_url:'https://example.test/week',expected_title:'HCL iTime'};
@@ -63,4 +65,57 @@ test('AX rejected disabled/offscreen/credential/ambiguous path snapshots',()=>{
      assert.throws(()=>refs.resolve(res.nodes[0].node_ref,res.ax_revision,target,bounds,'ax_press'),/AX_NODE_UNSAFE/);
    }else assert.throws(()=>refs.snapshot(bad,target,bounds),/AX_INVALID_SNAPSHOT/);
  }
+});
+
+test('native AX can read back narrowly permitted hour values without exposing arbitrary text',()=>{
+ const refs=new AxNodeReferences();
+ const safe={...row,nodes:[
+   {...row.nodes[1],value_observation:{
+     kind:'hours_numeric',value:'8',has_value:true}}
+ ]};
+ const inspected=refs.snapshot(safe,target,bounds);
+ assert.deepEqual(inspected.nodes[0].value_observation,
+   {kind:'hours_numeric',value:'8',has_value:true});
+ assert.equal(JSON.stringify(inspected).includes('value_observation'),true);
+ assert.equal(JSON.stringify(inspected).includes('fingerprint'),false);
+ const redacted=refs.snapshot({...row,nodes:[{
+   ...row.nodes[1],value_observation:{kind:'redacted',has_value:true}
+ }]},target,bounds);
+ assert.deepEqual(redacted.nodes[0].value_observation,
+   {kind:'redacted',has_value:true});
+});
+test('native AX accepts boolean and empty field observations',()=>{
+ const refs=new AxNodeReferences();
+ const state=refs.snapshot({...row,nodes:[
+   {...row.nodes[0],role:'AXCheckBox',value_observation:{
+     kind:'boolean',value:false}},
+   {...row.nodes[1],value_observation:{kind:'empty',has_value:false}}
+ ]},target,bounds);
+ assert.equal(state.nodes[0].value_observation.value,false);
+ assert.equal(state.nodes[1].value_observation.kind,'empty');
+});
+test('AX readback rejects raw values, unexpected fields, large numbers or forged role',()=>{
+ for(const bad of [
+  {...row.nodes[1],value:'candidate@example.com'},
+  {...row.nodes[1],AXValue:'secret'},
+  {...row.nodes[1],value_observation:{kind:'hours_numeric',value:'123456',has_value:true}},
+  {...row.nodes[1],value_observation:{kind:'hours_numeric',value:'200',has_value:true}},
+  {...row.nodes[1],value_observation:{kind:'hours_numeric',value:'8',has_value:true,extra:'raw'}},
+  {...row.nodes[0],value_observation:{kind:'hours_numeric',value:'8',has_value:true}},
+  {...row.nodes[1],value_observation:{kind:'redacted',value:'private note',has_value:true}}
+ ]){
+  const refs=new AxNodeReferences();
+  assert.throws(()=>refs.snapshot({...row,nodes:[bad]},target,bounds),
+    /AX_INVALID_VALUE_OBSERVATION/);
+ }
+});
+test('Swift AX helper is readback-only for approved safe values and never sends blind keys',()=>{
+ const source=fs.readFileSync(new URL('./native-ax/AXBrowserHelper.swift',import.meta.url),'utf8');
+ assert.match(source,/func observeValue\(/);
+ assert.match(source,/kAXValueAttribute/);
+ assert.match(source,/hours_numeric/);
+ assert.match(source,/value_observation/);
+ assert.match(source,/redacted/);
+ assert.match(source,/NSWorkspace.shared.frontmostApplication/);
+ assert(!source.includes('CGEventPost') && !source.includes('keyCode('));
 });

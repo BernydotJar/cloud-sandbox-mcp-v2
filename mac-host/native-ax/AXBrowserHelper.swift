@@ -110,18 +110,56 @@ func rectRecord(_ rect:CGRect?) -> [String:Double]? {
     return ["x":Double(f.minX),"y":Double(f.minY),
             "width":Double(f.width),"height":Double(f.height)]
 }
+// Task-safe AXValue readback. The current active-desktop helper remains
+// foreground-only; reading a value does NOT authorize an OS event.
+// Return only small hour quantities on time-related fields, checkbox states,
+// and emptiness. Do not expose arbitrary text, emails, secrets or passwords.
+func observeValue(_ element: AXUIElement, role: String,
+                  name: String, secure: Bool) -> [String: Any]? {
+    guard !secure,
+          ["AXTextField","AXTextArea","AXComboBox",
+           "AXPopUpButton","AXCheckBox","AXRadioButton"].contains(role),
+          let raw=attr(element,kAXValueAttribute)
+    else { return nil }
+    if ["AXCheckBox","AXRadioButton"].contains(role),
+       let number=raw as? NSNumber {
+        return ["kind":"boolean","value":number.boolValue]
+    }
+    guard let string=raw as? String else {
+        return ["kind":"redacted","has_value":true]
+    }
+    let value=string.trimmingCharacters(in:.whitespacesAndNewlines)
+    if value.isEmpty { return ["kind":"empty","has_value":false] }
+    if value.count>1000 { return ["kind":"redacted","has_value":true] }
+    let businessLabel=name.lowercased()
+    let timeHints=["hour","time","duration","hours","lunes","martes",
+      "miércoles","jueves","viernes","sábado","domingo","monday","tuesday",
+      "wednesday","thursday","friday","saturday","sunday","mon ","tue ",
+      "wed ","thu ","fri ","sat ","sun "]
+    let timeField=timeHints.contains(where:{businessLabel.contains($0)})
+    let numeric=value.range(of:"^[0-9]{1,3}(\\.[0-9]{1,2})?$",
+        options:.regularExpression) != nil
+    if timeField && numeric && value.count<=6,
+       let number=Double(value), number<=168 {
+        return ["kind":"hours_numeric","value":value,"has_value":true]
+    }
+    return ["kind":"redacted","has_value":true]
+}
 struct Record {
     let path:[Int], role:String, name:String, active:Bool,
-        protected:Bool, rect:CGRect?
+        protected:Bool, rect:CGRect?, valueObservation:[String:Any]?
     var fingerprint:String {
         let f=rectRecord(rect) ?? [:]
         let coords=["x","y","width","height"].map{String(format:"%.1f",f[$0] ?? -1)}.joined(separator:",")
-        return digest("\(path.map(String.init).joined(separator:"."))|\(role)|\(name)|\(active)|\(protected)|\(coords)")
+        let observed = valueObservation?["value"].map{String(describing:$0)} ?? ""
+        let kind = valueObservation?["kind"] as? String ?? ""
+        return digest("\(path.map(String.init).joined(separator:"."))|\(role)|\(name)|\(active)|\(protected)|\(coords)|\(kind)|\(observed)")
     }
     var json:[String:Any] {
         var result:[String:Any]=["path":path,"role":role,"name":name,
             "enabled":active,"fingerprint":fingerprint]
         if let bounds=rectRecord(rect){result["frame_points"]=bounds}
+        if let observed=valueObservation {result["value_observation"]=observed}
         return result
     }
 }
@@ -136,9 +174,10 @@ func inventory(_ root:AXUIElement,within:CGRect) -> [Record] {
         let secure=isProtected(node)
         let f=frame(node)
         let name=secure ? "" : label(node)
+        let value = observeValue(node,role:role,name:name,secure:secure)
         records.append(Record(path:path,role:role,name:name,
                               active:!secure && enabled(node),
-                              protected:secure,rect:f))
+                              protected:secure,rect:f,valueObservation:value))
         if path.count>=12 {continue}
         let kids=children(node)
         for (index,child) in kids.prefix(200).enumerated() {
@@ -206,7 +245,8 @@ func entry() {
     let revision=snapshotRevision(nodes)
 
     if mode=="snapshot" {
-        // Never expose AX values, private token-bearing URLs or secure controls.
+        // Expose only guarded numeric hours/boolean/emptiness observations;
+        // no arbitrary AXValue text, URLs or secure controls.
         encode(["ok":true,"data":["provider":"native_ax","revision":revision,
             "nodes":nodes.filter{!$0.protected}.map{$0.json}]]);return
     }

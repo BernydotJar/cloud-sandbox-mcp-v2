@@ -50,9 +50,22 @@ has a second text component:
                 "parent_path":[1,3]}]
     }}
 
+For an eligible time cell, the candidate can also report:
+
+    {"value_observation":{"kind":"hours_numeric","value":"8","has_value":true}}
+
+Other control text remains redacted. A second, independent post-reload
+AX snapshot must confirm any persisted business change; a pre-reload
+snapshot is not persistence evidence.
+
 Only AX nodes in the single URL-bound AXWebArea of the frontmost, exact
-browser tab are exposed. The Swift executable does not return textbox values,
-secure fields, passwords, tokens, browser chrome, other apps or raw URLs.
+browser tab are exposed. The revised Swift candidate returns **narrow, task-safe** AX value
+observations: a small numeric hour value for an identified time/day field,
+boolean checkbox/radio state, or an empty-field marker. Other raw text is
+redacted. It does not return arbitrary textbox text, secure fields,
+passwords, tokens, browser chrome, other apps or raw URLs. This source
+candidate has NOT been installed in the active Mac Bridge; the live MCP
+still cannot promise these fields.
 Role, frame and short redacted name metadata are observable, not a claim of
 semantic Playwright or guaranteed accessibility for every web framework.
 

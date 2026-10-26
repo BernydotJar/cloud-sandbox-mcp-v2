@@ -190,35 +190,63 @@ panel.animationBehavior = .none
 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 panel.isReleasedWhenClosed = false
 
-// AppKit adaptive popover material is the actual blur. Subtle specular
-// highlights add depth without a saturated neon outline.
-let glass = NSVisualEffectView(frame: NSRect(x: 0, y: 0,
-                                             width: AkiraSplash.width,
-                                             height: noticeHeight))
-glass.material = .popover
-glass.blendingMode = .behindWindow
-glass.state = .active
-glass.isEmphasized = false
+// Prefer Apple's real Liquid Glass on macOS 26 with Xcode 26 / Swift 6.2.
+// Older SDKs compile the legacy branch without referencing an unavailable
+// class. Never use private CAFilter properties or hidden browser debugging.
+let glass = NSView(frame: NSRect(x: 0, y: 0,
+                                 width: AkiraSplash.width,
+                                 height: noticeHeight))
 glass.wantsLayer = true
-glass.layer?.cornerRadius = 24
-glass.layer?.masksToBounds = true
-glass.layer?.borderWidth = 0.65
-glass.layer?.borderColor = NSColor.white.withAlphaComponent(0.30).cgColor
-panel.contentView = glass
 
-// A translucent top reflection, kept behind all text and controls.
-let reflection = CAGradientLayer()
-reflection.frame = glass.bounds
-reflection.colors = [
-    NSColor.white.withAlphaComponent(0.23).cgColor,
-    NSColor.white.withAlphaComponent(0.07).cgColor,
-    NSColor.clear.cgColor
-]
-reflection.locations = [0, 0.40, 1]
-reflection.startPoint = CGPoint(x: 0.5, y: 1.0)
-reflection.endPoint = CGPoint(x: 0.5, y: 0.0)
-reflection.cornerRadius = 24
-glass.layer?.insertSublayer(reflection, at: 0)
+#if compiler(>=6.2)
+if #available(macOS 26.0, *) {
+    let liquid = NSGlassEffectView(frame: glass.bounds)
+    liquid.cornerRadius = 24
+    liquid.style = .clear
+    liquid.tintColor = nil
+    liquid.contentView = glass
+    panel.contentView = liquid
+    print("[Akira View] MATERIAL=NATIVE_LIQUID_GLASS")
+} else {
+    let fallback = NSVisualEffectView(frame: glass.bounds)
+    fallback.material = .popover
+    fallback.blendingMode = .behindWindow
+    fallback.state = .active
+    fallback.wantsLayer = true
+    fallback.layer?.cornerRadius = 24
+    fallback.layer?.masksToBounds = true
+    fallback.layer?.borderWidth = 0.65
+    fallback.layer?.borderColor = NSColor.white.withAlphaComponent(0.30).cgColor
+    let reflection = CAGradientLayer()
+    reflection.frame = fallback.bounds
+    reflection.colors = [
+        NSColor.white.withAlphaComponent(0.17).cgColor,
+        NSColor.white.withAlphaComponent(0.05).cgColor,
+        NSColor.clear.cgColor
+    ]
+    reflection.locations = [0, 0.32, 1]
+    reflection.startPoint = CGPoint(x: 0.5, y: 1.0)
+    reflection.endPoint = CGPoint(x: 0.5, y: 0.0)
+    reflection.cornerRadius = 24
+    fallback.layer?.insertSublayer(reflection, at: 0)
+    fallback.addSubview(glass)
+    panel.contentView = fallback
+    print("[Akira View] MATERIAL=LEGACY_VIBRANCY")
+}
+#else
+let fallback = NSVisualEffectView(frame: glass.bounds)
+fallback.material = .popover
+fallback.blendingMode = .behindWindow
+fallback.state = .active
+fallback.wantsLayer = true
+fallback.layer?.cornerRadius = 24
+fallback.layer?.masksToBounds = true
+fallback.layer?.borderWidth = 0.65
+fallback.layer?.borderColor = NSColor.white.withAlphaComponent(0.30).cgColor
+fallback.addSubview(glass)
+panel.contentView = fallback
+print("[Akira View] MATERIAL=LEGACY_SDK")
+#endif
 
 // Confetti remains around Akira, not around the panel or the content.
 private let burst = LabBurstView(frame: NSRect(x: 0, y: 0, width: 96,

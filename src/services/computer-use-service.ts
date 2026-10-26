@@ -2,6 +2,33 @@ import type { AppConfig } from '../config.js';
 
 export type ComputerBrowser = 'chrome' | 'edge';
 export type ComputerAction = 'click' | 'type_text' | 'press_key' | 'ax_press' | 'ax_set_value';
+export type AxValueObservation =
+  | {kind:'hours_numeric';value:string;has_value:true}
+  | {kind:'boolean';value:boolean}
+  | {kind:'empty';has_value:false}
+  | {kind:'redacted';has_value:true};
+
+function validAxValueObservation(v: unknown, role: string): v is AxValueObservation {
+  if(!v||typeof v!=='object'||Array.isArray(v))return false;
+  const record=v as Record<string,unknown>;
+  if(Object.keys(record).some(k=>!['kind','value','has_value'].includes(k)))return false;
+  switch(record.kind) {
+    case 'hours_numeric':
+      return ['AXTextField','AXTextArea','AXComboBox'].includes(role) &&
+        typeof record.value==='string' &&
+        /^[0-9]{1,3}(?:\.[0-9]{1,2})?$/.test(record.value) &&
+        Number(record.value)<=168 && record.has_value===true;
+    case 'boolean':
+      return ['AXCheckBox','AXRadioButton'].includes(role) &&
+        typeof record.value==='boolean' && record.has_value===undefined;
+    case 'empty':
+      return record.value===undefined && record.has_value===false;
+    case 'redacted':
+      return record.value===undefined && record.has_value===true;
+    default:return false;
+  }
+}
+
 export type ComputerScreenshotGeometry = {
   coordinate_contract: 'mac-screen-points.v1';
   screenshot_ref: string;
@@ -78,7 +105,8 @@ export class ComputerUseService {
     ax_snapshot?: {
       provider:'native_ax';ax_revision:string;expires_in_ms:number;
       nodes:Array<{node_ref:string;role:string;name:string;enabled:boolean;
-        parent_path?:number[]|null;frame_points?:{x:number;y:number;width:number;height:number}}>
+        parent_path?:number[]|null;frame_points?:{x:number;y:number;width:number;height:number};
+          value_observation?:AxValueObservation}>
     }
   }> {
     this.enforceBrowserTargetIdentity(target);
@@ -88,7 +116,8 @@ export class ComputerUseService {
       ax_snapshot?: {
         provider:'native_ax';ax_revision:string;expires_in_ms:number;
         nodes:Array<{node_ref:string;role:string;name:string;enabled:boolean;
-          parent_path?:number[]|null;frame_points?:{x:number;y:number;width:number;height:number}}>
+          parent_path?:number[]|null;frame_points?:{x:number;y:number;width:number;height:number};
+          value_observation?:AxValueObservation}>
       }
     };
     if (result.mime_type !== 'image/png' || !result.base64 || result.base64.length > 12_000_000 || !/^[A-Za-z0-9+/=]+$/.test(result.base64)) {
@@ -113,7 +142,9 @@ export class ComputerUseService {
       !Array.isArray(ax.nodes) || ax.nodes.length>450 ||
       ax.nodes.some(n=>!n || !/^[a-f0-9]{64}$/.test(n.node_ref) ||
         typeof n.role!=='string'||n.role.length>50||
-        typeof n.name!=='string'||n.name.length>120||typeof n.enabled!=='boolean')))
+        typeof n.name!=='string'||n.name.length>120||typeof n.enabled!=='boolean'||
+        (n.value_observation!==undefined &&
+          !validAxValueObservation(n.value_observation,n.role)))))
       throw new Error('Invalid AX snapshot received from computer bridge.');
     return { mimeType: 'image/png', data: result.base64,
       ...(geo?{geometry:geo}:{}),...(ax?{ax_snapshot:ax}:{}) };
