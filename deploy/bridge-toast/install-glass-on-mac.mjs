@@ -83,11 +83,11 @@ function restore(){
   safeDirectory(backups);
   const pointer=safeFile(path.join(backups,'latest.json'),{maxBytes:4096});
   const meta=JSON.parse(pointer.bytes.toString());
-  if(meta.target!==binary||typeof meta.backup!=='string'||
-     !meta.backup.startsWith(backups+path.sep)||
-     !/^[a-f0-9]{64}$/.test(meta.installed_sha256))
+  if(meta.target!==binary||!/^[a-f0-9]{64}$/.test(meta.installed_sha256)||
+     (meta.previous_sha256!==null && (typeof meta.backup!=='string'||
+       !meta.backup.startsWith(backups+path.sep))))
     throw Error('INVALID_BACKUP_MANIFEST');
-  safeDirectory(path.dirname(meta.backup));
+  if(meta.previous_sha256!==null)safeDirectory(path.dirname(meta.backup));
   const current=safeFile(binary);
   if(hash(current.bytes)!==meta.installed_sha256)
     throw Error('INSTALLED_BINARY_CHANGED_NO_OVERWRITE');
@@ -104,11 +104,15 @@ function restore(){
 }
 function install(){
   const expected=verifySource();
-  if(!fs.existsSync(parent))throw Error('BRIDGE_UX_FOLDER_NOT_INSTALLED');
+  if(!fs.existsSync(parent)){
+    safeDirectory(path.dirname(parent));
+    fs.mkdirSync(parent,{mode:0o700});
+  }
   safeDirectory(parent);
   const before=fs.existsSync(binary)?safeFile(binary):null;
-  // A completely new executable is not allowed to alter an unknown Bridge.
-  if(!before)throw Error('EXPECTED_INSTALLED_SPLASH_NOT_FOUND');
+  // Both initial installation and one-file replacement are safe: this
+  // never changes the Bridge process/configuration, and rollback removes
+  // an initially absent binary rather than inventing a previous version.
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'akira-glass-build-'));
   fs.chmodSync(temp,0o700);
   try{
@@ -119,7 +123,7 @@ function install(){
       '-framework','AppKit','-framework','QuartzCore']);
     const built=safeFile(candidate);
     const installedSha=hash(built.bytes);
-    if(installedSha===hash(before.bytes)){
+    if(before && installedSha===hash(before.bytes)){
       out('INSTALL','ALREADY_CURRENT');
       return;
     }
@@ -128,11 +132,12 @@ function install(){
     const stamp=Date.now()+'-'+crypto.randomUUID().slice(0,8);
     const backupFolder=path.join(backups,stamp);
     fs.mkdirSync(backupFolder,{mode:0o700});
-    const previous=path.join(backupFolder,'bridge-toast.previous');
-    fs.writeFileSync(previous,before.bytes,{flag:'wx',mode:0o600});
+    const previous=before?path.join(backupFolder,'bridge-toast.previous'):null;
+    if(before)fs.writeFileSync(previous,before.bytes,{flag:'wx',mode:0o600});
     const record={
-      target:binary,backup:previous,previous_sha256:hash(before.bytes),
-      previous_mode:before.mode,installed_sha256:installedSha,
+      target:binary,backup:previous,
+      previous_sha256:before?hash(before.bytes):null,
+      previous_mode:before?before.mode:null,installed_sha256:installedSha,
       source_sha256:expected,created_at:new Date().toISOString()
     };
     let swapped=false;
@@ -147,14 +152,15 @@ function install(){
         Buffer.from(JSON.stringify(record)+'\n'),0o600);
       out('INSTALL','PASS');
       out('DISPLAY_SMOKE','PROCESS_EXIT_OK_VISUAL_CHECK_OPERATOR');
-      out('BACKUP_SHA256',record.previous_sha256);
+      out('BACKUP_SHA256',record.previous_sha256??'NONE_FIRST_INSTALL');
       out('ROLLBACK_AVAILABLE','YES');
     }catch(error){
       if(swapped){
         const current=safeFile(binary);
         if(hash(current.bytes)!==installedSha)
           throw Error('INSTALL_FAIL_TARGET_CHANGED_MANUAL_RECOVERY_REQUIRED');
-        atomicReplace(binary,before.bytes,before.mode);
+        if(before)atomicReplace(binary,before.bytes,before.mode);
+        else fs.unlinkSync(binary);
       }
       diagnostics(error);
       throw Error('INSTALL_ROLLED_BACK');

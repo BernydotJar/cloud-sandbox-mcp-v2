@@ -20,9 +20,9 @@ a live delegated session.
 
 **Standalone Mac rollout:** \`install-glass-on-mac.mjs --install\` first
 compiles and type-checks Swift, snapshots the existing executable with SHA-256,
-then atomically replaces **only the Mac splash executable**. It runs a
+then atomically installs or replaces **only the Mac splash executable**. It runs a
 non-destructive 20-second UI smoke test, rolls back if the binary fails,
-and supports \`--rollback\`. It never edits or restarts the Bridge, Docker,
+and supports \`--rollback\` (restores the former executable, or removes a first-time installation). It never edits or restarts the Bridge, Docker,
 Chrome or Edge, and never enables Remote Debugging. Unknown Bridge JS
 baselines are irrelevant to this UI-only deployment.
 

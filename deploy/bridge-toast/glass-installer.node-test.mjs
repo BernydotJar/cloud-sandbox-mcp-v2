@@ -43,7 +43,7 @@ test('symlink and unowned/non-file baselines are rejected',()=>{
 });
 test('Mac-only installer cannot alter browsers or Bridge service config',()=>{
   const src=fs.readFileSync(new URL('./install-glass-on-mac.mjs',import.meta.url),'utf8');
-  assert.match(src,/EXPECTED_INSTALLED_SPLASH_NOT_FOUND/);
+  assert.match(src,/NONE_FIRST_INSTALL/);
   assert.match(src,/INSTALL_ROLLED_BACK/);
   assert.match(src,/SWIFT_TYPECHECK/);
   assert.match(src,/SWIFT_COMPILE/);
