@@ -1,3 +1,47 @@
+## Repair: installation PASS followed by fetch failed (2026-10-26)
+
+The first on-Mac run of v1 reported Swift compilation PASS, user LaunchAgent
+bootstrap PASS, then the E2E \`fetch failed\`. The installer only checked
+\`launchctl bootstrap\`, which does NOT prove the Node process has reached
+\`listen()\`. An independent request through Sandbox V3 to
+\`http://host.docker.internal:9779/v1/status\` now returns
+\`401 SAME_MAC_AUTH_REQUIRED\`, showing the listener is alive and enforcing
+Bearer authentication. The original failure is consistent with a start-up race.
+
+The updated installer requires an authenticated status response before
+printing INSTALL=PASS. The updated E2E retries only transient transport
+errors; an authentication or provider mismatch is a hard failure. It
+also reports missing one-time Accessibility permission separately.
+
+**Already installed Mac:** do NOT reinstall or run repair by default.
+Use only the disposable fixture acceptance:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/same-mac-background-ax-20261026"
+    node "$BASE/accept-on-mac.mjs" --run
+
+If it says \`SAME_MAC_ACCESSIBILITY_PERMISSION_REQUIRED\`, grant permission
+once for the stable \`SameMacAX\` helper in macOS Settings > Privacy &
+Security > Accessibility and run:
+
+    node "$BASE/install-on-mac.mjs" --restart
+    node "$BASE/accept-on-mac.mjs" --run
+
+If the listener really stops, diagnose without mutation:
+
+    node "$BASE/doctor-on-mac.mjs" --inspect
+
+Only when the diagnostic confirms the listener is down, repair our own
+user LaunchAgent, preserving installed runtime, credentials and audit,
+adding private stdout/stderr logs, and leaving existing Chrome/Edge and
+Computer Use Bridge untouched:
+
+    node "$BASE/doctor-on-mac.mjs" --repair
+
+The repair makes a private backup of the original plist and verifies
+an authenticated live status after the scoped reload. It refuses to
+overwrite an unknown/customized installed AX server. Do not run it
+while the service is already responding.
+
 # Same-Mac Native Background AX — P0
 
 ## Architecture decision

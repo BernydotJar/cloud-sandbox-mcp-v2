@@ -13,6 +13,7 @@ import process from 'node:process';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {machineDigest,platformUuidFromIoreg} from './identity.mjs';
+import {waitForLocalAXStatus} from './startup-probe.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const home=path.join(os.homedir(),'Library/Application Support/LCH/SameMacBackgroundAX');
@@ -85,7 +86,7 @@ function inspected(){
   log('BROWSER_DEBUGGING_CHANGED','NO');
   log('FOCUS_CHANGED','NO');
 }
-function install(){
+async function install(){
   if(process.platform!=='darwin')throw Error('MACOS_ONLY');
   verifyManifest();
   const manager=run('/bin/launchctl',['managername'],5000);
@@ -143,8 +144,19 @@ function install(){
       fs.unlinkSync(agent);
       throw Error('SAME_MAC_LAUNCH_AGENT_FAILED');
     }
+    // A successful launchctl bootstrap does not prove Node is listening:
+    // wait for the authenticated HTTP endpoint before reporting PASS.
+    const token=fs.readFileSync(path.join(home,'token'),'utf8').trim();
+    let status;
+    try{status=await waitForLocalAXStatus(token);}
+    catch(error){
+      log('INSTALL','REGISTERED_BUT_HTTP_NOT_READY');
+      log('RECOMMENDED_DIAGNOSTIC','doctor-on-mac.mjs --inspect');
+      throw error;
+    }
     log('INSTALL','PASS');
     log('SERVICE','127.0.0.1:9779');
+    log('AX_PERMISSION',status.ax_permission===true?'READY':'ONE_TIME_CONSENT_PENDING');
     log('MAC_IDENTITY',machineId);
     log('ACCESSIBILITY','GRANT_ONCE_TO_STABLE_HELPER_IF_NEEDED');
     log('BROWSERS_RESTARTED','NO');
@@ -215,7 +227,7 @@ function configure(mode,bundleName){
   log('APP_CAPABILITY_UPDATED',mode==='--allow-app'?'AX_OBSERVE_AND_SET':'AX_PRESS_CERTIFIED');
   log('APP_BUNDLE',bundleName);
 }
-function main(){
+async function main(){
   const mode=process.argv[2];
   if((mode==='--allow-app'||mode==='--certify-press') &&
      process.argv.length===4){
@@ -227,12 +239,11 @@ function main(){
   if(process.argv.length!==3||!['--inspect','--install','--stop','--start'].includes(mode))
     throw Error('MODE_REQUIRED');
   if(mode==='--inspect')inspected();
-  if(mode==='--install')install();
+  if(mode==='--install')await install();
   if(mode==='--stop')stop();
   if(mode==='--start')start();
 }
-try{main();}
-catch(error){
+main().catch(error=>{
   log('STOP',String(error?.message||'UNKNOWN').slice(0,180));
   process.exitCode=2;
-}
+});

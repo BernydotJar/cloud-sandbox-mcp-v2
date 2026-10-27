@@ -13,6 +13,7 @@ import process from 'node:process';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
+import {waitForLocalAXStatus} from './startup-probe.mjs';
 
 const root=path.join(os.homedir(),'Library/Application Support/LCH/SameMacBackgroundAX');
 const target={bundle_id:'com.lch.SameMacAXFixture',
@@ -72,10 +73,15 @@ async function main(){
   if(process.argv.length!==3||process.argv[2]!=='--run')
     throw Error('EXPLICIT_RUN_REQUIRED');
   const token=safeToken();
-  const info=await post('/v1/status',{},token);
+  const info=await waitForLocalAXStatus(token);
   if(info.provider!=='same_mac_background_ax'||
-     info.same_machine_verified!==true||
-     info.ready!==true)throw Error('SAME_MAC_AX_NOT_READY');
+     info.same_machine_verified!==true)throw Error('SAME_MAC_PROVIDER_IDENTITY_MISMATCH');
+  if(info.gui_session!==true)throw Error('SAME_MAC_AQUA_SESSION_NOT_READY');
+  if(info.ax_permission!==true) {
+    log('ACCESSIBILITY','ONE_TIME_PERMISSION_REQUIRED_FOR_BIN_SameMacAX');
+    throw Error('SAME_MAC_ACCESSIBILITY_PERMISSION_REQUIRED');
+  }
+  if(info.ready!==true)throw Error('SAME_MAC_AX_NOT_READY');
   log('LOCAL_AX_READY','PASS');
   const fixture=path.join(root,'SameMacAXFixture.app');
   if(!fs.existsSync(fixture))throw Error('FIXTURE_MISSING');

@@ -48,3 +48,31 @@ Branch: feat/computer-use-runtime-v2
 6. Deploy/promote three new MCP tools preserving existing 29-tool runtime.
 
 P0 STATUS: SOURCE PASS, LIVE MAC AX AND FOCUS TEST PENDING.
+
+## 2026-10-26 native Mac installation and HTTP bootstrap bug
+
+Operator Mac execution confirmed:
+- SameMacAX.swift SWIFT_TYPECHECK=PASS and SWIFT_BUILD=PASS
+- SameMacAXFixture.swift SWIFT_TYPECHECK=PASS and SWIFT_BUILD=PASS
+- INSTALL=PASS, bound target advertised as 127.0.0.1:9779
+- Immediate E2E ended with STOP=fetch failed
+- Independent unauthenticated Sandbox V3 HTTP probe subsequently returned
+  401 SAME_MAC_AUTH_REQUIRED from 9779 (expected), while existing Bridge
+  9764 returned 403 UNAUTHORIZED. Neither listener was disrupted.
+
+Root-code defect: install used \`launchctl bootstrap\` exit code as
+success without waiting for the authenticated HTTP listener. The first
+acceptance used a single immediate status request, so transient startup
+delays surfaced as an opaque fetch error. Corrected:
+- \`startup-probe.mjs\` retries only transient connection errors and verifies
+  exact AX provider identity.
+- Installer now waits for authenticated status before INSTALL=PASS and
+  distinguishes AX consent pending.
+- E2E also waits for the listener and emits distinct one-time
+  Accessibility permission failures.
+- \`doctor-on-mac.mjs\` inspects only same-Mac AX launchd state; optional
+  explicit scoped repair adds private stdout/stderr logs and backups.
+
+On-device AX fixture E2E has NOT yet been verified; 401 proves the HTTP
+service is alive but does not prove native AX readiness or behavior.
+Original 40 hours, Chrome/Edge browser sessions and macOS UI are untouched.

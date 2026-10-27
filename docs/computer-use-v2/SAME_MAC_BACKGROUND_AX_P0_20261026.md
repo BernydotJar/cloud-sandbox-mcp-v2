@@ -16,3 +16,16 @@ Source components:
 Current installed Mac Browser Bridge remains active and unchanged. The new host AX provider is not installed until a Mac-specific Swift compiler check, install and disposable E2E succeed. The old independent-Mac source files are historical engineering exploration, not a runtime dependency. Preserve existing corporate timesheets and active Edge delegated sessions. Maintain Docker/root/shared storage without pruning.
 
 Read mac-host/same-mac-ax/README.md before any next deployment. The goal is background native CUA on this same Mac and one-time local authorization, not recurring approval prompts or VM provisioning.
+
+## On-device service startup evidence and fix
+
+Both Swift sources passed macOS compilation; new AX LaunchAgent bootstrap
+succeeded, but the immediately chained E2E failed to connect. From
+Sandbox V3, unauthenticated POST to 9779 later returned the expected 401
+and Bridge 9764 the expected 403. The new installer/E2E waits for the
+authenticated listener. **Do not reinstall**; rerun the disposable
+\`accept-on-mac.mjs --run\` from the existing handoff once it is updated.
+
+For a genuine later listener failure use \`doctor-on-mac.mjs --inspect\`;
+an explicit \`--repair\` modifies only the same-Mac AX LaunchAgent,
+not the browser Bridge. Native Accessibility E2E remains pending.
