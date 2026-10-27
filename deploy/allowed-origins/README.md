@@ -185,3 +185,7 @@ covered by origin matching; no unrelated myhcl.com subdomains are allowed.
 ## UiPath staging
 
 Allow the exact origin https://staging.uipath.com in Chrome and Edge. This does not grant arbitrary uipath.com subdomains. The same guarded installer activates the addition without dropping earlier permissions.
+
+## Microsoft Outlook and Copilot exact origins
+
+The installer adds https://outlook.cloud.microsoft and https://copilot.cloud.microsoft as exact HTTPS origins for Chrome and Edge. URL paths/query strings are not copied into the allowlist. Existing origins are preserved; other cloud.microsoft subdomains are not included.

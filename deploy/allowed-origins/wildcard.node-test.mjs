@@ -6,7 +6,7 @@ import {fileURLToPath,URL} from 'node:url';
 import process from 'node:process';
 import {LCH_APEX,LCH_WILDCARD,validAllowlistEntry,allowsWebOrigin}
   from './allowed-origins.mjs';
-import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN} from './wildcard-config.mjs';
+import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN,OUTLOOK_ORIGIN,COPILOT_ORIGIN} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 const here=fileURLToPath(new URL('.',import.meta.url));
@@ -76,13 +76,13 @@ test('user wildcard expands to apex and explicit dot-bounded rule, keeping previ
   const result=addLchOrigins(input);
   assert.equal(result.changed,true);
   assert.equal(result.beforeCount,2);
-  assert.equal(result.afterCount,11);
+  assert.equal(result.afterCount,13);
   assert(result.updated.includes('https://admin.microsoft.com,https://www.linkedin.com,'+
     LCH_APEX+','+LCH_WILDCARD));
   assert(result.updated.includes('SOME_SECRET=do-not-touch\n'));
   assert(result.updated.endsWith('OTHER=alive\n'));
   assert.deepEqual(addLchOrigins(result.updated),{
-    updated:result.updated,beforeCount:11,afterCount:11,changed:false,
+    updated:result.updated,beforeCount:13,afterCount:13,changed:false,
     alreadyApex:true,alreadyWildcard:true
   });
 });
@@ -91,7 +91,7 @@ test('single or double quoting and CRLF remain byte preserving',()=>{
     for(const eol of ['\n','\r\n']){
       const input=['X=y','COMPUTER_USE_ALLOWED_ORIGINS='+quote+'https://www.linkedin.com'+quote,'Y=z',''].join(eol);
       const result=addLchOrigins(input);
-      assert.equal(result.afterCount,10);
+      assert.equal(result.afterCount,12);
       assert(result.updated.includes(quote+'https://www.linkedin.com,'+LCH_APEX+','+LCH_WILDCARD));
       assert(result.updated.includes('https://*.atlassian.net'+quote));
       assert.equal(addLchOrigins(result.updated).updated,result.updated);
@@ -177,4 +177,22 @@ test('UiPath staging is exact HTTPS origin, no blanket uipath.com wildcard',()=>
     'http://staging.uipath.com/','https://staging.uipath.com.evil.example/',
     'https://staging.uipath.com:4444/'])
     assert.equal(allowsWebOrigin(bad,allow),false,bad);
+});
+
+test("Microsoft Outlook and Copilot cloud origins are exact, additive, and idempotent",()=>{
+  const source="COMPUTER_USE_ALLOWED_ORIGINS=https://www.linkedin.com\n";
+  const next=addLchOrigins(source);
+  assert(next.updated.includes(OUTLOOK_ORIGIN));
+  assert(next.updated.includes(COPILOT_ORIGIN));
+  assert.equal(addLchOrigins(next.updated).changed,false);
+  const allow=new Set([OUTLOOK_ORIGIN,COPILOT_ORIGIN]);
+  for(const ok of ["https://outlook.cloud.microsoft/mail/",
+    "https://copilot.cloud.microsoft/chat?fromcode=cmmlf487uwy&es=UnauthClick"])
+    assert.equal(allowsWebOrigin(ok,allow),true,ok);
+  for(const no of ["https://other.cloud.microsoft/",
+    "https://sub.copilot.cloud.microsoft/",
+    "http://copilot.cloud.microsoft/chat",
+    "https://copilot.cloud.microsoft.evil.example/chat",
+    "https://copilot.cloud.microsoft:4444/chat"])
+    assert.equal(allowsWebOrigin(no,allow),false,no);
 });
