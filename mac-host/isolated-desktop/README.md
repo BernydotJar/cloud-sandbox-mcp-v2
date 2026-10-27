@@ -102,3 +102,30 @@ errors individually. Successful typechecking still does not prove
 that a guest VM has been created, connected, or nonintrusive.
 The AX Browser Helper separately uses the
 \`ax-readback-20261026/inspect-on-mac.mjs --inspect\` script.
+
+
+## One-shot operator Mac evidence collection (read-only, current release)
+
+The operator can run one command after the two source releases have been
+synchronized to the existing shared-auth handoff. This runs the foreground
+AX Swift typecheck, three isolated-worker Swift typechecks, and the storage/
+external APFS preflight as separate read-only processes. It verifies
+release manifests and file SHA-256 first:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use"
+    node "$BASE/isolated-mac-cua-20261026/collect-on-mac.mjs" --collect
+
+The script prints PASS/FAIL diagnostics and atomically records its results
+to \`$BASE/mac-host-evidence/last-host-native-gate.json\` with private
+permissions. This **does not install a VM or change the Mac's GUI**.
+The evidence file is outside the SHA-verified release bundle, allowing
+the linked Sandbox V3 agent to read it later rather than asking the user
+to paste or repeat a long Terminal transcript.
+
+If an eligible external APFS storage volume is reported, we can consider
+Tart with \`TART_HOME\` on that exact volume and
+\`TART_NO_AUTO_PRUNE=\` to prevent Tart's automatic cache cleanup.
+No Tart installation, pull, clone, create or storage deletion is
+performed by the preflight.
+
+Tart reference: https://github.com/openai/tart/blob/main/docs/faq.md
