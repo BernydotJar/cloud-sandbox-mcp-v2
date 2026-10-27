@@ -73,3 +73,18 @@ Source branch: feat/computer-use-runtime-v2
 5. On separate macOS GUI worker, demonstrate the operator foreground
    app, cursor, keyboard and active browser tabs remain unchanged while
    the agent performs its own semantic AX action and persisted readback.
+
+
+## Live operator evidence and remediation
+- Native Apple Liquid Glass is confirmed for the **Mac preview**:
+  \`MATERIAL=NATIVE_LIQUID_GLASS\`,
+  \`SCREEN_PREVIEW=COMPLETED\`, no Bridge installation.
+- Foreground AX readback helper failed macOS Swift typecheck with four
+  categories of syntax/type parsing diagnostics in the operator output.
+- Corrected concatenation, explicit \`path:\` label, and \`== .success\`.
+  Equivalent parser traps in isolated GuestAX.swift were also corrected.
+- Rebuilt the AX readback source and SHA-256; macOS re-typecheck pending.
+- Operator Mac native VM capacity check: arm64/hypervisor supported,
+  24 GiB RAM, 16.81 GiB free, Tart absent. A guest needs external APFS
+  space / more internal headroom or another Mac.
+- No MAC foreground interactions or corporate records changed by this repair.

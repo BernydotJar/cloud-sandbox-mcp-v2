@@ -79,3 +79,26 @@ Promote the new controller source only after reviewing exact installed versions 
 - Source tests, identity rejection, authenticated HTTP, replay protection, AX and controller tool contracts: implemented; verify with npm.
 
 GO requires all live gates, not just source tests. The prior 40 hours already saved in UiPath/HCL remain untouched. No Saturday draft rehearsal or corporate writes are part of this P0 acceptance.
+
+
+## Operator Mac results and Swift compile preflight, 2026-10-26
+
+The operator Mac reported macOS 26.7.1, Apple Silicon, working
+hypervisor, 24 GiB RAM and 16.81 GiB free on the HOME filesystem.
+No internal VM provisioning is authorized at this capacity. The
+read-only \`preflight.mjs --inspect\` now also looks for explicitly
+mounted *external writable APFS volumes* with at least 80 GiB free.
+An external-disk VM still needs a reviewed provisioning procedure;
+this preflight does not install Tart or write to volumes.
+
+All guest Swift sources can be typechecked from the **operator Mac**
+without launching the guest GUI or modifying Browser CDP:
+
+    node "$BASE/swift-preflight.mjs" --inspect
+
+This validates \`GuestAX.swift\`, \`AXFixture.swift\`, and
+\`HostFocusObserver.swift\` against the real macOS SDK, then reports
+errors individually. Successful typechecking still does not prove
+that a guest VM has been created, connected, or nonintrusive.
+The AX Browser Helper separately uses the
+\`ax-readback-20261026/inspect-on-mac.mjs --inspect\` script.

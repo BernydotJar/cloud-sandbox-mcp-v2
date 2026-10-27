@@ -111,3 +111,33 @@ as a deployment.
   comparison, and AX noninterference demonstration: NOT YET VERIFIED.
 - No Mac browser reboot, profile change, session takeover, timesheet edit,
   Docker cleanup, or CDP activation occurred.
+
+
+## macOS 26.7.1 on-device preflight and Swift repair (2026-10-26)
+
+Operator-reported (independent on-device evidence):
+- Akira native splash emitted \`MATERIAL=NATIVE_LIQUID_GLASS\` and
+  \`SCREEN_PREVIEW=COMPLETED\`. This **validates the preview**, not
+  installation of a replacement Mac Bridge binary.
+- Mac native \`AXBrowserHelper.swift\` Swift typecheck failed with
+  syntax errors at its protected text label concatenation (line 95),
+  unlabeled \`targetNode(area,path)\` (line 259), and postfix \`==.success\`
+  comparisons (lines 270/276).
+- Source corrections: use a joined string array, \`path: path\`, and
+  spaced \`== .success\`. Added a regression covering both the foreground
+  helper and the isolated guest Swift helper. Replaced the staged AX
+  source and SHA-256 digest.
+- The **revised AX Swift file must be recompiled on macOS**. Static
+  checks on Linux are not a substitute for the Xcode compiler.
+- The on-device Mac preflight returned macOS 26.7.1, arm64,
+  virtualization supported, 24.0 GiB RAM, 16.81 GiB free (96% used),
+  Tart not installed, and \`LOCAL_VM_STORAGE_BELOW_80_GIB\`.
+- This means the Mac is virtualization-capable, but the local VM is
+  blocked by **capacity**. Current shortfall against the 80-GiB
+  project threshold is 63.19 GiB; no automatic deletion/prune is
+  permitted. The preflight now optionally enumerates attached external
+  writable APFS volumes using read-only \`diskutil info\` + \`df -Pk\`.
+- Local macOS VM and autonomous GUI worker **remain unprovisioned**.
+  An external APFS volume with sufficient free space or a second Mac
+  avoids modifying existing browser profiles or downloading heavy VM
+  artifacts onto the nearly full internal volume.

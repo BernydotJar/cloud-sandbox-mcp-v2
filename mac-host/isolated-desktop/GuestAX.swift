@@ -29,8 +29,11 @@ func hash(_ value:String) -> String {
     SHA256.hash(data:Data(value.utf8)).map{String(format:"%02x",$0)}.joined()
 }
 func protected(_ node:AXUIElement) -> Bool {
-    let label=(str(node,kAXSubroleAttribute)+" "+str(node,kAXTitleAttribute)+
-        " "+str(node,kAXDescriptionAttribute)).lowercased()
+    let label = [
+        str(node, kAXSubroleAttribute),
+        str(node, kAXTitleAttribute),
+        str(node, kAXDescriptionAttribute)
+    ].joined(separator: " ").lowercased()
     return ["password","passcode","secure","otp","credit card","cvv"].contains{label.contains($0)}
 }
 func name(_ node:AXUIElement) -> String {
@@ -145,14 +148,14 @@ func main() {
         guard ["AXButton","AXLink","AXCheckBox","AXRadioButton",
            "AXPopUpButton","AXMenuItem"].contains(target.role)
         else {fail("WORKER_ACTION_NOT_SUPPORTED")}
-        guard AXUIElementPerformAction(target.node,kAXPressAction as CFString)==.success
+        guard AXUIElementPerformAction(target.node,kAXPressAction as CFString) == .success
         else {fail("WORKER_AX_PRESS_FAILED")}
     } else {
         guard ["AXTextField","AXTextArea","AXComboBox"].contains(target.role),
           let value=request["value"] as? String,
           !value.isEmpty && value.count<=2000 else {fail("WORKER_INPUT_INVALID")}
         guard AXUIElementSetAttributeValue(target.node,kAXValueAttribute as CFString,
-            value as CFTypeRef)==.success else {fail("WORKER_AX_SET_FAILED")}
+            value as CFTypeRef) == .success else {fail("WORKER_AX_SET_FAILED")}
     }
     output(["ok":true,"data":["dispatched":true,"effect":"UNVERIFIED_RELOAD_REQUIRED"]])
 }

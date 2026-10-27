@@ -92,8 +92,11 @@ func sanitizeURL(_ raw:String) -> String {
 func isProtected(_ element: AXUIElement) -> Bool {
     let subrole=str(element,kAXSubroleAttribute).lowercased()
     if subrole.contains("secure") || subrole.contains("password") {return true}
-    let title=(str(element,kAXTitleAttribute)+" "+str(element,kAXDescriptionAttribute)+
-               " "+str(element,"AXPlaceholderValue")).lowercased()
+    let title = [
+        str(element, kAXTitleAttribute),
+        str(element, kAXDescriptionAttribute),
+        str(element, "AXPlaceholderValue")
+    ].joined(separator: " ").lowercased()
     if ["password","passcode","verification code","security code","credit card","cvv","otp"].contains(where:{title.contains($0)}) {return true}
     if (attr(element,"AXProtectedContent") as? NSNumber)?.boolValue == true {return true}
     return false
@@ -256,7 +259,7 @@ func entry() {
           let path=request["path"] as? [Int],path.count<=12,
           let fingerprint=request["fingerprint"] as? String,
           let action=request["action"] as? String,
-          let element=targetNode(area,path),
+          let element=targetNode(area,path: path),
           let node=nodes.first(where:{$0.path==path}),
           node.fingerprint==fingerprint,
           !node.protected,node.active,
@@ -267,13 +270,13 @@ func entry() {
         guard ["AXButton","AXLink","AXCheckBox","AXRadioButton",
                "AXPopUpButton","AXMenuItem"].contains(node.role)
         else {abort("AX_ACTION_NOT_SUPPORTED")}
-        guard AXUIElementPerformAction(element,kAXPressAction as CFString)==.success
+        guard AXUIElementPerformAction(element,kAXPressAction as CFString) == .success
         else {abort("AX_ACTION_FAILED")}
     } else if action=="set_value" {
         guard ["AXTextField","AXTextArea","AXComboBox"].contains(node.role),
               let value=request["value"] as? String,
               !value.isEmpty,value.count<=2000 else {abort("AX_INPUT_NOT_SUPPORTED")}
-        guard AXUIElementSetAttributeValue(element,kAXValueAttribute as CFString,value as CFTypeRef)==.success
+        guard AXUIElementSetAttributeValue(element,kAXValueAttribute as CFString,value as CFTypeRef) == .success
         else {abort("AX_ACTION_FAILED")}
     } else {abort("AX_ACTION_NOT_SUPPORTED")}
     encode(["ok":true,"data":["performed":true,"provider":"native_ax","action":action]])

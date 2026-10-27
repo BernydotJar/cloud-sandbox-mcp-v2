@@ -45,3 +45,11 @@ test('host acceptance only writes to the disposable fixture',()=>{
  for(const forbidden of ['com.microsoft.edgemac','financialforce','Modify Entry','Log Work'])
   assert.equal(s.includes(forbidden),false);
 });
+
+test('guest AX Swift avoids known syntax errors from Mac compiler diagnosis',()=>{
+  const ax=source('./GuestAX.swift');
+  assert.doesNotMatch(ax,/\)==\.success/);
+  assert.doesNotMatch(ax,/\+\s*\n\s*" "\s*\+/);
+  assert.match(ax,/\) == \.success/);
+  assert.match(ax,/\.joined\(separator: " "\)\.lowercased\(\)/);
+});

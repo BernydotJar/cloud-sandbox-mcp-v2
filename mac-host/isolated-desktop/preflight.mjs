@@ -5,6 +5,7 @@
  * modification, credential access, or interactive desktop operations.
  */
 import process from 'node:process';
+import fs from 'node:fs';
 import console from 'node:console';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -26,6 +27,31 @@ export function parseDf(output) {
   return {freeGiB:Number((Number(row[3])/1048576).toFixed(2)),
     usedPercent:Number(row[4].slice(0,-1))};
 }
+export function isExternalAPFS(diskutilText){
+  const data=String(diskutilText);
+  const external=/^\s*Device Location:\s*External\b/im.test(data);
+  const apfs=/^\s*File System Personality:\s*APFS\b/im.test(data);
+  const readOnly=/^\s*Read-Only Volume:\s*Yes\b/im.test(data);
+  return external && apfs && !readOnly;
+}
+function externalVMVolumes() {
+  const prefix='/Volumes';
+  if(!fs.existsSync(prefix))return [];
+  const items=fs.readdirSync(prefix,{withFileTypes:true});
+  const candidates=[];
+  for(const item of items.slice(0,24)){
+    if(!item.isDirectory()||item.isSymbolicLink())continue;
+    const mount=path.join(prefix,item.name);
+    const info=optional('/usr/sbin/diskutil',['info',mount]);
+    if(info==='UNAVAILABLE'||!isExternalAPFS(info))continue;
+    try{
+      fs.accessSync(mount,fs.constants.W_OK);
+      const disk=parseDf(exec('/bin/df',['-Pk',mount]));
+      candidates.push({mount,freeGiB:disk.freeGiB,eligible:disk.freeGiB>=80});
+    }catch{/* Ignore unmounted/unreadable volumes. */}
+  }
+  return candidates;
+}
 function main(){
   if(process.argv.length!==3||process.argv[2]!=='--inspect')
     throw Error('READ_ONLY_MODE_ONLY');
@@ -46,11 +72,21 @@ function main(){
   print('RAM_GIB',(memBytes/1073741824).toFixed(1));
   print('HOME_DISK_FREE_GIB',disk.freeGiB);
   print('HOME_DISK_USED_PERCENT',disk.usedPercent);
+  print('HOME_DISK_80GIB_SHORTFALL',Number(Math.max(0,80-disk.freeGiB).toFixed(2)));
   print('OPERATOR_MACHINE_DIGEST',machineDigest(uuid));
   const result=capacityStatus({arm64:arch==='arm64',virtualization:hv==='1',
     availableGiB:disk.freeGiB,ramGiB:memBytes/1073741824});
   print('LOCAL_MAC_VM',result.vmEligible?'ELIGIBLE_PREFLIGHT':'NOT_READY');
   print('LOCAL_MAC_VM_REASON',result.reason);
+  const candidates=externalVMVolumes();
+  print('EXTERNAL_APFS_VOLUMES',candidates.length);
+  for(const item of candidates){
+    print('EXTERNAL_VM_VOLUME',item.mount);
+    print('EXTERNAL_VM_VOLUME_FREE_GIB',item.freeGiB);
+    print('EXTERNAL_VM_VOLUME_80GIB_READY',item.eligible?'YES':'NO');
+  }
+  print('EXTERNAL_VM_STORAGE_CANDIDATE',
+    candidates.some(item=>item.eligible)?'FOUND_NOT_PROVISIONED':'NOT_FOUND');
   const tart=optional('/usr/bin/which',['tart']);
   print('TART_INSTALLED',tart==='UNAVAILABLE'?'NO':'YES');
   if(tart!=='UNAVAILABLE'){

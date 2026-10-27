@@ -11,6 +11,18 @@ When using this MCP server:
 7. Use `git_push` only after explicit authorization and only when enabled by the operator.
 8. Report commands, exit codes, changed files, tests, assumptions, and remaining risks.
 
+## Current Mac AX/VM diagnosis (2026-10-26)
+
+The operator Mac validated Akira native Liquid Glass in preview. Its
+AXBrowserHelper.swift subsequently failed a Swift typecheck on specific
+syntax issues, which are corrected in source and staged release; do not
+claim a Mac typecheck PASS until the updated package is compiled on Mac.
+The Mac is Apple Silicon with working hypervisor and 24 GiB RAM, but
+had only 16.81 GiB HOME storage free. Do not install Tart, create a
+macOS VM or delete data to get around the 80-GiB project VM capacity
+gate. Use the read-only preflight to assess external APFS storage or
+an existing second Mac. Do not enable browser Remote Debugging.
+
 ## Isolated native Mac CUA (source candidate, 2026-10-26)
 
 The independent macOS GUI worker source resides in
