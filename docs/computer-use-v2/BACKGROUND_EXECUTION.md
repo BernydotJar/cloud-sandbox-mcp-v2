@@ -1,3 +1,15 @@
+## CORRECTED P0: Same Mac background AX (2026-10-26)
+
+Operator requires background native CUA on the CURRENT Mac.
+No macOS VM, second Mac or external disk is a prerequisite.
+The primary implementation is mac-host/same-mac-ax; read
+docs/computer-use-v2/SAME_MAC_BACKGROUND_AX_P0_20261026.md.
+Native AX operations on background windows must be tested per
+app; they may be unsupported or unexpectedly activate the app.
+Never silently fall back to foreground keyboard automation.
+The separate-Mac worker below is an archived alternative, NOT
+a requirement for this P0.
+
 # Background execution contract — Browser Automation vs. Desktop CUA
 
 Status: SOURCE POLICY ENFORCEMENT (not a Mac deployment). Revision 2026-10-23.

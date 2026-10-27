@@ -4,6 +4,7 @@ import { z } from 'zod/v4';
 import type { WorkspaceService } from '../services/workspace-service.js';
 import { ComputerUseService } from '../services/computer-use-service.js';
 import { BackgroundMacService } from '../services/background-mac-service.js';
+import { SameMacAXService } from '../services/same-mac-ax-service.js';
 import { errorMessage } from '../utils/errors.js';
 
 function jsonResult(data: unknown, isError = false) {
@@ -22,7 +23,8 @@ async function safely(action: () => Promise<unknown>) {
 }
 
 export function createMcpServer(service: WorkspaceService,
-  computer?: ComputerUseService, backgroundMac?: BackgroundMacService): McpServer {
+  computer?: ComputerUseService, backgroundMac?: BackgroundMacService,
+  sameMacAX?: SameMacAXService): McpServer {
   const server = new McpServer({ name: 'cloud-sandbox-mcp', version: '0.2.0' });
 
   server.registerTool('workspace_create', {
@@ -295,5 +297,37 @@ export function createMcpServer(service: WorkspaceService,
     },async(input)=>await safely(()=>backgroundMac.action(input)));
   }
 
+  if(sameMacAX){
+    server.registerTool('mac_same_background_status',{
+      title:'Same Mac background native Accessibility status',
+      description:'Inspect native AX availability on the current operator Mac. No VM, new Mac, browser debugging, activation, pointer motion, or keystrokes.',
+      inputSchema:{},
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
+    },async()=>await safely(()=>sameMacAX.status()));
+    server.registerTool('mac_same_background_snapshot',{
+      title:'Inspect background Mac app AX tree without focusing it',
+      description:'Find one running non-frontmost Mac application window by bundle ID and exact title. Returns fresh opaque AX control references and safe values; never activates the app.',
+      inputSchema:{
+        bundle_id:z.string().min(8).max(120).regex(/^[a-zA-Z0-9.-]+$/),
+        window_title:z.string().min(1).max(120)
+      },
+      annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}
+    },async(input)=>await safely(()=>sameMacAX.snapshot(input)));
+    server.registerTool('mac_same_background_action',{
+      title:'Act on verified AX element of background app on current Mac',
+      description:'Use an opaque node_ref from a fresh snapshot and one-time request ID. No global keyboard/mouse. AXPress only for locally certified apps; stop and report unsupported if app requires focus. Dispatch alone does not verify persistence.',
+      inputSchema:{
+        bundle_id:z.string().min(8).max(120).regex(/^[a-zA-Z0-9.-]+$/),
+        window_title:z.string().min(1).max(120),
+        action:z.enum(['set_value','press']),
+        node_ref:z.string().regex(/^[a-f0-9]{64}$/),
+        expected_revision:z.string().regex(/^[a-f0-9]{64}$/),
+        request_id:z.string().regex(/^[a-f0-9]{64}$/),
+        reason:z.string().min(10).max(300),
+        value:z.string().min(1).max(2000).optional()
+      },
+      annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
+    },async(input)=>await safely(()=>sameMacAX.action(input)));
+  }
   return server;
 }

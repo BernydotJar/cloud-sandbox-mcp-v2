@@ -34,7 +34,11 @@ const envSchema = z.object({
   MAC_BACKGROUND_CUA_ENABLED: booleanString,
   MAC_BACKGROUND_CUA_URL: z.string().default('http://host.docker.internal:9777'),
   MAC_BACKGROUND_CUA_TOKEN: z.string().optional(),
-  MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST: z.string().optional()
+  MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST: z.string().optional(),
+  SAME_MAC_AX_ENABLED: booleanString,
+  SAME_MAC_AX_URL: z.string().default('http://host.docker.internal:9779'),
+  SAME_MAC_AX_TOKEN: z.string().optional(),
+  SAME_MAC_AX_MACHINE_DIGEST: z.string().optional()
 });
 
 const parsed = envSchema.parse(process.env);
@@ -63,6 +67,17 @@ if(parsed.MAC_BACKGROUND_CUA_ENABLED){
      parsed.MAC_BACKGROUND_CUA_TOKEN.length<32||
      !/^[a-f0-9]{64}$/.test(parsed.MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST||''))
     throw Error('MAC_BACKGROUND_CUA_CREDENTIALS_REQUIRED');
+}
+if(parsed.SAME_MAC_AX_ENABLED){
+  const address=new URL(parsed.SAME_MAC_AX_URL);
+  if(address.protocol!=='http:'||
+     !['host.docker.internal','127.0.0.1','localhost'].includes(address.hostname)||
+     address.port!=='9779'||address.pathname!=='/'||
+     address.username||address.password||address.search||address.hash)
+    throw Error('SAME_MAC_AX_LOCAL_ENDPOINT_REQUIRED');
+  if(!parsed.SAME_MAC_AX_TOKEN||parsed.SAME_MAC_AX_TOKEN.length<32||
+     !/^[a-f0-9]{64}$/.test(parsed.SAME_MAC_AX_MACHINE_DIGEST||''))
+    throw Error('SAME_MAC_AX_CREDENTIALS_REQUIRED');
 }
 const dataDir = path.resolve(parsed.MCP_DATA_DIR);
 const hostDataDir = path.resolve(parsed.HOST_DATA_DIR ?? parsed.MCP_DATA_DIR);

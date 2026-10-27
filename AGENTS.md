@@ -1,3 +1,18 @@
+## P0 architecture correction: native background CUA on THIS SAME MAC (2026-10-26)
+
+The operator rejected any VM, second Mac or external APFS volume for the
+background native Computer Use requirement. Those alternatives must NOT
+be presented as a prerequisite. Use the same-Mac native AX source under
+mac-host/same-mac-ax and the authoritative handoff at
+docs/computer-use-v2/SAME_MAC_BACKGROUND_AX_P0_20261026.md.
+Interact with non-frontmost macOS apps via role/name/revision AX APIs,
+never blind Tab/Arrow/Enter, OS keyboard events, mouse clicks, or
+app activation when background_required=true. AXPress remains
+app-specific and requires a real disposable noninterference test.
+Do not mark this live without native Mac compilation, AX consent, and
+foreground-preserving fixture E2E. Preserve root/Docker/shared storage
+and existing browser sessions.
+
 # Agent operating protocol
 
 When using this MCP server:
