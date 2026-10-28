@@ -32,6 +32,65 @@ the operator executes the --activate action. The original command is
 moved to a timestamped backup in the SAME ~/.local/bin directory, and
 can be restored via --rollback. No old startup code is executed.
 
+## Retro system dashboard and public HTTPS checks (2026-10-27)
+
+The default \`sandbox\` now displays the configured retro Cats/Jupiter
+ASCII welcome followed by a compact status panel with a state-specific
+face on EVERY row:
+
+- \`😎\` healthy and independently confirmed
+- \`👾\` failed, blocked, or returned an unexpected HTTP status
+- \`🥸\` warning / noncritical availability issue
+- \`🕵️\` not independently verifiable from this Mac
+
+\`sandbox status\` displays the panel without the large welcome artwork.
+The checks are read-only and independently report:
+
+1. Docker Desktop daemon availability.
+2. The existing \`cloud-sandbox-mcp\` container (no duplicates).
+3. The existing \`cloud-sandbox-dev-main\` persistent workstation.
+4. MCP controller's internal \`/healthz\`.
+5. The known Cloudflare system LaunchDaemon.
+6. Public HTTPS \`https://lch-app.cloud/health\` (HTTP 200 required).
+7. Public HTTPS \`https://ido.lch-app.cloud/health\` (HTTP 200 required).
+8. Native Mac Browser Bridge listener + authentication gate, using a
+   token-free local POST (401 or 403 means the port is protected;
+   it does NOT prove full authenticated browser automation).
+9. The external ChatGPT Sandbox V3 connector: reported as NOT
+   VERIFIED FROM MAC, never a fabricated local PASS.
+
+The HTTPS checks run in parallel with a bounded 4.5-second request
+timeout each. They require valid TLS and reject redirects and HTTP
+errors as failures. They never use cookies, browser tabs or credentials
+and do not change Cloudflare or Caddy routing. A running Cloudflare
+process and a public HTTPS 200 are **separate checks**: neither alone
+proves every configured route is healthy.
+
+### Output options
+
+    sandbox status           # attractive terminal status dashboard
+    sandbox status --plain   # stable key=value-ish diagnostic rows
+    sandbox status --json    # source-backed structured status for agents
+    sandbox doctor           # verbose diagnostic + dashboard
+    sandbox                  # retro welcome + actual component checks
+
+On an interactive Mac Terminal, status faces display as colorful
+emojis; a non-TTY terminal, or NO_EMOJI=1, uses ASCII status markers
+like [OK], [!!], [?!], [??]. NO_COLOR disables ANSI terminal colors.
+The layout is compact on narrow terminals.
+
+A failing critical component or public endpoint returns nonzero
+exit code and is marked visibly as degraded. Bridge unavailability
+is advisory because the main Sandbox MCP can work without macOS
+browser automation. The ChatGPT connector cannot be tested by a local
+terminal process and remains an explicit external check.
+
+Already-installed V3 users continue to use the same guarded
+\`install-on-mac.mjs --upgrade\` action from this release. It validates
+and installs the new \`health.mjs\` as a SHA-256-protected dependency
+alongside the CLI while preserving the original V2 launcher backup
+and the previous V3 executable.
+
 ## Existing installation hotfix: symlink entrypoint + retro ASCII (2026-10-27)
 
 The initial Mac activation reported RESULT=ACTIVATED and the Terminal

@@ -15,6 +15,8 @@ import {fileURLToPath} from 'node:url';
 import fs from 'node:fs';
 import {banner,readTheme,saveTheme,normalizeTheme} from './art.mjs';
 import {ensureCloudflare,inspectCloudflare} from './cloudflare.mjs';
+import {probePublicEndpoints,probeBrowserBridge,
+  formatDashboard,healthRow,outcomeCode} from './health.mjs';
 
 export const DEFAULT_CONTROLLER='cloud-sandbox-mcp';
 export const DEFAULT_WORKSTATION='cloud-sandbox-dev-main';
@@ -24,7 +26,14 @@ export function parseContainerStatus(text,name){
   if(!match||match[1]!=='/'+name)throw Error('UNEXPECTED_CONTAINER_IDENTITY:'+name);
   return {name,active:match[2]==='true',health:match[3]};
 }
-const out=(key,val)=>console.log('[Sandbox V3 CLI] '+key+'='+String(val));
+const machineReadable=process.argv[2]==='doctor'||
+  process.argv[3]==='--plain'||process.env.SANDBOX_VERBOSE==='1';
+const out=(key,val)=>{
+  const important=['RESULT','STOP','CLOUDFLARE_ADMIN','DOCKER_DESKTOP'];
+  if(machineReadable||important.includes(key)||
+     key==='cloud-sandbox-mcp'||key==='cloud-sandbox-dev-main')
+    console.log('[Sandbox V3 CLI] '+key+'='+String(val));
+};
 function exec(cmd,args,timeout=12000){
   const r=spawnSync(cmd,args,{encoding:'utf8',timeout,
     stdio:['ignore','pipe','pipe'],maxBuffer:50000});
@@ -49,7 +58,71 @@ function printCloudflareStatus(){
   out('CLOUDFLARE_LAUNCHD',state.running?'RUNNING':
     state.selected?'STOPPED':'NOT_LOADED');
   if(state.selected)out('CLOUDFLARE_SERVICE',state.selected.label);
-  out('CLOUDFLARE_NETWORK_HEALTH','NOT_PROBED');
+  out('CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS');
+}
+function optionalContainerState(name){
+  try{return state(name);}catch{return null;}
+}
+export function composeHealthRows({docker,controller,workstation,
+  controllerHttp,cloudflare,bridge,publicEndpoints}){
+  if(!Array.isArray(publicEndpoints)||publicEndpoints.length!==2)
+    throw Error('PUBLIC_HEALTH_PROBES_INCOMPLETE');
+  const canRun=status=>Boolean(status?.active)&&
+    ['healthy','none'].includes(status.health);
+  const rows=[
+    healthRow('DOCKER','Docker Desktop',docker,
+      'Motor Docker disponible','Motor Docker detenido'),
+    healthRow('CONTROLLER','MCP Controller',docker&&canRun(controller),
+      'Contenedor cloud-sandbox-mcp activo','Controlador no disponible'),
+    healthRow('WORKSTATION','Workstation',docker&&canRun(workstation),
+      'dev-main activo · datos persistentes','Workstation no disponible'),
+    healthRow('MCP_HTTP','MCP /healthz',controllerHttp,
+      'HTTP local correcto','Healthcheck MCP falló'),
+    healthRow('CLOUDFLARE','Cloudflare Tunnel',cloudflare?.running===true,
+      'cloud-sandbox-mac · launchd activo',
+      cloudflare?.selected?'Servicio detenido':'Servicio no cargado'),
+    ...publicEndpoints,
+    bridge,
+    {id:'V3_PLUGIN',label:'ChatGPT · Sandbox V3',
+      status:'unknown',code:'EXTERNAL_PLUGIN',
+      detail:'Conexión MCP: verificar desde ChatGPT'}
+  ];
+  return rows;
+}
+async function collectHealthRows(){
+  // Keep synchronous Docker checks outside the timed HTTPS window:
+  // otherwise reported network latency includes time blocked by spawnSync.
+  const docker=dockerReady();
+  const controller=docker?optionalContainerState(DEFAULT_CONTROLLER):null;
+  const workstation=docker?optionalContainerState(DEFAULT_WORKSTATION):null;
+  const controllerHttp=docker&&controller?.active?controllerHealth():false;
+  const cloudflare=inspectCloudflare({exec});
+  // These are read-only and run concurrently even when Docker is down.
+  const [publicEndpoints,bridge]=await Promise.all([
+    probePublicEndpoints(),probeBrowserBridge()
+  ]);
+  return composeHealthRows({docker,controller,workstation,
+    controllerHttp,cloudflare,bridge,publicEndpoints});
+}
+function showHealthRows(rows,{json=false,plain=false}={}){
+  if(json){
+    console.log(JSON.stringify({
+      schema:'sandbox-v3.health.v1',
+      checked_at:new Date().toISOString(),
+      status:outcomeCode(rows)?'DEGRADED':'READY',
+      rows
+    },null,2));
+  }else if(plain){
+    for(const row of rows){
+      console.log('[Sandbox V3 CLI] '+row.id+'='+row.code+
+        ' STATUS='+row.status.toUpperCase()+
+        ' DETAIL='+row.detail);
+    }
+    console.log('[Sandbox V3 CLI] HEALTH_RESULT='+
+      (outcomeCode(rows)?'DEGRADED':'READY'));
+  }else{
+    console.log(formatDashboard(rows));
+  }
 }
 function state(container){
   const r=exec('docker',['inspect','--format',
@@ -96,6 +169,8 @@ function help(){
   console.log('       sandbox art [cats|jupiter]     preview ASCII, no Docker');
   console.log('       sandbox theme [cats|jupiter]   save preferred intro');
   console.log('       sandbox --no-art               start without ASCII');
+  console.log('       sandbox status --plain         machine-readable text');
+  console.log('       sandbox status --json          structured check results');
   console.log('No argument means start. Existing Docker and Cloudflare Tunnel only.');
 }
 export function isMainModule(argv1=process.argv[1],url=import.meta.url){
@@ -125,7 +200,9 @@ async function main(){
     else out('ASCII_THEME',readTheme().toUpperCase());
     return;
   }
-  if(option!==undefined||!['start','status','doctor','cats','jupiter','--no-art'].includes(command))
+  if((option!==undefined&&
+      !(command==='status'&&['--plain','--json'].includes(option)))||
+     !['start','status','doctor','cats','jupiter','--no-art'].includes(command))
     throw Error('USAGE_SANDBOX_START_STATUS_DOCTOR_ART_THEME');
   const launching=['start','cats','jupiter','--no-art'].includes(command);
   if(launching&&command!=='--no-art'){
@@ -143,19 +220,18 @@ async function main(){
     out('EXTERNAL_PLUGIN_ROUTING','NOT_CONTROLLED_BY_SHELL');
   }
   if(command==='status'||command==='doctor'){
-    printCloudflareStatus();
-    if(!dockerReady()){out('DOCKER','NOT_READY');process.exitCode=1;return;}
-    out('DOCKER','READY');
-    for(const name of [DEFAULT_CONTROLLER,DEFAULT_WORKSTATION]){
-      try{
-        const status=state(name);
-        out(name.toUpperCase().replaceAll('-','_'),
-          status.active?(status.health==='unhealthy'?'UNHEALTHY':'RUNNING'):
-            'STOPPED');
-      }catch{out(name.toUpperCase().replaceAll('-','_'),'NOT_FOUND');process.exitCode=1;}
+    const rows=await collectHealthRows();
+    if(command==='doctor'){
+      printCloudflareStatus();
+      out('DOCKER',rows[0].code);
+      out('CONTROLLER',rows[1].code);
+      out('WORKSTATION',rows[2].code);
+      out('MCP_CONTROLLER_HTTP_HEALTH',rows[3].code);
+      for(const row of rows.slice(5,8))out(row.id,row.code);
+      out('V3_CONNECTOR_EXTERNAL_HEALTH','REQUIRES_CHATGPT_V3_CHECK');
     }
-    out('MCP_CONTROLLER_HTTP_HEALTH',controllerHealth()?'PASS':'FAIL');
-    out('V3_CONNECTOR_EXTERNAL_HEALTH','REQUIRES_CHATGPT_V3_CHECK');
+    showHealthRows(rows,{json:option==='--json',plain:option==='--plain'});
+    if(outcomeCode(rows))process.exitCode=1;
     return;
   }
   await ensureDocker();
@@ -169,7 +245,7 @@ async function main(){
     privileged:privilegedCloudflareOperation,sleep:delay});
   out('CLOUDFLARE_TUNNEL',tunnel.state);
   out('CLOUDFLARE_SERVICE',tunnel.service);
-  out('CLOUDFLARE_NETWORK_HEALTH','NOT_PROBED');
+  out('CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS');
   let healthy=false;
   for(let attempt=0;attempt<18;attempt++){
     healthy=controllerHealth();
@@ -184,7 +260,11 @@ async function main(){
   out('EXISTING_CLOUDFLARE_REUSED','YES');
   out('BROWSER_BRIDGE_RESTARTED','NO');
   out('EXTERNAL_V3_CONNECTOR','VERIFY_WITH_SANDBOX_V3_PLUGIN');
-  out('RESULT','LOCAL_SANDBOX_V3_READY');
+  const rows=await collectHealthRows();
+  showHealthRows(rows);
+  const degraded=outcomeCode(rows)>0;
+  out('RESULT',degraded?'LOCAL_READY_PUBLIC_DEGRADED':'LOCAL_SANDBOX_V3_READY');
+  if(degraded)process.exitCode=1;
 }
 if(isMainModule()){
   main().catch(error=>{

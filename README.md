@@ -1,3 +1,10 @@
+Status dashboard: \`sandbox status\` now renders 😎 for confirmed
+services, 👾 for failures, 🥸 for warnings and 🕵️ for checks requiring
+external verification. It independently checks Docker, Controller,
+Workstation, Cloudflare, Mac Bridge and the two public /health HTTPS
+endpoints. \`sandbox status --json\` is available for agents and CI.
+Read scripts/sandbox-v3-cli/README.md for output and upgrade details.
+
 # Sandbox V3 — preferred runtime
 
 The canonical Mac command now offers 1980s retro ASCII Cosmic Cats\nor Jupiter artwork on startup. If an older V3 launcher returns\nsilently from ~/.local/bin/sandbox, use the in-place --upgrade\ninstructions in scripts/sandbox-v3-cli/README.md.\n\nFor day-to-day ChatGPT work, use the **Sandbox V3** connector (not the

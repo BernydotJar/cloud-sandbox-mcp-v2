@@ -1,3 +1,25 @@
+## Sandbox V3 terminal health dashboard (2026-10-27)
+
+\`sandbox status\` on the Mac provides a read-only, state-backed
+retro dashboard for Docker, controller, dev-main, MCP /healthz,
+existing Cloudflare launchd, public HTTPS /health routes at
+lch-app.cloud and ido.lch-app.cloud, and local Mac Browser Bridge
+listener. Each row has a face: 😎 healthy, 👾 failed, 🥸 warning,
+🕵️ external check not possible from Mac. \`status --json\` provides
+structured machine-readable results; \`status --plain\` remains
+script-friendly. For an interactive terminal the statuses are
+colorful; non-TTY/NO_COLOR/NO_EMOJI are handled safely.
+
+HTTPS checks MUST require an actual HTTP 200 with valid TLS and
+no redirects; do not mark public network health PASS merely because
+Cloudflare launchd is running. A token-free Browser Bridge 401/403
+only proves a protected listener exists, not full AX/browser
+functionality. ChatGPT V3 connector health remains a separate
+external plugin check. Any core or public HTTPS failure should
+be presented as a failure, without restarting unrelated services.
+The Mac's installed CLI is updated through the release's guarded
+\`--upgrade\`; do not claim it has been applied until verified on Mac.
+
 ## Sandbox V3 CLI also supervises existing Cloudflare Tunnel (2026-10-27)
 
 The canonical Mac `sandbox` command now checks the pre-existing

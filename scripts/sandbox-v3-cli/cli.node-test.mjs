@@ -92,7 +92,7 @@ test('Cloudflare uses only the existing system launchd service, never starts ngr
   assert.match(code,/ensureCloudflare\(\{exec/);
   assert.match(code,/inspectCloudflare\(\{exec\}\)/);
   assert.match(code,/printCloudflareStatus\(\)/);
-  assert.match(code,/CLOUDFLARE_NETWORK_HEALTH','NOT_PROBED'/);
+  assert.match(code,/CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS'/);
   assert.doesNotMatch(code,/cloudflared.*tunnel.*create/);
   assert.doesNotMatch(code,/launchctl.*-k/);
 });

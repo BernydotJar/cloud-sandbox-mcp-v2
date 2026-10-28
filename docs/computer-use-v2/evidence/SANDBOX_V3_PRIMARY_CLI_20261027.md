@@ -118,3 +118,34 @@ Health reporting is intentionally conservative: launchd running only;
 remote Cloudflare network health and public HTTPS remain unverified
 without additional live probes. Native Mac start/stop behavior needs
 on-device validation after CLI upgrade.
+
+
+## 2026-10-27: retro health dashboard and independent public checks
+
+Requested user experience: every operational category has a visible
+icon, preferably a cool face with sunglasses when healthy and a
+different retro character when it fails.
+
+Implemented in \`scripts/sandbox-v3-cli/health.mjs\` and CLI:
+
+- 😎 healthy; 👾 failure; 🥸 warning; 🕵️ external verification
+- Check Docker, controller container, persistent workstation, internal
+  MCP /healthz, Cloudflare LaunchDaemon, lch-app.cloud/health HTTPS,
+  ido.lch-app.cloud/health HTTPS and local Mac Bridge listener.
+- Public endpoints must return HTTP 200, have valid TLS, and do not
+  follow redirects. Both requests are concurrent, read-only, timeout
+  bounded, and do not use credentials.
+- A Cloudflare service marked RUNNING does not mask a failed public
+  endpoint. A local Bridge HTTP 401/403 validates only its protected
+  listener, not actual authenticated browser action.
+- A terminal cannot validate its own ChatGPT V3 connector registration;
+  the row is explicitly UNKNOWN and requires a V3 tool call.
+- Compact \`sandbox status\` dashboard, \`--plain\` diagnostic and
+  \`--json\` structured modes, in addition to the startup retro art.
+- Status symbols respect terminal color and NO_EMOJI/NO_COLOR,
+  without breaking programmatic consumers.
+
+The existing Mac installation must use the guarded
+\`node install-on-mac.mjs --upgrade\` from the shared handoff to
+receive new SHA-verified \`health.mjs\`. Tests are source-level until
+this action is executed and the Mac displays its results.
