@@ -75,3 +75,23 @@ The CLI only manages the existing local Docker controller/workstation.
 It does not change ChatGPT's plugin preference settings and does not
 guarantee the external V3 endpoint if the pre-existing tunnel is down.
 No Mac CLI modification has been performed by this Linux-only session.
+
+
+## 2026-10-27 retro ASCII and silent-launch corrective release
+
+The operator reported that type sandbox resolved to the installed
+~/.local/bin/sandbox but sandbox returned with no output. We
+reproduced the bug using Node on a symbolic link. The previous
+entrypoint guard compared the link path to the canonical module
+path and never called main(). The corrected guard resolves both
+paths. Unit tests now assert actual stdout from a symlink invocation.
+
+New startup visuals: Cosmic Cats default and optional Jupiter,
+neon ANSI palette when interactive; non-TTY/NO_COLOR compatible.
+Commands include sandbox art cats, sandbox art jupiter,
+sandbox theme cats, sandbox theme jupiter, and sandbox --no-art.
+
+An in-place --upgrade backs up the previous V3 executable,
+preserves the legacy launcher backup, updates the installed V3
+code plus artwork, and updates SHA-256 records. The on-Mac
+upgrade has not yet executed at the time of this report.

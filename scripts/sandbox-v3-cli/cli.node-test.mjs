@@ -5,6 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import process from 'node:process';
+import os from 'node:os';
 import {parseContainerStatus,DEFAULT_CONTROLLER,DEFAULT_WORKSTATION} from './cli.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
@@ -46,4 +47,42 @@ test('sandbox help remains available on Linux for cross-platform verification',(
   assert.equal(result.status,0);
   assert.match(result.stdout,/Usage: sandbox/);
   assert.match(result.stdout,/No argument means start/);
+});
+
+test('Node follows realpath of installed sandbox symbolic link and does not exit silently',()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'sandbox-v3-link-test-'));
+  try{
+    const shortcut=path.join(temp,'sandbox');
+    fs.symlinkSync(path.join(dir,'cli.mjs'),shortcut);
+    const help=spawnSync(process.execPath,[shortcut,'--help'],{
+      encoding:'utf8',timeout:5000
+    });
+    assert.equal(help.status,0);
+    assert.match(help.stdout,/Usage: sandbox/);
+    const cats=spawnSync(process.execPath,[shortcut,'art','cats'],{
+      encoding:'utf8',timeout:5000
+    });
+    assert.equal(cats.status,0);
+    assert(cats.stdout.includes('C O S M I C   C A T S'));
+    assert.match(cats.stdout,/\\_\//);
+    const planet=spawnSync(process.execPath,[shortcut,'art','jupiter'],{
+      encoding:'utf8',timeout:5000
+    });
+    assert.equal(planet.status,0);
+    assert.match(planet.stdout,/J U P I T E R/);
+  }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
+test('plain sandbox never returns silently even when not on a Mac',()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'sandbox-v3-plain-test-'));
+  try{
+    const shortcut=path.join(temp,'sandbox');
+    fs.symlinkSync(path.join(dir,'cli.mjs'),shortcut);
+    if(process.platform==='darwin')return;
+    const plain=spawnSync(process.execPath,[shortcut],{
+      encoding:'utf8',timeout:5000
+    });
+    assert.equal(plain.status,2);
+    assert(plain.stdout.includes('C O S M I C   C A T S'));
+    assert.match(plain.stdout,/STOP=MACOS_OPERATOR_HOST_REQUIRED/);
+  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });

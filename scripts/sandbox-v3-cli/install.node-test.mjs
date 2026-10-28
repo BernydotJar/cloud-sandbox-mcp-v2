@@ -6,7 +6,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {fileURLToPath} from 'node:url';
-import {activateCli,rollbackCli,locations,entryInfo,verifyRelease} from './install-on-mac.mjs';
+import {activateCli,upgradeCli,rollbackCli,locations,entryInfo,verifyRelease} from './install-on-mac.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -16,7 +16,7 @@ function fixture(){
   fs.mkdirSync(home,{mode:0o700});
   const release=path.join(temp,'release');
   fs.mkdirSync(release,{mode:0o700});
-  const names=['cli.mjs','install-on-mac.mjs'];
+  const names=['cli.mjs','install-on-mac.mjs','art.mjs'];
   const hashes={};
   for(const name of names){
     const payload=fs.readFileSync(path.join(root,name));
@@ -112,5 +112,42 @@ test('release manifest validates all referenced file checksums',()=>{
     assert.equal(meta.primary_plugin,'Sandbox_V3');
     fs.writeFileSync(path.join(f.release,'manifest.sha256'),'0'.repeat(64));
     assert.throws(()=>verifyRelease(f.release),/RELEASE_MANIFEST_HASH_MISMATCH/);
+  }finally{f.clean();}
+});
+
+test('upgrade existing Mac V3 CLI in place, preserve original legacy backup and previous V3 binary',()=>{
+  const f=fixture();
+  try{
+    const previousEntry='#!/bin/sh\necho previous-v2\n';
+    fs.writeFileSync(f.loc.entry,previousEntry,{mode:0o700});
+    const installed=activateCli({home:f.home,release:f.release});
+    const oldV3='#!/usr/bin/env node\n// old version has broken symlink guard\n';
+    fs.writeFileSync(f.loc.cli,oldV3,{mode:0o700});
+    const record=JSON.parse(fs.readFileSync(f.loc.record,'utf8'));
+    record.cli_sha256=sha(oldV3);
+    delete record.art_sha256; // previous release did not include artwork
+    fs.writeFileSync(f.loc.record,JSON.stringify(record));
+    const upgraded=upgradeCli({home:f.home,release:f.release});
+    assert.equal(upgraded.status,'UPGRADED');
+    assert.equal(fs.readFileSync(upgraded.previousV3Backup,'utf8'),oldV3);
+    assert.equal(fs.readFileSync(installed.backup,'utf8'),previousEntry);
+    assert.equal(fs.readlinkSync(f.loc.entry),'../share/sandbox-v3/cli.mjs');
+    assert.equal(fs.readFileSync(f.loc.cli,'utf8'),
+      fs.readFileSync(path.join(root,'cli.mjs'),'utf8'));
+    assert.equal(fs.readFileSync(path.join(f.loc.install,'art.mjs'),'utf8'),
+      fs.readFileSync(path.join(root,'art.mjs'),'utf8'));
+    assert.equal(upgradeCli({home:f.home,release:f.release}).status,'ALREADY_CURRENT');
+    rollbackCli({home:f.home});
+    assert.equal(fs.readFileSync(f.loc.entry,'utf8'),previousEntry);
+  }finally{f.clean();}
+});
+test('upgrade fails closed on current V3 binary drift, preserving original entry',()=>{
+  const f=fixture();
+  try{
+    activateCli({home:f.home,release:f.release});
+    fs.appendFileSync(f.loc.cli,'\n// modified externally');
+    assert.throws(()=>upgradeCli({home:f.home,release:f.release}),
+      /INSTALLED_V3_CLI_HASH_DRIFT/);
+    assert.equal(fs.readlinkSync(f.loc.entry),'../share/sandbox-v3/cli.mjs');
   }finally{f.clean();}
 });

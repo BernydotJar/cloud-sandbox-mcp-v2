@@ -1,3 +1,20 @@
+## Mac Sandbox V3 CLI symlink fix and retro splash (2026-10-27)
+
+The Mac sandbox launcher is a symlink into
+~/.local/share/sandbox-v3/cli.mjs. Its initial entrypoint exited
+silently because the unresolved symlink argv path differed from
+the resolved ESM filename. Fixed with fs.realpathSync. The CLI
+now prints 1980s Cosmic Cats by default, with optional Jupiter;
+switch via sandbox theme cats or sandbox theme jupiter.
+
+For Mac operators with V3 already activated, use the guarded
+scripts/sandbox-v3-cli/install-on-mac.mjs --upgrade from the
+shared release, NOT a second --activate. The upgrader preserves
+the original pre-V3 backup and a copy of the previous V3 binary.
+It must not recreate Docker workspaces or touch Chrome/Edge/CDP.
+Do not claim the Mac CLI is fixed until the on-Mac --upgrade
+has been executed and validated.
+
 ## Canonical Sandbox V3 connector and Terminal command (2026-10-27)
 
 Operator default: use the **Sandbox V3** ChatGPT connector

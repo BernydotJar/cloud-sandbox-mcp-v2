@@ -59,6 +59,7 @@ export function verifyRelease(folder){
   if(data.schema!=='sandbox-v3.primary-cli.v1'||data.primary_plugin!=='Sandbox_V3')
     throw Error('RELEASE_IDENTITY_UNEXPECTED');
   if(!data.files_sha256||!data.files_sha256['cli.mjs']||
+     !data.files_sha256['art.mjs']||
      !data.files_sha256['install-on-mac.mjs'])
     throw Error('RELEASE_FILES_MISSING');
   for(const [name,hash] of Object.entries(data.files_sha256)){
@@ -96,6 +97,8 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     fs.mkdirSync(directory,{recursive:true,mode:0o700});
   const current=entryInfo(dest.entry);
   const source=fs.readFileSync(path.join(release,'cli.mjs'));
+  const artwork=fs.readFileSync(path.join(release,'art.mjs'));
+  const artFile=path.join(dest.install,'art.mjs');
   if(fs.existsSync(dest.record)){
     const recStat=fs.lstatSync(dest.record);
     if(!recStat.isFile()||recStat.isSymbolicLink()||recStat.uid!==userId)
@@ -107,7 +110,9 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     if(link.kind==='SYMLINK'&&
        path.resolve(dest.bin,link.target)===dest.cli&&
        fs.existsSync(dest.cli)&&
-       sha(fs.readFileSync(dest.cli))===meta.files_sha256['cli.mjs'])
+       sha(fs.readFileSync(dest.cli))===meta.files_sha256['cli.mjs']&&
+       fs.existsSync(artFile)&&sha(fs.readFileSync(artFile))===
+         meta.files_sha256['art.mjs'])
       return {status:'ALREADY_ACTIVE',backup:record.backup};
     throw Error('EXISTING_V3_INSTALL_DRIFT_REFUSED');
   }
@@ -115,6 +120,11 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
      sha(fs.readFileSync(dest.cli))!==meta.files_sha256['cli.mjs'])
     throw Error('EXISTING_V3_CLI_UNRECOGNIZED');
   const existingV3Cli=fs.existsSync(dest.cli);
+  if(fs.existsSync(artFile)&&sha(fs.readFileSync(artFile))!==
+     meta.files_sha256['art.mjs'])
+    throw Error('EXISTING_V3_ART_UNRECOGNIZED');
+  if(!fs.existsSync(artFile))
+    fs.writeFileSync(artFile,artwork,{flag:'wx',mode:0o600});
   const backup=current.kind==='ABSENT'?null:
     path.join(dest.bin,'sandbox.pre-v3-'+Date.now()+'-'+crypto.randomUUID());
   const relativeTarget=path.relative(dest.bin,dest.cli);
@@ -129,6 +139,7 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     const record={schema:'sandbox-v3.cli-install.v1',name:'sandbox',
       primary:'Sandbox_V3',source_commit:meta.source_git_sha,
       legacy:'PRESERVED_NOT_INVOKED',backup,cli_sha256:sha(source),
+      art_sha256:sha(artwork),
       installed_utc:new Date().toISOString()};
     atomic(dest.record,JSON.stringify(record,null,2)+'\n');
     return {status:'ACTIVATED',backup};
@@ -138,6 +149,80 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     if(!existingV3Cli&&!fs.existsSync(dest.record)&&fs.existsSync(dest.cli)&&
        sha(fs.readFileSync(dest.cli))===sha(source))
       fs.unlinkSync(dest.cli);
+    throw error;
+  }
+}
+export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
+  const meta=verifyRelease(release);
+  const dest=locations(home);
+  for(const dir of [dest.home,path.join(dest.home,'.local'),
+    dest.bin,path.join(dest.home,'.local','share'),dest.install])
+    ownedFolder(dir,userId);
+  const recordStat=fs.lstatSync(dest.record);
+  if(!recordStat.isFile()||recordStat.isSymbolicLink()||
+     recordStat.uid!==userId||(recordStat.mode&0o077)!==0)
+    throw Error('INSTALLED_V3_RECORD_UNTRUSTED');
+  const record=JSON.parse(fs.readFileSync(dest.record,'utf8'));
+  if(record.schema!=='sandbox-v3.cli-install.v1'||
+     record.primary!=='Sandbox_V3'||record.name!=='sandbox'||
+     !/^[a-f0-9]{64}$/.test(record.cli_sha256))
+    throw Error('INSTALLED_V3_RECORD_INVALID');
+  const link=entryInfo(dest.entry);
+  if(link.kind!=='SYMLINK'||path.resolve(dest.bin,link.target)!==dest.cli)
+    throw Error('CURRENT_SANDBOX_ENTRY_NOT_V3');
+  const stat=fs.lstatSync(dest.cli);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==userId)
+    throw Error('INSTALLED_V3_CLI_UNTRUSTED');
+  const previous=fs.readFileSync(dest.cli);
+  const previousHash=sha(previous);
+  if(previousHash!==record.cli_sha256)
+    throw Error('INSTALLED_V3_CLI_HASH_DRIFT');
+  const newCode=fs.readFileSync(path.join(release,'cli.mjs'));
+  const artwork=fs.readFileSync(path.join(release,'art.mjs'));
+  const artFile=path.join(dest.install,'art.mjs');
+  if(fs.existsSync(artFile)){
+    const artStat=fs.lstatSync(artFile);
+    if(!artStat.isFile()||artStat.isSymbolicLink()||
+       artStat.uid!==userId)
+      throw Error('INSTALLED_V3_ART_UNTRUSTED');
+    if(record.art_sha256&&sha(fs.readFileSync(artFile))!==record.art_sha256)
+      throw Error('INSTALLED_V3_ART_HASH_DRIFT');
+    if(!record.art_sha256&&
+       sha(fs.readFileSync(artFile))!==meta.files_sha256['art.mjs'])
+      throw Error('UNRECOGNIZED_INSTALLED_ART');
+  }
+  if(previousHash===meta.files_sha256['cli.mjs']&&
+     fs.existsSync(artFile)&&
+     sha(fs.readFileSync(artFile))===meta.files_sha256['art.mjs'])
+    return {status:'ALREADY_CURRENT',backup:record.backup};
+  const backups=path.join(dest.install,'backups');
+  ownedFolder(backups,userId);
+  if(!fs.existsSync(backups))fs.mkdirSync(backups,{mode:0o700});
+  const previousBackup=path.join(backups,
+    'cli-before-upgrade-'+Date.now()+'-'+crypto.randomUUID()+'.mjs');
+  fs.writeFileSync(previousBackup,previous,{flag:'wx',mode:0o700});
+  const hadArt=fs.existsSync(artFile);
+  const previousArt=hadArt?fs.readFileSync(artFile):null;
+  try{
+    atomic(artFile,artwork,0o600);
+    atomic(dest.cli,newCode,0o700);
+    const updated={...record,
+      source_commit:meta.source_git_sha,
+      cli_sha256:meta.files_sha256['cli.mjs'],
+      art_sha256:meta.files_sha256['art.mjs'],
+      previous_cli_backup:previousBackup,
+      previous_cli_sha256:previousHash,
+      upgrade_utc:new Date().toISOString()};
+    if(sha(fs.readFileSync(dest.cli))!==meta.files_sha256['cli.mjs']||
+       sha(fs.readFileSync(artFile))!==meta.files_sha256['art.mjs'])
+      throw Error('UPGRADE_POSTVERIFY_FAILED');
+    atomic(dest.record,JSON.stringify(updated,null,2)+'\n');
+    return {status:'UPGRADED',backup:record.backup,
+      previousV3Backup:previousBackup};
+  }catch(error){
+    atomic(dest.cli,previous,0o700);
+    if(hadArt)atomic(artFile,previousArt,0o600);
+    else if(fs.existsSync(artFile))fs.unlinkSync(artFile);
     throw error;
   }
 }
@@ -183,15 +268,18 @@ function inspect(){
 }
 function main(){
   const mode=process.argv[2];
-  if(process.argv.length!==3||!['--inspect','--activate','--rollback'].includes(mode))
-    throw Error('USE_INSPECT_ACTIVATE_OR_ROLLBACK');
+  if(process.argv.length!==3||
+     !['--inspect','--activate','--upgrade','--rollback'].includes(mode))
+    throw Error('USE_INSPECT_ACTIVATE_UPGRADE_OR_ROLLBACK');
   if(mode==='--inspect'){inspect();return;}
   if(process.platform!=='darwin')throw Error('OPERATOR_MAC_REQUIRED');
   const result=mode==='--activate'?activateCli({home:os.homedir()}):
-    rollbackCli({home:os.homedir()});
+    mode==='--upgrade'?upgradeCli({home:os.homedir()}):
+      rollbackCli({home:os.homedir()});
   say('RESULT',result.status);
   if(result.backup)say('LEGACY_BACKUP',safePath(result.backup));
-  say('NEXT','sandbox status; sandbox');
+  if(result.previousV3Backup)say('PREVIOUS_V3_BACKUP',safePath(result.previousV3Backup));
+  say('NEXT','sandbox art cats; sandbox');
   say('V2_CONNECTOR_REMOVED','NO_NOT_UNINSTALLED');
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){

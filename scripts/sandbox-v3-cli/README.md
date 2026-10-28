@@ -32,6 +32,51 @@ the operator executes the --activate action. The original command is
 moved to a timestamped backup in the SAME ~/.local/bin directory, and
 can be restored via --rollback. No old startup code is executed.
 
+## Existing installation hotfix: symlink entrypoint + retro ASCII (2026-10-27)
+
+The initial Mac activation reported RESULT=ACTIVATED and the Terminal
+resolved sandbox to ~/.local/bin/sandbox. But invoking sandbox returned
+instantly with no output. We reproduced this via node <symlink> --help:
+the CLI compared the unresolved symbolic-link argv path with the real
+ESM module file, so main() never ran. The corrected entrypoint uses
+fs.realpathSync for both paths.
+
+The default sandbox screen is Cosmic Cats, a retro 1980s ASCII starfield
+with pink/cyan color in interactive terminals. The alternate Jupiter
+theme uses amber/cyan styling. Both work on narrow terminals, and use
+plain ASCII with no colors when NO_COLOR is set.
+
+If Sandbox V3 is ALREADY installed on the Mac, run the guarded UPGRADE
+rather than another activation or a rollback:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-primary-cli-20261027"
+    node "$BASE/install-on-mac.mjs" --upgrade
+    sandbox
+
+The upgrader verifies the previous installed SHA-256 against the private
+install record and validates the new release. It preserves the original
+legacy CLI backup, makes an additional backup of the previous V3 CLI,
+installs the corrected executable and ASCII artwork, and updates the
+install record. It does not start Docker, restart the Browser Bridge,
+change macOS permissions or modify browser sessions.
+
+### 80s retro terminal options
+
+    sandbox                   # Cosmic Cats intro + start V3
+    sandbox art cats          # preview cats without Docker
+    sandbox art jupiter       # preview Jupiter without Docker
+    sandbox theme jupiter     # persist Jupiter for future startups
+    sandbox theme cats        # restore the Cosmic Cats default
+    sandbox jupiter           # start once using Jupiter
+    sandbox --no-art          # start without graphics (automation)
+    sandbox status            # terse read-only status, no art
+
+Theme preferences are privately stored in
+~/.local/share/sandbox-v3/theme.json. The banner appears before
+Docker checks, so a startup problem cannot silently return control
+without any output. Actual Mac upgrade and visual acceptance remain
+pending until the on-Mac command has been executed.
+
 ## One-time activation on the operator Mac
 
     BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-primary-cli-20261027"

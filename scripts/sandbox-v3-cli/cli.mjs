@@ -12,7 +12,8 @@ import process from 'node:process';
 import {spawnSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
-import path from 'node:path';
+import fs from 'node:fs';
+import {banner,readTheme,saveTheme,normalizeTheme} from './art.mjs';
 
 export const DEFAULT_CONTROLLER='cloud-sandbox-mcp';
 export const DEFAULT_WORKSTATION='cloud-sandbox-dev-main';
@@ -70,14 +71,45 @@ async function ensureExisting(name){
   throw Error('EXISTING_CONTAINER_NOT_READY:'+name);
 }
 function help(){
-  console.log('Usage: sandbox [start|status|doctor|help]');
+  console.log('Usage: sandbox [start|status|doctor|help|cats|jupiter]');
+  console.log('       sandbox art [cats|jupiter]     preview ASCII, no Docker');
+  console.log('       sandbox theme [cats|jupiter]   save preferred intro');
+  console.log('       sandbox --no-art               start without ASCII');
   console.log('No argument means start. Existing containers only, no legacy ngrok.');
+}
+export function isMainModule(argv1=process.argv[1],url=import.meta.url){
+  if(!argv1)return false;
+  try{
+    // A symlink executable passes ~/.local/bin/sandbox in argv[1],
+    // while Node loads its ESM module from ~/.local/share/sandbox-v3/cli.mjs.
+    // Comparing path.resolve() without realpathSync() silently skipped main.
+    return fs.realpathSync(argv1)===fs.realpathSync(fileURLToPath(url));
+  }catch{return false;}
 }
 async function main(){
   const command=process.argv[2]??'start';
-  if(process.argv.length>3||!['start','status','doctor','help','--help'].includes(command))
-    throw Error('USAGE_SANDBOX_START_STATUS_DOCTOR_HELP');
-  if(command==='help'||command==='--help'){help();return;}
+  const option=process.argv[3];
+  if(command==='help'||command==='--help'){
+    if(option!==undefined)throw Error('USAGE_SANDBOX_HELP');
+    help();return;
+  }
+  if(command==='art'){
+    if(process.argv.length>4)throw Error('USAGE_SANDBOX_ART_CATS_OR_JUPITER');
+    console.log(banner(normalizeTheme(option??readTheme())));
+    return;
+  }
+  if(command==='theme'){
+    if(process.argv.length>4)throw Error('USAGE_SANDBOX_THEME_CATS_OR_JUPITER');
+    if(option){saveTheme(normalizeTheme(option));out('ASCII_THEME',option.toUpperCase());}
+    else out('ASCII_THEME',readTheme().toUpperCase());
+    return;
+  }
+  if(option!==undefined||!['start','status','doctor','cats','jupiter','--no-art'].includes(command))
+    throw Error('USAGE_SANDBOX_START_STATUS_DOCTOR_ART_THEME');
+  const launching=['start','cats','jupiter','--no-art'].includes(command);
+  if(launching&&command!=='--no-art'){
+    console.log(banner(['cats','jupiter'].includes(command)?command:readTheme()));
+  }
   if(process.platform!=='darwin')throw Error('MACOS_OPERATOR_HOST_REQUIRED');
   out('PRODUCT','Sandbox V3');
   out('CONNECTOR_PREFERENCE','Sandbox_V3');
@@ -127,7 +159,7 @@ async function main(){
   out('EXTERNAL_V3_CONNECTOR','VERIFY_WITH_SANDBOX_V3_PLUGIN');
   out('RESULT','LOCAL_SANDBOX_V3_READY');
 }
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+if(isMainModule()){
   main().catch(error=>{
     out('STOP',String(error?.message||'UNKNOWN').slice(0,190));
     process.exitCode=2;
