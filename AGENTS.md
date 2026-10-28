@@ -1,3 +1,22 @@
+## Sandbox V3 now supervises existing Mac Browser Bridge (2026-10-28)
+
+The canonical Mac \`sandbox\` command must check and recover the existing
+\`gui/$UID/com.lch.cloud-sandbox.computer-use\` LaunchAgent in addition
+to Docker and Cloudflare. Running Bridge services are NEVER force
+restarted: do not revoke other agents' delegated sessions or disrupt
+Chrome/Edge. Stopped launchd service may be started with non-force
+\`kickstart\`; unloaded services only bootstrap an existing verified
+user-owned plist with exact installed helper path. No browser profile
+restart, simulated keystrokes, Remote Debugging change or Caddy change.
+
+\`sandbox status\` is read-only, showing distinct Bridge LaunchAgent,
+protected listener and Chrome CDP (external V3 tool) states. A 401/403
+from 9764 does not prove CDP attachment; use
+\`mcp__Sandbox_V3__browser_runtime_status\` and
+\`mcp__Sandbox_V3__browser_tabs({browser:"chrome"})\` for that.
+The user Mac CLI must be upgraded from the hash-pinned handoff before
+claiming this supervisor is installed.
+
 ## Sandbox V3 terminal health dashboard (2026-10-27)
 
 \`sandbox status\` on the Mac provides a read-only, state-backed

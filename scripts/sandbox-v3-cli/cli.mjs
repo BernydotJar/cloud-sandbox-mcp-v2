@@ -15,6 +15,7 @@ import {fileURLToPath} from 'node:url';
 import fs from 'node:fs';
 import {banner,readTheme,saveTheme,normalizeTheme} from './art.mjs';
 import {ensureCloudflare,inspectCloudflare} from './cloudflare.mjs';
+import {ensureMacBridge,inspectBridgeLaunchd} from './bridge-launchd.mjs';
 import {probePublicEndpoints,probeBrowserBridge,
   formatDashboard,healthRow,outcomeCode} from './health.mjs';
 
@@ -29,7 +30,8 @@ export function parseContainerStatus(text,name){
 const machineReadable=process.argv[2]==='doctor'||
   process.argv[3]==='--plain'||process.env.SANDBOX_VERBOSE==='1';
 const out=(key,val)=>{
-  const important=['RESULT','STOP','CLOUDFLARE_ADMIN','DOCKER_DESKTOP'];
+  const important=['RESULT','STOP','CLOUDFLARE_ADMIN','DOCKER_DESKTOP',
+    'MAC_BRIDGE_RECOVERY'];
   if(machineReadable||important.includes(key)||
      key==='cloud-sandbox-mcp'||key==='cloud-sandbox-dev-main')
     console.log('[Sandbox V3 CLI] '+key+'='+String(val));
@@ -64,7 +66,7 @@ function optionalContainerState(name){
   try{return state(name);}catch{return null;}
 }
 export function composeHealthRows({docker,controller,workstation,
-  controllerHttp,cloudflare,bridge,publicEndpoints}){
+  controllerHttp,cloudflare,bridge,bridgeLaunchd,publicEndpoints}){
   if(!Array.isArray(publicEndpoints)||publicEndpoints.length!==2)
     throw Error('PUBLIC_HEALTH_PROBES_INCOMPLETE');
   const canRun=status=>Boolean(status?.active)&&
@@ -82,7 +84,18 @@ export function composeHealthRows({docker,controller,workstation,
       'cloud-sandbox-mac · launchd activo',
       cloudflare?.selected?'Servicio detenido':'Servicio no cargado'),
     ...publicEndpoints,
+    {id:'MAC_BRIDGE_LAUNCHD',label:'Bridge · LaunchAgent',
+      status:bridgeLaunchd?.running?'ok':'warn',
+      code:bridgeLaunchd?.code??'NOT_VERIFIED',
+      detail:bridgeLaunchd?.running?
+        'Servicio macOS bajo launchd':
+        bridgeLaunchd?.loaded?
+          'Servicio detenido · sandbox puede recuperarlo':
+          'LaunchAgent no cargado o no verificado'},
     bridge,
+    {id:'CHROME_CDP',label:'Chrome · CDP',
+      status:'unknown',code:'V3_BROWSER_RUNTIME_REQUIRED',
+      detail:'Validar navegador con Sandbox V3'},
     {id:'V3_PLUGIN',label:'ChatGPT · Sandbox V3',
       status:'unknown',code:'EXTERNAL_PLUGIN',
       detail:'Conexión MCP: verificar desde ChatGPT'}
@@ -97,12 +110,13 @@ async function collectHealthRows(){
   const workstation=docker?optionalContainerState(DEFAULT_WORKSTATION):null;
   const controllerHttp=docker&&controller?.active?controllerHealth():false;
   const cloudflare=inspectCloudflare({exec});
+  const bridgeLaunchd=inspectBridgeLaunchd({exec});
   // These are read-only and run concurrently even when Docker is down.
   const [publicEndpoints,bridge]=await Promise.all([
     probePublicEndpoints(),probeBrowserBridge()
   ]);
   return composeHealthRows({docker,controller,workstation,
-    controllerHttp,cloudflare,bridge,publicEndpoints});
+    controllerHttp,cloudflare,bridge,bridgeLaunchd,publicEndpoints});
 }
 function showHealthRows(rows,{json=false,plain=false}={}){
   if(json){
@@ -227,7 +241,7 @@ async function main(){
       out('CONTROLLER',rows[1].code);
       out('WORKSTATION',rows[2].code);
       out('MCP_CONTROLLER_HTTP_HEALTH',rows[3].code);
-      for(const row of rows.slice(5,8))out(row.id,row.code);
+      for(const row of rows.slice(5,10))out(row.id,row.code);
       out('V3_CONNECTOR_EXTERNAL_HEALTH','REQUIRES_CHATGPT_V3_CHECK');
     }
     showHealthRows(rows,{json:option==='--json',plain:option==='--plain'});
@@ -243,6 +257,15 @@ async function main(){
   await ensureExisting(DEFAULT_WORKSTATION);
   const tunnel=await ensureCloudflare({exec,
     privileged:privilegedCloudflareOperation,sleep:delay});
+  // A running LaunchAgent is NEVER force-restarted: that could revoke
+  // another agent's delegated Chrome/Edge session.
+  try{
+    const bridgeStart=await ensureMacBridge({exec,probe:probeBrowserBridge,
+      sleep:delay});
+    out('MAC_BRIDGE_LAUNCHAGENT',bridgeStart.code);
+  }catch(error){
+    out('MAC_BRIDGE_RECOVERY',String(error?.message||'UNAVAILABLE').slice(0,110));
+  }
   out('CLOUDFLARE_TUNNEL',tunnel.state);
   out('CLOUDFLARE_SERVICE',tunnel.service);
   out('CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS');

@@ -16,7 +16,8 @@ function fixture(){
   fs.mkdirSync(home,{mode:0o700});
   const release=path.join(temp,'release');
   fs.mkdirSync(release,{mode:0o700});
-  const names=['cli.mjs','install-on-mac.mjs','art.mjs','cloudflare.mjs','health.mjs'];
+  const names=['cli.mjs','install-on-mac.mjs','art.mjs','cloudflare.mjs','health.mjs',
+    'bridge-launchd.mjs'];
   const hashes={};
   for(const name of names){
     const payload=fs.readFileSync(path.join(root,name));
@@ -49,6 +50,7 @@ test('V3 activation preserves an existing relative symbolic-link legacy command'
     assert.equal(entryInfo(activated.backup).kind,'SYMLINK');
     assert(fs.existsSync(path.join(f.loc.install,'cloudflare.mjs')));
     assert(fs.existsSync(path.join(f.loc.install,'health.mjs')));
+    assert(fs.existsSync(path.join(f.loc.install,'bridge-launchd.mjs')));
     assert.equal(fs.readlinkSync(activated.backup),'../share/cloud-sandbox/start-all.sh');
     const result=activateCli({home:f.home,release:f.release});
     assert.equal(result.status,'ALREADY_ACTIVE');
@@ -142,6 +144,8 @@ test('upgrade existing Mac V3 CLI in place, preserve original legacy backup and 
       fs.readFileSync(path.join(root,'cloudflare.mjs'),'utf8'));
     assert.equal(fs.readFileSync(path.join(f.loc.install,'health.mjs'),'utf8'),
       fs.readFileSync(path.join(root,'health.mjs'),'utf8'));
+    assert.equal(fs.readFileSync(path.join(f.loc.install,'bridge-launchd.mjs'),'utf8'),
+      fs.readFileSync(path.join(root,'bridge-launchd.mjs'),'utf8'));
     assert.equal(upgradeCli({home:f.home,release:f.release}).status,'ALREADY_CURRENT');
     rollbackCli({home:f.home});
     assert.equal(fs.readFileSync(f.loc.entry,'utf8'),previousEntry);
@@ -205,5 +209,17 @@ test('in-place upgrade from the installed Cloudflare-era V3 adds health.mjs safe
     const next=JSON.parse(fs.readFileSync(f.loc.record,'utf8'));
     assert.equal(next.health_sha256,sha(fs.readFileSync(file)));
     assert.equal(upgradeCli({home:f.home,release:f.release}).status,'ALREADY_CURRENT');
+  }finally{f.clean();}
+});
+
+test('unknown local Mac Bridge module never overwritten on CLI upgrade',()=>{
+  const f=fixture();
+  try{
+    activateCli({home:f.home,release:f.release});
+    const bridge=path.join(f.loc.install,'bridge-launchd.mjs');
+    fs.writeFileSync(bridge,'// unrecognized local tool');
+    assert.throws(()=>upgradeCli({home:f.home,release:f.release}),
+      /INSTALLED_BRIDGE_MODULE_HASH_DRIFT/);
+    assert.equal(fs.readFileSync(bridge,'utf8'),'// unrecognized local tool');
   }finally{f.clean();}
 });

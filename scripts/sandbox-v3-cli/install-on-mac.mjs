@@ -61,6 +61,7 @@ export function verifyRelease(folder){
   if(!data.files_sha256||!data.files_sha256['cli.mjs']||
      !data.files_sha256['art.mjs']||
      !data.files_sha256['cloudflare.mjs']||
+     !data.files_sha256['bridge-launchd.mjs']||
      !data.files_sha256['health.mjs']||
      !data.files_sha256['install-on-mac.mjs'])
     throw Error('RELEASE_FILES_MISSING');
@@ -101,9 +102,11 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
   const source=fs.readFileSync(path.join(release,'cli.mjs'));
   const artwork=fs.readFileSync(path.join(release,'art.mjs'));
   const cloudflare=fs.readFileSync(path.join(release,'cloudflare.mjs'));
+  const bridge=fs.readFileSync(path.join(release,'bridge-launchd.mjs'));
   const health=fs.readFileSync(path.join(release,'health.mjs'));
   const artFile=path.join(dest.install,'art.mjs');
   const cloudflareFile=path.join(dest.install,'cloudflare.mjs');
+  const bridgeFile=path.join(dest.install,'bridge-launchd.mjs');
   const healthFile=path.join(dest.install,'health.mjs');
   if(fs.existsSync(dest.record)){
     const recStat=fs.lstatSync(dest.record);
@@ -122,7 +125,9 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
        fs.existsSync(cloudflareFile)&&sha(fs.readFileSync(cloudflareFile))===
          meta.files_sha256['cloudflare.mjs']&&
        fs.existsSync(healthFile)&&sha(fs.readFileSync(healthFile))===
-         meta.files_sha256['health.mjs'])
+         meta.files_sha256['health.mjs']&&
+       fs.existsSync(bridgeFile)&&sha(fs.readFileSync(bridgeFile))===
+         meta.files_sha256['bridge-launchd.mjs'])
       return {status:'ALREADY_ACTIVE',backup:record.backup};
     throw Error('EXISTING_V3_INSTALL_DRIFT_REFUSED');
   }
@@ -140,6 +145,11 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     throw Error('EXISTING_V3_CLOUDFLARE_MODULE_UNRECOGNIZED');
   if(!fs.existsSync(cloudflareFile))
     fs.writeFileSync(cloudflareFile,cloudflare,{flag:'wx',mode:0o600});
+  if(fs.existsSync(bridgeFile)&&
+     sha(fs.readFileSync(bridgeFile))!==meta.files_sha256['bridge-launchd.mjs'])
+    throw Error('EXISTING_V3_BRIDGE_MODULE_UNRECOGNIZED');
+  if(!fs.existsSync(bridgeFile))
+    fs.writeFileSync(bridgeFile,bridge,{flag:'wx',mode:0o600});
   if(fs.existsSync(healthFile)&&
      sha(fs.readFileSync(healthFile))!==meta.files_sha256['health.mjs'])
     throw Error('EXISTING_V3_HEALTH_MODULE_UNRECOGNIZED');
@@ -160,7 +170,7 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
       primary:'Sandbox_V3',source_commit:meta.source_git_sha,
       legacy:'PRESERVED_NOT_INVOKED',backup,cli_sha256:sha(source),
       art_sha256:sha(artwork),cloudflare_sha256:sha(cloudflare),
-      health_sha256:sha(health),
+      bridge_sha256:sha(bridge),health_sha256:sha(health),
       installed_utc:new Date().toISOString()};
     atomic(dest.record,JSON.stringify(record,null,2)+'\n');
     return {status:'ACTIVATED',backup};
@@ -203,6 +213,8 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
   const artFile=path.join(dest.install,'art.mjs');
   const cloudflare=fs.readFileSync(path.join(release,'cloudflare.mjs'));
   const cloudflareFile=path.join(dest.install,'cloudflare.mjs');
+  const bridge=fs.readFileSync(path.join(release,'bridge-launchd.mjs'));
+  const bridgeFile=path.join(dest.install,'bridge-launchd.mjs');
   const health=fs.readFileSync(path.join(release,'health.mjs'));
   const healthFile=path.join(dest.install,'health.mjs');
   if(fs.existsSync(artFile)){
@@ -241,13 +253,25 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
        currentHealthHash!==meta.files_sha256['health.mjs'])
       throw Error('UNRECOGNIZED_INSTALLED_HEALTH_MODULE');
   }
+  if(fs.existsSync(bridgeFile)){
+    const status=fs.lstatSync(bridgeFile);
+    if(!status.isFile()||status.isSymbolicLink()||status.uid!==userId)
+      throw Error('INSTALLED_BRIDGE_MODULE_UNTRUSTED');
+    const currentBridge=sha(fs.readFileSync(bridgeFile));
+    if(record.bridge_sha256&&currentBridge!==record.bridge_sha256)
+      throw Error('INSTALLED_BRIDGE_MODULE_HASH_DRIFT');
+    if(!record.bridge_sha256&&currentBridge!==meta.files_sha256['bridge-launchd.mjs'])
+      throw Error('UNRECOGNIZED_INSTALLED_BRIDGE_MODULE');
+  }
   if(previousHash===meta.files_sha256['cli.mjs']&&
      fs.existsSync(artFile)&&
      sha(fs.readFileSync(artFile))===meta.files_sha256['art.mjs']&&
      fs.existsSync(cloudflareFile)&&
      sha(fs.readFileSync(cloudflareFile))===meta.files_sha256['cloudflare.mjs']&&
      fs.existsSync(healthFile)&&
-     sha(fs.readFileSync(healthFile))===meta.files_sha256['health.mjs'])
+     sha(fs.readFileSync(healthFile))===meta.files_sha256['health.mjs']&&
+     fs.existsSync(bridgeFile)&&
+     sha(fs.readFileSync(bridgeFile))===meta.files_sha256['bridge-launchd.mjs'])
     return {status:'ALREADY_CURRENT',backup:record.backup};
   const backups=path.join(dest.install,'backups');
   ownedFolder(backups,userId);
@@ -261,10 +285,13 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
   const previousCloudflare=hadCloudflare?fs.readFileSync(cloudflareFile):null;
   const hadHealth=fs.existsSync(healthFile);
   const previousHealth=hadHealth?fs.readFileSync(healthFile):null;
+  const hadBridge=fs.existsSync(bridgeFile);
+  const previousBridge=hadBridge?fs.readFileSync(bridgeFile):null;
   try{
     atomic(artFile,artwork,0o600);
     atomic(cloudflareFile,cloudflare,0o600);
     atomic(healthFile,health,0o600);
+    atomic(bridgeFile,bridge,0o600);
     atomic(dest.cli,newCode,0o700);
     const updated={...record,
       source_commit:meta.source_git_sha,
@@ -272,13 +299,15 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
       art_sha256:meta.files_sha256['art.mjs'],
       cloudflare_sha256:meta.files_sha256['cloudflare.mjs'],
       health_sha256:meta.files_sha256['health.mjs'],
+      bridge_sha256:meta.files_sha256['bridge-launchd.mjs'],
       previous_cli_backup:previousBackup,
       previous_cli_sha256:previousHash,
       upgrade_utc:new Date().toISOString()};
     if(sha(fs.readFileSync(dest.cli))!==meta.files_sha256['cli.mjs']||
        sha(fs.readFileSync(artFile))!==meta.files_sha256['art.mjs']||
        sha(fs.readFileSync(cloudflareFile))!==meta.files_sha256['cloudflare.mjs']||
-       sha(fs.readFileSync(healthFile))!==meta.files_sha256['health.mjs'])
+       sha(fs.readFileSync(healthFile))!==meta.files_sha256['health.mjs']||
+       sha(fs.readFileSync(bridgeFile))!==meta.files_sha256['bridge-launchd.mjs'])
       throw Error('UPGRADE_POSTVERIFY_FAILED');
     atomic(dest.record,JSON.stringify(updated,null,2)+'\n');
     return {status:'UPGRADED',backup:record.backup,
@@ -291,6 +320,8 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
     else if(fs.existsSync(cloudflareFile))fs.unlinkSync(cloudflareFile);
     if(hadHealth)atomic(healthFile,previousHealth,0o600);
     else if(fs.existsSync(healthFile))fs.unlinkSync(healthFile);
+    if(hadBridge)atomic(bridgeFile,previousBridge,0o600);
+    else if(fs.existsSync(bridgeFile))fs.unlinkSync(bridgeFile);
     throw error;
   }
 }

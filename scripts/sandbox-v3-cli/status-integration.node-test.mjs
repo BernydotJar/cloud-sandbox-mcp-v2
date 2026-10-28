@@ -19,20 +19,22 @@ const bridge={id:'MAC_BRIDGE',label:'Bridge macOS',status:'ok',
   code:'AUTH_GATE_403',detail:'Puerto activo · acceso protegido'};
 const ready={docker:true,controller:work,workstation:work,
   controllerHttp:true,cloudflare:{running:true},
-  publicEndpoints:healthyPublic,bridge};
+  publicEndpoints:healthyPublic,bridge,bridgeLaunchd:{running:true,loaded:true,code:'RUNNING'}};
 
 test('dashboard includes every expected operational component with one icon per row',()=>{
   const rows=composeHealthRows(ready);
   assert.deepEqual(rows.map(row=>row.id),[
     'DOCKER','CONTROLLER','WORKSTATION','MCP_HTTP','CLOUDFLARE',
-    'LCH_PUBLIC','IDO_PUBLIC','MAC_BRIDGE','V3_PLUGIN'
+    'LCH_PUBLIC','IDO_PUBLIC','MAC_BRIDGE_LAUNCHD','MAC_BRIDGE',
+    'CHROME_CDP','V3_PLUGIN'
   ]);
-  assert.equal(rows.filter(row=>row.status==='ok').length,8);
-  assert.equal(rows[8].status,'unknown');
+  assert.equal(rows.filter(row=>row.status==='ok').length,9);
+  assert.equal(rows[9].status,'unknown');
+  assert.equal(rows[10].status,'unknown');
   assert.equal(outcomeCode(rows),0);
   const display=formatDashboard(rows,{color:false,emoji:true,columns:110});
-  assert.equal((display.match(/😎/gu)||[]).length,9); // Eight rows + summary
-  assert.equal((display.match(/🕵️/gu)||[]).length,1);
+  assert.equal((display.match(/😎/gu)||[]).length,10); // Nine rows + summary
+  assert.equal((display.match(/🕵️/gu)||[]).length,2);
   assert(display.includes('HTTPS 200 · 122 ms'));
   assert(display.includes('cloud-sandbox-mac'));
 });

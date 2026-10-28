@@ -149,3 +149,27 @@ The existing Mac installation must use the guarded
 \`node install-on-mac.mjs --upgrade\` from the shared handoff to
 receive new SHA-verified \`health.mjs\`. Tests are source-level until
 this action is executed and the Mac displays its results.
+
+
+## 2026-10-28 Chrome Bridge launchd supervisor
+
+The Mac operator reported that running \`sandbox\` did not bring up
+the Chrome Bridge. Live Sandbox V3 tools could see the separate
+native Mac Bridge connected and Chrome persistent CDP attached with
+16 tabs. The original CLI simply did not manage the Mac user
+LaunchAgent, so a future cold start could leave Computer Use
+unavailable despite Docker/Cloudflare being healthy.
+
+A read-only /v1/status 401 or 403 only proves the loopback port is
+protected, never that the Chrome CDP provider is connected.
+The newly implemented \`scripts/sandbox-v3-cli/bridge-launchd.mjs\`
+adds strict user launchd status, reuse of running jobs,
+non-force startup of stopped existing jobs, and bootstrap only of a
+verified installed plist. No service reload or browser restart is
+performed for already-running Bridge processes; no new profiles,
+debugging ports or credentials are provisioned.
+
+The CLI dashboard distinguishes MAC_BRIDGE_LAUNCHD,
+MAC_BRIDGE listener auth gate and CHROME_CDP=UNKNOWN pending live
+Sandbox V3 browser tool verification. On-device Mac launchd recovery
+remains to be accepted after the next guarded --upgrade.

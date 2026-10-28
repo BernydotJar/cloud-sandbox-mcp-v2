@@ -32,6 +32,57 @@ the operator executes the --activate action. The original command is
 moved to a timestamped backup in the SAME ~/.local/bin directory, and
 can be restored via --rollback. No old startup code is executed.
 
+## Chrome / Computer Use Bridge is supervised by sandbox (2026-10-28)
+
+An on-Mac report found \`sandbox\` previously launched the Docker
+controller, persistent workstation and Cloudflare but did **not** start
+the **user LaunchAgent** for native macOS Computer Use. The port-only
+health check returned an authentication gate even though it did not
+confirm the service manager or Chrome CDP provider state.
+
+The CLI now also inspects the existing per-user macOS LaunchAgent:
+
+    gui/$UID/com.lch.cloud-sandbox.computer-use
+    ~/Library/LaunchAgents/com.lch.cloud-sandbox.computer-use.plist
+
+When running and the local 9764 listener is protected, it is reused
+without restart. If registered but stopped, \`sandbox\` uses
+\`launchctl kickstart\` **without \`-k\`**. If not loaded, it requires
+the original user-owned, correctly labeled plist with the exact installed
+bridge helper and bootstraps **that existing service only**. It does
+not install a new Bridge, restart Chrome/Edge, enable debugging,
+copy browser profiles, alter a delegated session, modify the existing
+Bridge source or write credentials to disk.
+
+If the Bridge process is running but its HTTP endpoint is unreachable,
+the CLI **will not forcibly restart it**, because that could revoke
+an active Computer Use session or lose a pending action. It reports
+the recovery problem and the diagnostic action. If an unregistered
+process already answers on 9764, it will not launch a duplicate.
+
+\`sandbox status\` remains read-only and adds:
+- Bridge · LaunchAgent: installed user service running/stopped/missing
+- Bridge macOS: protected 9764 listener (401/403), **not** a full
+  browser-action E2E test
+- Chrome · CDP: deliberately unknown until a Sandbox V3
+  \`browser_runtime_status\` and \`browser_tabs(browser=chrome)\`
+  check is performed. A healthy 9764 listener must **never**
+  be portrayed as proof that Chrome Playwright/CDP attached.
+
+For the user session investigated on 2026-10-28, the Sandbox V3
+connector independently returned Chrome CDP \`connected=true\`,
+provider epoch 3 and 16 authenticated browser tabs. Edge CDP remained
+disconnected with \`BROWSER_ATTACH_FAILED\`, but native discovery
+is a separate supported fallback; no user browser was restarted.
+This is **point-in-time evidence**, not a guaranteed startup result.
+
+The updated installer packages and hash-verifies
+\`bridge-launchd.mjs\`. Apply with the same guarded
+\`node "$BASE/install-on-mac.mjs" --upgrade\` command; the
+original Mac launcher and installed browser runtime are preserved.
+The code is not claimed active until the Mac upgrade executes and
+the new \`sandbox status\` output is observed.
+
 ## Retro system dashboard and public HTTPS checks (2026-10-27)
 
 The default \`sandbox\` now displays the configured retro Cats/Jupiter
