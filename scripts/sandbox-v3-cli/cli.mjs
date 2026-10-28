@@ -14,6 +14,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import fs from 'node:fs';
 import {banner,readTheme,saveTheme,normalizeTheme} from './art.mjs';
+import {ensureCloudflare,inspectCloudflare} from './cloudflare.mjs';
 
 export const DEFAULT_CONTROLLER='cloud-sandbox-mcp';
 export const DEFAULT_WORKSTATION='cloud-sandbox-dev-main';
@@ -29,6 +30,26 @@ function exec(cmd,args,timeout=12000){
     stdio:['ignore','pipe','pipe'],maxBuffer:50000});
   return {ok:r.status===0&&!r.error,stdout:String(r.stdout||'').trim(),
     stderr:String(r.stderr||'').trim(),code:r.status};
+}
+function privilegedCloudflareOperation(args){
+  // The service module provides exactly two allowed launchctl forms:
+  // kickstart of a known label, or bootstrap of a verified existing plist.
+  const command=['/bin/launchctl',...args];
+  const noninteractive=exec('/usr/bin/sudo',['-n',...command],12000);
+  if(noninteractive.ok)return true;
+  if(!process.stdin.isTTY||!process.stderr.isTTY)return false;
+  out('CLOUDFLARE_ADMIN','ONE_TIME_MACOS_PRIVILEGE_IF_NEEDED');
+  const withPrompt=spawnSync('/usr/bin/sudo',command,{
+    stdio:'inherit',timeout:90000
+  });
+  return withPrompt.status===0&&!withPrompt.error;
+}
+function printCloudflareStatus(){
+  const state=inspectCloudflare({exec});
+  out('CLOUDFLARE_LAUNCHD',state.running?'RUNNING':
+    state.selected?'STOPPED':'NOT_LOADED');
+  if(state.selected)out('CLOUDFLARE_SERVICE',state.selected.label);
+  out('CLOUDFLARE_NETWORK_HEALTH','NOT_PROBED');
 }
 function state(container){
   const r=exec('docker',['inspect','--format',
@@ -75,7 +96,7 @@ function help(){
   console.log('       sandbox art [cats|jupiter]     preview ASCII, no Docker');
   console.log('       sandbox theme [cats|jupiter]   save preferred intro');
   console.log('       sandbox --no-art               start without ASCII');
-  console.log('No argument means start. Existing containers only, no legacy ngrok.');
+  console.log('No argument means start. Existing Docker and Cloudflare Tunnel only.');
 }
 export function isMainModule(argv1=process.argv[1],url=import.meta.url){
   if(!argv1)return false;
@@ -122,6 +143,7 @@ async function main(){
     out('EXTERNAL_PLUGIN_ROUTING','NOT_CONTROLLED_BY_SHELL');
   }
   if(command==='status'||command==='doctor'){
+    printCloudflareStatus();
     if(!dockerReady()){out('DOCKER','NOT_READY');process.exitCode=1;return;}
     out('DOCKER','READY');
     for(const name of [DEFAULT_CONTROLLER,DEFAULT_WORKSTATION]){
@@ -143,6 +165,11 @@ async function main(){
   state(DEFAULT_WORKSTATION);
   await ensureExisting(DEFAULT_CONTROLLER);
   await ensureExisting(DEFAULT_WORKSTATION);
+  const tunnel=await ensureCloudflare({exec,
+    privileged:privilegedCloudflareOperation,sleep:delay});
+  out('CLOUDFLARE_TUNNEL',tunnel.state);
+  out('CLOUDFLARE_SERVICE',tunnel.service);
+  out('CLOUDFLARE_NETWORK_HEALTH','NOT_PROBED');
   let healthy=false;
   for(let attempt=0;attempt<18;attempt++){
     healthy=controllerHealth();
@@ -154,7 +181,7 @@ async function main(){
   out('CONTROLLER_HTTP_HEALTH','PASS');
   out('WORKSTATION','RUNNING');
   out('DATA_REUSED','YES');
-  out('REMOTE_TUNNEL_RESTARTED','NO');
+  out('EXISTING_CLOUDFLARE_REUSED','YES');
   out('BROWSER_BRIDGE_RESTARTED','NO');
   out('EXTERNAL_V3_CONNECTOR','VERIFY_WITH_SANDBOX_V3_PLUGIN');
   out('RESULT','LOCAL_SANDBOX_V3_READY');

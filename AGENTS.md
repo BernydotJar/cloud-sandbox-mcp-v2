@@ -1,3 +1,17 @@
+## Sandbox V3 CLI also supervises existing Cloudflare Tunnel (2026-10-27)
+
+The canonical Mac `sandbox` command now checks the pre-existing
+Cloudflare `cloud-sandbox-mac` tunnel via the verified system launchd
+label `system/com.cloud-sandbox.cloudflared`, with only the known
+`system/com.cloudflare.cloudflared` alternative. Reuse a running
+service without changes; when stopped, non-force kickstart only this
+known label, or bootstrap only its verified pre-existing root-owned
+plist. Never create another Cloudflare tunnel, DNS route, token, or
+ngrok bridge. Privilege is requested only when system launchd requires
+it. `sandbox status` and `sandbox doctor` are observational. A running
+launchd process is not proof of Internet tunnel connectivity. Keep
+Cloudflare config, Caddy, Browser Bridge, Mac AX and Docker data intact.
+
 ## Mac Sandbox V3 CLI symlink fix and retro splash (2026-10-27)
 
 The Mac sandbox launcher is a symlink into

@@ -16,7 +16,7 @@ function fixture(){
   fs.mkdirSync(home,{mode:0o700});
   const release=path.join(temp,'release');
   fs.mkdirSync(release,{mode:0o700});
-  const names=['cli.mjs','install-on-mac.mjs','art.mjs'];
+  const names=['cli.mjs','install-on-mac.mjs','art.mjs','cloudflare.mjs'];
   const hashes={};
   for(const name of names){
     const payload=fs.readFileSync(path.join(root,name));
@@ -47,6 +47,7 @@ test('V3 activation preserves an existing relative symbolic-link legacy command'
     assert.equal(entryInfo(f.loc.entry).kind,'SYMLINK');
     assert.equal(path.resolve(f.loc.bin,fs.readlinkSync(f.loc.entry)),f.loc.cli);
     assert.equal(entryInfo(activated.backup).kind,'SYMLINK');
+    assert(fs.existsSync(path.join(f.loc.install,'cloudflare.mjs')));
     assert.equal(fs.readlinkSync(activated.backup),'../share/cloud-sandbox/start-all.sh');
     const result=activateCli({home:f.home,release:f.release});
     assert.equal(result.status,'ALREADY_ACTIVE');
@@ -136,6 +137,8 @@ test('upgrade existing Mac V3 CLI in place, preserve original legacy backup and 
       fs.readFileSync(path.join(root,'cli.mjs'),'utf8'));
     assert.equal(fs.readFileSync(path.join(f.loc.install,'art.mjs'),'utf8'),
       fs.readFileSync(path.join(root,'art.mjs'),'utf8'));
+    assert.equal(fs.readFileSync(path.join(f.loc.install,'cloudflare.mjs'),'utf8'),
+      fs.readFileSync(path.join(root,'cloudflare.mjs'),'utf8'));
     assert.equal(upgradeCli({home:f.home,release:f.release}).status,'ALREADY_CURRENT');
     rollbackCli({home:f.home});
     assert.equal(fs.readFileSync(f.loc.entry,'utf8'),previousEntry);
@@ -149,5 +152,17 @@ test('upgrade fails closed on current V3 binary drift, preserving original entry
     assert.throws(()=>upgradeCli({home:f.home,release:f.release}),
       /INSTALLED_V3_CLI_HASH_DRIFT/);
     assert.equal(fs.readlinkSync(f.loc.entry),'../share/sandbox-v3/cli.mjs');
+  }finally{f.clean();}
+});
+
+test('unrecorded foreign Cloudflare module cannot be overwritten on CLI upgrade',()=>{
+  const f=fixture();
+  try{
+    activateCli({home:f.home,release:f.release});
+    const installed=path.join(f.loc.install,'cloudflare.mjs');
+    fs.writeFileSync(installed,'// unknown and not signed');
+    assert.throws(()=>upgradeCli({home:f.home,release:f.release}),
+      /INSTALLED_CLOUDFLARE_MODULE_HASH_DRIFT/);
+    assert.equal(fs.readFileSync(installed,'utf8'),'// unknown and not signed');
   }finally{f.clean();}
 });

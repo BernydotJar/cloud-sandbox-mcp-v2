@@ -24,7 +24,8 @@ test('the CLI never invokes ngrok, legacy multiproject startup or destructive do
   assert.doesNotMatch(code,/docker\.compose|['"]compose['"]\s*,\s*['"]up['"]/);
   assert.doesNotMatch(code,/['"]run['"]\s*,\s*['"]-d['"]|docker\.prune|docker\.system\.prune/);
   assert.doesNotMatch(code,/start-all\.sh['"]\s*[,)]|ngrok\s+http|\.activate\(/);
-  assert.match(code,/REMOTE_TUNNEL_RESTARTED','NO'/);
+  assert.match(code,/CLOUDFLARE_TUNNEL',tunnel.state/);
+  assert.match(code,/EXISTING_CLOUDFLARE_REUSED','YES'/);
   assert.match(code,/BROWSER_BRIDGE_RESTARTED','NO'/);
 });
 test('exact container identity and health are required by the runtime status parser',()=>{
@@ -85,4 +86,13 @@ test('plain sandbox never returns silently even when not on a Mac',()=>{
     assert(plain.stdout.includes('C O S M I C   C A T S'));
     assert.match(plain.stdout,/STOP=MACOS_OPERATOR_HOST_REQUIRED/);
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
+
+test('Cloudflare uses only the existing system launchd service, never starts ngrok or a new tunnel',()=>{
+  assert.match(code,/ensureCloudflare\(\{exec/);
+  assert.match(code,/inspectCloudflare\(\{exec\}\)/);
+  assert.match(code,/printCloudflareStatus\(\)/);
+  assert.match(code,/CLOUDFLARE_NETWORK_HEALTH','NOT_PROBED'/);
+  assert.doesNotMatch(code,/cloudflared.*tunnel.*create/);
+  assert.doesNotMatch(code,/launchctl.*-k/);
 });

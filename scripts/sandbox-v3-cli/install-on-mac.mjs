@@ -60,6 +60,7 @@ export function verifyRelease(folder){
     throw Error('RELEASE_IDENTITY_UNEXPECTED');
   if(!data.files_sha256||!data.files_sha256['cli.mjs']||
      !data.files_sha256['art.mjs']||
+     !data.files_sha256['cloudflare.mjs']||
      !data.files_sha256['install-on-mac.mjs'])
     throw Error('RELEASE_FILES_MISSING');
   for(const [name,hash] of Object.entries(data.files_sha256)){
@@ -98,7 +99,9 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
   const current=entryInfo(dest.entry);
   const source=fs.readFileSync(path.join(release,'cli.mjs'));
   const artwork=fs.readFileSync(path.join(release,'art.mjs'));
+  const cloudflare=fs.readFileSync(path.join(release,'cloudflare.mjs'));
   const artFile=path.join(dest.install,'art.mjs');
+  const cloudflareFile=path.join(dest.install,'cloudflare.mjs');
   if(fs.existsSync(dest.record)){
     const recStat=fs.lstatSync(dest.record);
     if(!recStat.isFile()||recStat.isSymbolicLink()||recStat.uid!==userId)
@@ -112,7 +115,9 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
        fs.existsSync(dest.cli)&&
        sha(fs.readFileSync(dest.cli))===meta.files_sha256['cli.mjs']&&
        fs.existsSync(artFile)&&sha(fs.readFileSync(artFile))===
-         meta.files_sha256['art.mjs'])
+         meta.files_sha256['art.mjs']&&
+       fs.existsSync(cloudflareFile)&&sha(fs.readFileSync(cloudflareFile))===
+         meta.files_sha256['cloudflare.mjs'])
       return {status:'ALREADY_ACTIVE',backup:record.backup};
     throw Error('EXISTING_V3_INSTALL_DRIFT_REFUSED');
   }
@@ -125,6 +130,11 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     throw Error('EXISTING_V3_ART_UNRECOGNIZED');
   if(!fs.existsSync(artFile))
     fs.writeFileSync(artFile,artwork,{flag:'wx',mode:0o600});
+  if(fs.existsSync(cloudflareFile)&&
+     sha(fs.readFileSync(cloudflareFile))!==meta.files_sha256['cloudflare.mjs'])
+    throw Error('EXISTING_V3_CLOUDFLARE_MODULE_UNRECOGNIZED');
+  if(!fs.existsSync(cloudflareFile))
+    fs.writeFileSync(cloudflareFile,cloudflare,{flag:'wx',mode:0o600});
   const backup=current.kind==='ABSENT'?null:
     path.join(dest.bin,'sandbox.pre-v3-'+Date.now()+'-'+crypto.randomUUID());
   const relativeTarget=path.relative(dest.bin,dest.cli);
@@ -139,7 +149,7 @@ export function activateCli({home,release=releaseDir,userId=process.getuid()}){
     const record={schema:'sandbox-v3.cli-install.v1',name:'sandbox',
       primary:'Sandbox_V3',source_commit:meta.source_git_sha,
       legacy:'PRESERVED_NOT_INVOKED',backup,cli_sha256:sha(source),
-      art_sha256:sha(artwork),
+      art_sha256:sha(artwork),cloudflare_sha256:sha(cloudflare),
       installed_utc:new Date().toISOString()};
     atomic(dest.record,JSON.stringify(record,null,2)+'\n');
     return {status:'ACTIVATED',backup};
@@ -180,6 +190,8 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
   const newCode=fs.readFileSync(path.join(release,'cli.mjs'));
   const artwork=fs.readFileSync(path.join(release,'art.mjs'));
   const artFile=path.join(dest.install,'art.mjs');
+  const cloudflare=fs.readFileSync(path.join(release,'cloudflare.mjs'));
+  const cloudflareFile=path.join(dest.install,'cloudflare.mjs');
   if(fs.existsSync(artFile)){
     const artStat=fs.lstatSync(artFile);
     if(!artStat.isFile()||artStat.isSymbolicLink()||
@@ -191,9 +203,24 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
        sha(fs.readFileSync(artFile))!==meta.files_sha256['art.mjs'])
       throw Error('UNRECOGNIZED_INSTALLED_ART');
   }
+  if(fs.existsSync(cloudflareFile)){
+    const installed=fs.lstatSync(cloudflareFile);
+    if(!installed.isFile()||installed.isSymbolicLink()||
+       installed.uid!==userId)
+      throw Error('INSTALLED_CLOUDFLARE_MODULE_UNTRUSTED');
+    const currentCloudflare=sha(fs.readFileSync(cloudflareFile));
+    if(record.cloudflare_sha256 &&
+       currentCloudflare!==record.cloudflare_sha256)
+      throw Error('INSTALLED_CLOUDFLARE_MODULE_HASH_DRIFT');
+    if(!record.cloudflare_sha256&&
+       currentCloudflare!==meta.files_sha256['cloudflare.mjs'])
+      throw Error('UNRECOGNIZED_INSTALLED_CLOUDFLARE_MODULE');
+  }
   if(previousHash===meta.files_sha256['cli.mjs']&&
      fs.existsSync(artFile)&&
-     sha(fs.readFileSync(artFile))===meta.files_sha256['art.mjs'])
+     sha(fs.readFileSync(artFile))===meta.files_sha256['art.mjs']&&
+     fs.existsSync(cloudflareFile)&&
+     sha(fs.readFileSync(cloudflareFile))===meta.files_sha256['cloudflare.mjs'])
     return {status:'ALREADY_CURRENT',backup:record.backup};
   const backups=path.join(dest.install,'backups');
   ownedFolder(backups,userId);
@@ -203,18 +230,23 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
   fs.writeFileSync(previousBackup,previous,{flag:'wx',mode:0o700});
   const hadArt=fs.existsSync(artFile);
   const previousArt=hadArt?fs.readFileSync(artFile):null;
+  const hadCloudflare=fs.existsSync(cloudflareFile);
+  const previousCloudflare=hadCloudflare?fs.readFileSync(cloudflareFile):null;
   try{
     atomic(artFile,artwork,0o600);
+    atomic(cloudflareFile,cloudflare,0o600);
     atomic(dest.cli,newCode,0o700);
     const updated={...record,
       source_commit:meta.source_git_sha,
       cli_sha256:meta.files_sha256['cli.mjs'],
       art_sha256:meta.files_sha256['art.mjs'],
+      cloudflare_sha256:meta.files_sha256['cloudflare.mjs'],
       previous_cli_backup:previousBackup,
       previous_cli_sha256:previousHash,
       upgrade_utc:new Date().toISOString()};
     if(sha(fs.readFileSync(dest.cli))!==meta.files_sha256['cli.mjs']||
-       sha(fs.readFileSync(artFile))!==meta.files_sha256['art.mjs'])
+       sha(fs.readFileSync(artFile))!==meta.files_sha256['art.mjs']||
+       sha(fs.readFileSync(cloudflareFile))!==meta.files_sha256['cloudflare.mjs'])
       throw Error('UPGRADE_POSTVERIFY_FAILED');
     atomic(dest.record,JSON.stringify(updated,null,2)+'\n');
     return {status:'UPGRADED',backup:record.backup,
@@ -223,6 +255,8 @@ export function upgradeCli({home,release=releaseDir,userId=process.getuid()}){
     atomic(dest.cli,previous,0o700);
     if(hadArt)atomic(artFile,previousArt,0o600);
     else if(fs.existsSync(artFile))fs.unlinkSync(artFile);
+    if(hadCloudflare)atomic(cloudflareFile,previousCloudflare,0o600);
+    else if(fs.existsSync(cloudflareFile))fs.unlinkSync(cloudflareFile);
     throw error;
   }
 }

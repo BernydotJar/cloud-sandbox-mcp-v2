@@ -95,3 +95,26 @@ An in-place --upgrade backs up the previous V3 executable,
 preserves the legacy launcher backup, updates the installed V3
 code plus artwork, and updates SHA-256 records. The on-Mac
 upgrade has not yet executed at the time of this report.
+
+
+## Cloudflare launchd integration (2026-10-27)
+
+Operator requested that `sandbox` also start Cloudflare. Earlier
+releases did NOT launch cloudflared; that limitation was confirmed
+before implementation. Current release adds a supervisor for the
+pre-existing `cloud-sandbox-mac` tunnel. Grounded in the 2026-10-09
+lch-app activation evidence, canonical service:
+`system/com.cloud-sandbox.cloudflared`, with a known historical
+alternative `system/com.cloudflare.cloudflared`.
+
+The CLI reads launchd state; running processes are not restarted.
+When stopped, `launchctl kickstart` without force-kill is applied
+to an exact known label, with macOS admin privilege if required. If
+not loaded, bootstrap is permitted only for its pre-existing root-owned
+verified LaunchDaemon plist. Do not create tunnels, alter DNS, Caddy,
+Cloudflare credentials or browser profiles, and never use legacy ngrok.
+
+Health reporting is intentionally conservative: launchd running only;
+remote Cloudflare network health and public HTTPS remain unverified
+without additional live probes. Native Mac start/stop behavior needs
+on-device validation after CLI upgrade.

@@ -69,7 +69,7 @@ change macOS permissions or modify browser sessions.
     sandbox theme cats        # restore the Cosmic Cats default
     sandbox jupiter           # start once using Jupiter
     sandbox --no-art          # start without graphics (automation)
-    sandbox status            # terse read-only status, no art
+    sandbox status            # read-only: Docker, controller and Cloudflare launchd
 
 Theme preferences are privately stored in
 ~/.local/share/sandbox-v3/theme.json. The banner appears before
@@ -92,7 +92,7 @@ checks the existing sandbox file type, rejects unknown binaries and
 unexpected ownership, preserves the prior executable/symlink, installs
 an executable Node entrypoint, and verifies that the sandbox command
 resolves to the new V3 CLI. It does not touch login tokens, plugins,
-Docker, Caddy, Cloudflare, Chrome/Edge or the Mac AX service.
+Docker, Caddy, Cloudflare, Chrome/Edge or the Mac AX service **during CLI installation**.
 
 If "whence -v sandbox" reports a shell function or alias instead of
 ~/.local/bin/sandbox, the shell definition may shadow the installed
@@ -115,12 +115,31 @@ controller's existing /healthz endpoint without accessing secrets.
 There is NO docker compose up, new container/checkout, VM, prune,
 Docker data reset, ngrok execution, login prompt or browser restart.
 
-It does not restart the existing Cloudflare Tunnel, Caddy, Bridge or
-macOS AX service. If those separately managed services are down, use
-their own existing verified host supervision; do not launch a second
-tunnel. A local healthy controller is not proof that the ChatGPT remote
-plugin is reachable: validate via Sandbox V3 workspace_list or
-computer_use_status when connected.
+The `sandbox` command now also supervises the existing Cloudflare
+Tunnel on THIS Mac. It checks the known system LaunchDaemon
+`system/com.cloud-sandbox.cloudflared` (historical alternative:
+`system/com.cloudflare.cloudflared`) for the existing
+`cloud-sandbox-mac` tunnel. If the daemon is already running, it does
+**nothing** to it. If it is registered but stopped, it starts that
+LaunchDaemon via `launchctl kickstart` **without -k**, preserving any
+running process. If the service is not loaded, it can bootstrap the
+same pre-existing root-owned verified LaunchDaemon plist. No second
+tunnel, route changes, DNS mutation, certificate change or new Cloudflare
+credentials are created. A one-time macOS admin password may be requested
+by `sudo` ONLY if a system-wide Cloudflare LaunchDaemon needs recovery.
+
+`sandbox status` and `sandbox doctor` inspect the Cloudflare
+LaunchDaemon without making changes. Output distinguishes
+`CLOUDFLARE_LAUNCHD=RUNNING` from
+`CLOUDFLARE_NETWORK_HEALTH=NOT_PROBED`: a running daemon is NOT
+end-to-end HTTPS proof. A local healthy controller is likewise not
+proof of external ChatGPT plugin reachability.
+
+The existing Caddy, Mac Browser Bridge, AX service and Cloudflare tunnel
+config remain under their own supervisors. This command does not restart
+them when healthy, reconfigure the tunnel, or change the ChatGPT connector
+selection. If the Cloudflare plist is missing or untrusted, it stops with
+an actionable error rather than generating a new tunnel.
 
 ## Rollback
 
