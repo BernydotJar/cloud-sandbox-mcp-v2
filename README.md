@@ -1,3 +1,18 @@
+# Sandbox V3 — preferred runtime
+
+For day-to-day ChatGPT work, use the **Sandbox V3** connector (not the
+legacy Cloud Sandbox MCP V2 plugin). On the operator Mac, the canonical
+Terminal entrypoint is \`sandbox\`; see
+[scripts/sandbox-v3-cli/README.md](scripts/sandbox-v3-cli/README.md)
+for a guarded, reversible activation of the existing Mac command.
+
+The historical Git repository/directory name cloud-sandbox-mcp-v2
+is retained for compatibility and does not imply the V2 plugin
+should be preferred. The legacy root \`start-all.sh\` must not be
+used to start the current single-workstation V3 backend.
+
+---
+
 # Cloud Sandbox MCP 0.2.0 — Workstation Mode
 
 A private MCP server that gives ChatGPT a persistent, VM-like Linux engineering workstation inside Docker.

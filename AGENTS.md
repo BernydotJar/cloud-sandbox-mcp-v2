@@ -1,3 +1,31 @@
+## Canonical Sandbox V3 connector and Terminal command (2026-10-27)
+
+Operator default: use the **Sandbox V3** ChatGPT connector
+\`mcp__Sandbox_V3__*\`, not \`mcp__Cloud_Sandbox_MCP_V2__*\`.
+The old V2 ngrok endpoint failed an HTTP 403 live check on 2026-10-27.
+The historical repo checkout path \`cloud-sandbox-mcp-v2\` is not
+the product or ChatGPT connector selection.
+
+The Mac operator's default Terminal command must be \`sandbox\`.
+Its V3 launcher is under \`scripts/sandbox-v3-cli/\`; a guarded,
+reversible install release is staged in the existing shared-auth
+handoff. The CLI starts ONLY existing \`cloud-sandbox-mcp\` and
+\`cloud-sandbox-dev-main\`; no legacy root \`start-all.sh\`,
+ngrok/multiple UUID workstations, Docker prune, re-authentication,
+browser profile changes or runtime recreation.
+
+Agent defaults:
+- First choose the Sandbox V3 tool namespace for all engineering work.
+- Preserve root, Docker, persistent worktrees, existing Mac Bridge
+  and the current delegated sessions.
+- Legacy V2 connector is explicit compatibility only, never
+  a silent fallback from V3 failure.
+- The Mac CLI migration is staged source until the on-Mac
+  \`install-on-mac.mjs --activate\` command completes. Do not claim
+  the Mac Terminal command has changed merely because code was committed.
+- A healthy local controller still requires the remote V3 plugin
+  to pass an independent live handshake.
+
 ## P0 architecture correction: native background CUA on THIS SAME MAC (2026-10-26)
 
 The operator rejected any VM, second Mac or external APFS volume for the

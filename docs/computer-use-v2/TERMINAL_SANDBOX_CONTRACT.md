@@ -1,3 +1,18 @@
+# 2026-10-27: Sandbox V3 is canonical, legacy V2 only for compatibility
+
+The operator requires the Mac Terminal command **sandbox** to start
+Sandbox V3, using the existing cloud-sandbox-mcp controller and only
+cloud-sandbox-dev-main. The launcher and guarded activation kit are in
+\`scripts/sandbox-v3-cli/README.md\`.
+For ChatGPT calls, prefer \`mcp__Sandbox_V3__*\`, not
+\`mcp__Cloud_Sandbox_MCP_V2__*\`. The latter failed an HTTP 403
+ngrok endpoint check in this session. Historical uses of V2 below
+describe previous implementation, not current connector preference.
+Activating the Mac CLI does not change ChatGPT plugin routing; test
+the actual V3 connector independently.
+
+---
+
 # Terminal `sandbox` interoperability: Mac Bridge and agent policy
 
 Status as of 2026-10-19: the Mac-hosted Cloud Sandbox Computer Use Bridge
