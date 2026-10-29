@@ -145,3 +145,32 @@ The original Toyota agent receives its continuation at
 `/workspace/_shared/evidence/toyota-sandbox-drafts-20261028/EXECUTE-IN-ORIGINAL-CHAT.txt`.
 Draft presence, recipient identity, persistence, and sending remain distinct
 business outcomes and must be verified by the executing agent.
+
+## Coordinate mouse dispatch correction (28 October 2026)
+
+The Toyota original-chat trace reproduced four native `click` receipts with
+no verified UI/focus transition. Geometry was consistent with Retina 2x; repeating
+the same System Events `process.click(at:)` was not acceptance evidence.
+
+The installed driver now implements a coordinate click as one Quartz mouse-down
+and mouse-up pair at the validated global point. It first checks the selected
+browser window bounds and existing event-posting permission; there is no request
+for new permission and no automatic AX-click fallback. Responses identify
+`input_backend=quartz_mouse_event`; `computer_use_focus` reports the existing
+`mouse_event_access` capability. This does not make a receipt proof of UI change:
+the executing agent must independently verify the expected control and final data.
+
+Out-of-window input returns `CLICK_OUTSIDE_TARGET_WINDOW`; missing permission
+returns `MAC_POST_EVENT_PERMISSION_REQUIRED`. Both refuse before dispatch.
+`CGPreflightPostEventAccess` is explicitly bound when absent from JXA's
+BridgeSupport metadata. All existing target/session/origin/audit guards remain.
+The four new regression tests cover event pairs, permission denial and window
+bounds; real Mac UI acceptance belongs to the original Sandbox agent.
+
+Primary API reference:
+https://developer.apple.com/documentation/coregraphics/cgevent
+
+Installed helper SHA:
+`79d441615fcdd2280a7ac5a7552740631ec153412e9f54a55ffed048ef257f13`.
+Supervisor evidence and original-client retest:
+`/workspace/_shared/evidence/toyota-sandbox-drafts-20261028/`.

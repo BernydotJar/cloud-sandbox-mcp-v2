@@ -87,6 +87,25 @@ function pasteNativeText(value, systems) {
   }
 }
 
+
+function nativeMouseAccess() {
+  try {
+    ObjC.import('ApplicationServices');
+    if(typeof $.CGPreflightPostEventAccess!=='function') ObjC.bindFunction('CGPreflightPostEventAccess',['bool',[]]);
+    return Boolean($.CGPreflightPostEventAccess());
+  } catch (_) { return false; }
+}
+function nativeMouseClick(x,y) {
+  ObjC.import('ApplicationServices');
+  const point={x:x,y:y};
+  const down=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseDown,point,$.kCGMouseButtonLeft);
+  const up=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseUp,point,$.kCGMouseButtonLeft);
+  if(!down || !up)throw Error('MOUSE_EVENT_CREATE_FAILED');
+  $.CGEventPost($.kCGHIDEventTap,down);
+  $.CGEventPost($.kCGHIDEventTap,up);
+  delay(0.15);
+}
+
 function run(argv) {
   const operation = String(argv[0] || '');
   const browser = String(argv[1] || '');
@@ -212,6 +231,7 @@ function run(argv) {
       const result={focused:true,browser:browser,url:expected,
                     recovered_stale_index:selected.rebound};
       try { result.window_bounds_points=nativeWindowBounds(target); } catch (_) {}
+      result.mouse_event_access=nativeMouseAccess();
       result.focused_control=p?nativeFocusedControl(p):{available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'};
       return ok(result);
     }
@@ -281,7 +301,10 @@ function run(argv) {
       if (action === 'click') {
         const x = Number(argv[7]), y = Number(argv[8]);
         if (!Number.isInteger(x) || !Number.isInteger(y) || Math.abs(x) > 32768 || Math.abs(y) > 32768) return fail('INVALID_COORDINATES');
-        proc.click({at: [x, y]});
+        const rect=nativeWindowBounds(target);
+        if(x<rect.x || y<rect.y || x>=rect.x+rect.width || y>=rect.y+rect.height) return fail('CLICK_OUTSIDE_TARGET_WINDOW');
+        if(!nativeMouseAccess()) return fail('MAC_POST_EVENT_PERMISSION_REQUIRED');
+        nativeMouseClick(x,y);
       } else if (action === 'type_text') {
         const value = String(argv[7] || '');
         if (!value || value.length > 2000) return fail('INVALID_INPUT');
@@ -296,7 +319,7 @@ function run(argv) {
         systems.keyCode(codes[key]);
       } else return fail('INVALID_ACTION');
       return ok({performed:true,action:action,browser:browser,
-                 recovered_stale_index:selected.rebound,focused_control:nativeFocusedControl(proc)});
+                 recovered_stale_index:selected.rebound,input_backend:action==='click'?'quartz_mouse_event':action==='type_text'?'clipboard_paste':'system_events_key',focused_control:nativeFocusedControl(proc)});
     }
     return fail('INVALID_OPERATION');
   } catch (error) {
