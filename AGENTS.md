@@ -1,3 +1,31 @@
+## Verified background browser capability — 2026-10-29
+
+For an explicitly requested existing Mac browser task with background required,
+the current installed Sandbox V3 bridge can return an optional
+`tabs[].background_ax.tab_ref` from `browser_tabs`. Select that explicit ref
+with `browser_inspect` and `browser_action`; do not call foreground native
+focus/screenshot/coordinate actions. `semantic_available=false` means no
+DOM/ARIA. `ax_semantic_available=true` with `inspection_mode=native_ax`
+is the distinct real AX provider; do not declare the whole interaction layer
+unavailable merely because CDP/ARIA is absent.
+
+Only use this route when the reference is actually present, the target app
+remains behind another app, and the task permits the observed action. Own
+browser grant, current revision, exact control, origin policy, independent
+effect readback and grant closure remain required. Native AXPress handles
+navigation; certified composer nodes advertise `fill_backend=process_unicode`
+for exact-PID text entry into an empty field or fingerprint-bound clear.
+Nonempty replacement is rejected. It does not use global input or an isolated
+desktop; it refuses actions if the target becomes foreground. Never replay
+uncertain mutations. A title change requires fresh discovery.
+
+This path passed a live Sandbox V3 self-chat smoke: Search write/clear,
+Calendar/Chat navigation, full composer marker fingerprint and verified cleanup,
+foreground preserved, no sends or existing draft changes. This does not
+establish universal app/control compatibility. Operative runbook:
+`/workspace/projects/cloud-sandbox-mcp-v2/docs/computer-use-v2/BACKGROUND_BROWSER_AX_20261029.md`.
+Ordinary unauthenticated QA still defaults to isolated headless Playwright.
+
 ## Sandbox V3 now supervises existing Mac Browser Bridge (2026-10-28)
 
 The canonical Mac \`sandbox\` command must check and recover the existing
