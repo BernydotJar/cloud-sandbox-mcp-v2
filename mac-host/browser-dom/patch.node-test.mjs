@@ -3,7 +3,7 @@ test('DOM routes are additive on both canonical and customized background bridge
  const original=fs.readFileSync(new URL('../bridge.mjs',import.meta.url),'utf8');
  for(const source of [original,patchBackgroundTabs(patchBackgroundBridge(original))]){
   const result=patchDOMBridge(source);for(const retained of ['sessionStore.authorize','restrictBrowserWrites','/v1/action','/v2/browser/action','nativeHandler'])assert(result.includes(retained));
-  assert(result.indexOf("domTabs.available(input.browser)")<result.indexOf("if (!runtime) throw"));
+  assert(result.indexOf("let domData=null,domError=null,nativeData=null")>=0);
   assert.throws(()=>patchDOMBridge(result),/ALREADY_PATCHED/);
  }
  assert.throws(()=>patchDOMBridge('unknown host'),/ANCHOR_CHANGED/);

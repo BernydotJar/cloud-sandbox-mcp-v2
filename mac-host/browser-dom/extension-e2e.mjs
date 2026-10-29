@@ -44,8 +44,8 @@ try{
  const source=fs.readFileSync(path.join(root,'mac-host/bridge.mjs'),'utf8');fs.writeFileSync(bridgeFile,patchDOMBridge(source),{flag:'wx',mode:0o600});
  const {createBridgeServer}=await import(bridgeFile);const wireToken=crypto.randomBytes(24).toString('hex');
  const wireSessions=createSessionStore();const wireGrant=wireSessions.begin({scope:'edge',duration_minutes:5,max_actions:40,purpose:'Isolated MCP DOM fixture acceptance'});
- let nativeCalls=0;
- hostBridge=createBridgeServer({token:wireToken,allowedOrigins:new Set(['https://teams.cloud.microsoft']),dynamicTabs:true,restrictBrowserWrites:true,platform:'darwin',enableBrowserRuntime:true,sessionStore:wireSessions,extensionDOMBroker:broker,nativeHandler:async()=>{nativeCalls++;throw Error('Native transport must not run');}});
+ let nativeCalls=0,allowNativeFixture=false;
+ hostBridge=createBridgeServer({token:wireToken,allowedOrigins:new Set(['https://teams.cloud.microsoft']),dynamicTabs:true,restrictBrowserWrites:true,platform:'darwin',enableBrowserRuntime:true,sessionStore:wireSessions,extensionDOMBroker:broker,nativeHandler:async()=>{nativeCalls++;if(allowNativeFixture)return {running:true,windows:[{window_index:8,tabs:[{tab_index:1,title:'Other project fixture',url:'https://github.com/owned/fixture',active:true},{tab_index:2,title:'Unapproved Teams profile fixture',url:'https://teams.cloud.microsoft/',active:false}]}]};throw Error('Native transport must not run for DOM actions');}});
  await new Promise(resolve=>hostBridge.listen(0,'127.0.0.1',resolve));const bridgeURL='http://127.0.0.1:'+hostBridge.address().port;
  const proxy=new ComputerUseService({COMPUTER_USE_ENABLED:true,COMPUTER_USE_BRIDGE_TOKEN:wireToken,COMPUTER_USE_BRIDGE_URL:bridgeURL});
  mcp=createMcpServer({},proxy);client=new Client({name:'isolated-dom-mcp',version:'1'},{capabilities:{}});const [a,b]=InMemoryTransport.createLinkedPair();await mcp.connect(b);await client.connect(a);
@@ -114,6 +114,11 @@ try{
   assert.deepEqual(await sw.evaluate(async()=> (await globalThis.chrome.tabs.query({active:true})).map(t=>t.id)),ckActiveBefore);assert.equal(await ck.evaluate(()=>globalThis.sent),0);assert.equal(nativeCalls,0);
   evidence.checks.push('genuine_vendor_CKEditor_49_0_1','ckeditor_model_fill_escaped_text','ckeditor_reload_persistence','ckeditor_clear_reload_empty','ckeditor_inactive_tab_and_no_send');
  }
+ allowNativeFixture=true;
+ const other=await call('browser_tabs',{browser:'edge',title:'Other project fixture'});assert.equal(other.provider,'native');assert.equal(other.tabs.length,1);assert.equal(other.tabs[0].url,'https://github.com/owned/fixture');
+ const mixed=await call('browser_tabs',{browser:'edge'});assert.equal(mixed.provider,'mixed');assert(mixed.tabs.some(t=>t.provider==='extension_dom'&&t.tab_ref));assert(mixed.tabs.some(t=>t.provider==='native'&&t.native_target));assert(!mixed.tabs.some(t=>t.title==='Unapproved Teams profile fixture'));
+ await broker.close();const disconnected=await call('browser_tabs',{browser:'edge',title:'Other project fixture'});assert.equal(disconnected.tabs.length,1);assert.equal(disconnected.extension_dom.connected,false);assert(disconnected.extension_dom.error);
+ evidence.checks.push('other_Edge_origins_keep_native_discovery','mixed_discovery_has_per_tab_capabilities','unapproved_native_Teams_profile_excluded','other_origins_survive_DOM_disconnect');
  console.log(JSON.stringify({...evidence,result:'PASS'},null,2));
 }finally{
  if(client)await client.close();if(mcp)await mcp.close();if(hostBridge)await new Promise(resolve=>hostBridge.close(resolve));

@@ -1,5 +1,10 @@
 Sandbox V3 — backend DOM para Teams Toyota
-Versión 0.1.1 — 2026-10-29. Prueba real Toyota documentada en LIVE-RESULT.json.
+Versión 0.1.1 + compatibilidad — 2026-10-29.
+ACEPTACIÓN PARCIAL. Un ciclo real Toyota pasó; después de inactividad hubo
+DOM_TIMEOUT_INSPECT aunque el broker seguía conectado. No está resuelto.
+Leer TECHNICAL-HANDOFF.txt y RUNTIME-STATE-FOR-HANDOFF.json.
+El usuario prefiere evaluar una alternativa sin extensión.
+La recuperación de pestaña dormida no está instalada ni validada.
 
 Qué se instala
 - Una extensión local MV3 de Edge, ID ecamjbhjlcacmchoebdligpmhcebdgci.

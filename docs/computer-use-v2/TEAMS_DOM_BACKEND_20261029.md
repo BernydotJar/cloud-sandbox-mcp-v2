@@ -1,5 +1,13 @@
 # Teams DOM backend — 29 October 2026
 
+Current handoff: TEAMS_BACKEND_TECHNICAL_HANDOFF_20261029.txt.
+Acceptance is PARTIAL: the recorded background workflow passed, but later
+idle inspections returned DOM_TIMEOUT_INSPECT despite a connected broker.
+A sleeping/frozen tab is suspected; a fresh lifecycle flag was not collected.
+The exploratory wake worker was not installed and was removed from the
+release tree into explicit WIP artifacts. The user prefers avoiding an extension.
+
+
 The operator requires Sandbox V3 to interact with the existing authenticated
 Toyota Edge session while continuing to use other apps/windows. The previous
 native AX route was not sufficient: real Teams accepted direct setter calls
@@ -48,8 +56,8 @@ and https://ckeditor.com/docs/ckeditor5/latest/getting-started/setup/getting-and
 
 The host still checks own grant, current origin policy and shared busy state.
 Disconnection, expiry, changed URL/control or uncertain dispatch cannot trigger
-automatic native input or mutation replay. Once configured, Edge DOM discovery
-fails visibly on disconnection. Existing native references retain their native
+automatic native input or mutation replay. Teams DOM errors remain visible on disconnection; native Teams alternatives
+from other profiles are excluded, while other origins keep native discovery. Existing native references retain their native
 route; the controller tool inventory and all existing origin rules are preserved.
 
 ## Actual evidence and boundaries
@@ -111,3 +119,9 @@ rather than silently selecting a different account or native input.
 Checks: npm run test:browser:dom:ckeditor, test:browser:policy,
 test:browser:reinforcement, test:mac and verify:v2. Production dependency
 findings predate this change; a source/fixture pass is not production GO.
+
+Final discovery compatibility was verified on Mac: 145 rows (one DOM Teams and
+144 native other-origin rows); DTI-14949 remained native. Mixed discovery labels
+per-tab providers and does not claim global DOM semantics. The later attempted
+full workflow on this final bridge stopped at inspect timeouts, before any new
+write. Preserve the successful older run separately from current reliability.

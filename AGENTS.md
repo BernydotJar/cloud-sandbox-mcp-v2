@@ -1,3 +1,13 @@
+## Handoff / reliability boundary — 2026-10-29 20:29 UTC
+
+Read docs/computer-use-v2/TEAMS_BACKEND_TECHNICAL_HANDOFF_20261029.txt before
+continuing. A real background Toyota workflow passed; later idle inspections
+returned DOM_TIMEOUT_INSPECT while the broker stayed connected. Reliability
+remains PARTIAL. Freezing is suspected, not confirmed by a fresh lifecycle flag.
+Wake recovery is UNINSTALLED WIP preserved outside the deliverable source.
+The user prefers a solution without an extension and requested a technical
+handoff. Do not claim the original cloud agent independently tested this route.
+
 ## Verified per-tab Teams DOM backend — 2026-10-29
 
 The extension_dom provider is installed in the approved Toyota Work11 Edge

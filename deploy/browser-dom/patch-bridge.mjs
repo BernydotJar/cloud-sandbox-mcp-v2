@@ -12,7 +12,30 @@ export function patchDOMBridge(source){
       }
       if(req.url==='/v2/browser/tabs'&&input.browser==='edge'&&domBroker.enabled){
         validateDiscoveryRequest(input);
-        const data=await domTabs.discover(input);reply(res,200,{ok:true,data});return;
+        let domData=null,domError=null,nativeData=null;
+        try{domData=await domTabs.discover(input);}catch(error){domError=/^DOM_[A-Z_]+$/.test(error?.message||'')?error.message:'DOM_DISCOVERY_UNAVAILABLE';}
+        // A matching approved Teams tab never depends on native discovery.
+        if(input.title&&domData?.tabs.length){reply(res,200,{ok:true,data:domData});return;}
+        try{
+          const state=await nativeHandler('state',input.browser);
+          nativeData=nativeDiscoveryFallback(input.browser,state,input,dynamicTabs,allowedOrigins,'NATIVE_FIRST');
+        }catch{
+          if(typeof backgroundTabs!=='undefined')try{nativeData=await backgroundTabs.discover(input);}catch{/* Preserve independent DOM availability. */}
+        }
+        if(!nativeData){
+          if(domData?.tabs.length){reply(res,200,{ok:true,data:{...domData,native_discovery_available:false}});return;}
+          throw Error(domError||'NATIVE_DISCOVERY_UNAVAILABLE');
+        }
+        // Never expose a native Teams alternative from another profile when
+        // the approved DOM profile is disconnected or does not match.
+        nativeData.tabs=(nativeData.tabs||[]).filter(tab=>{try{return new URL(tab.url).origin!=='https://teams.cloud.microsoft';}catch{return false;}});
+        if(typeof backgroundTabs!=='undefined'&&nativeData.provider==='native')nativeData=await backgroundTabs.augment(nativeData);
+        const domRows=domData?.tabs||[],nativeRows=nativeData.tabs;
+        let data;
+        if(domRows.length&&nativeRows.length)data={browser:'edge',provider:'mixed',semantic_available:false,inspection_mode:'mixed',extension_dom:domTabs.status(),tabs:[...domRows.map(tab=>({...tab,provider:'extension_dom',semantic_available:true})),...nativeRows.map(tab=>({...tab,provider:nativeData.provider,semantic_available:false}))],next_step:'Select the actual per-tab provider. Teams DOM refs use browser_inspect/action. Other origins retain their existing native targets; they are not DOM.'};
+        else if(domRows.length)data=domData;
+        else data={...nativeData,extension_dom:{...domTabs.status(),...(domError?{error:domError}:{})},next_step:nativeData.next_step+'; Teams requires the approved connected DOM profile, never a different native Teams profile.'};
+        reply(res,200,{ok:true,data});return;
       }
       if(req.url==='/v2/browser/reload'||(['/v2/browser/inspect','/v2/browser/action'].includes(req.url)&&domTabs.has(input.tab_ref))){
         if(!domTabs.has(input.tab_ref))throw Error('DOM_TAB_STALE');
