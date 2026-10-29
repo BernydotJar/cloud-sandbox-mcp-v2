@@ -1,5 +1,10 @@
+export function patchBackgroundErrors(source){
+ const anchor="allowedErrors.has(error?.message) ? error.message : 'NATIVE_UNAVAILABLE'";
+ if(source.split(anchor).length!==2)throw Error('BACKGROUND_ERROR_ANCHOR_UNKNOWN');
+ return source.replace(anchor,"(allowedErrors.has(error?.message) || /^(?:SAME_MAC_|BACKGROUND_)[A-Z_]{3,80}$/.test(error?.message||'')) ? error.message : 'NATIVE_UNAVAILABLE'");
+}
 export function patchBackgroundBridge(source) {
- if(source.includes("import {backgroundBrowserRequest}"))throw Error('BACKGROUND_ALREADY_PATCHED');
+ if(source.includes("from './background-browser.mjs'"))throw Error('BACKGROUND_ALREADY_PATCHED');
  const marker="      // A native screenshot can activate Edge/Chrome just like a click:";
  const fallback="      const args = verifyTarget(input,allowedOrigins,dynamicTabs,";
  const anchor=source.includes(marker)?marker:fallback;
@@ -9,7 +14,7 @@ export function patchBackgroundBridge(source) {
         busy=true;
         try {
           const data=await backgroundBrowserRequest(req.url.slice('/v1/background/'.length),input,{
-            validate:(target,mutate)=>verifyTarget(target,allowedOrigins,dynamicTabs,mutate),
+            validate:(target,mutate)=>verifyBackgroundTarget(target,allowedOrigins,dynamicTabs,mutate),
             inspect:(...args)=>nativeHandler('inspect',...args),sessionStore,audit:auditHandler
           });
           reply(res,200,{ok:true,data});return;
@@ -18,15 +23,21 @@ export function patchBackgroundBridge(source) {
 `;
  const routes="'/v2/browser/screenshot','/v2/browser/action','/v2/browser/open'].includes(req.url)";
  if(source.split(routes).length!==2)throw Error('BACKGROUND_ROUTE_ANCHOR_UNKNOWN');
- return "import {backgroundBrowserRequest} from './background-browser.mjs';\n"+source.replace(anchor,branch+anchor).replace(routes,"'/v2/browser/screenshot','/v2/browser/action','/v2/browser/open',\n          '/v1/background/status','/v1/background/windows','/v1/background/snapshot','/v1/background/action'].includes(req.url)");
+ return patchBackgroundErrors("import {backgroundBrowserRequest,verifyBackgroundTarget} from './background-browser.mjs';\n"+source.replace(anchor,branch+anchor).replace(routes,"'/v2/browser/screenshot','/v2/browser/action','/v2/browser/open',\n          '/v1/background/status','/v1/background/windows','/v1/background/snapshot','/v1/background/action'].includes(req.url)"));
 }
 
+export function patchBackgroundDiscovery(source){
+ const anchor="throw new RuntimeFault('NATIVE_DISCOVERY_UNAVAILABLE'); }";
+ if(source.split(anchor).length!==2)throw Error('BACKGROUND_DISCOVERY_ANCHOR_UNKNOWN');
+ return source.replace(anchor,"try{result=await backgroundTabs.discover(input);}catch{throw new RuntimeFault('NATIVE_DISCOVERY_UNAVAILABLE');} }")
+  .replace('            result=nativeDiscoveryFallback(input.browser,nativeState,input,dynamicTabs,allowedOrigins,','            if(nativeState)result=nativeDiscoveryFallback(input.browser,nativeState,input,dynamicTabs,allowedOrigins,');
+}
 export function patchBackgroundTabs(source) {
  if(source.includes("import {BackgroundBrowserTabs}"))throw Error('BACKGROUND_TABS_ALREADY_PATCHED');
  const anchor='  const server = http.createServer(async (req, res) => {';
  if(source.split(anchor).length!==2)throw Error('BACKGROUND_TABS_FACTORY_ANCHOR');
  const init=`  const backgroundTabs=new BackgroundBrowserTabs((route,input)=>backgroundBrowserRequest(route,input,{
-    validate:(target,mutate)=>verifyTarget(target,allowedOrigins,dynamicTabs,mutate),
+    validate:(target,mutate)=>verifyBackgroundTarget(target,allowedOrigins,dynamicTabs,mutate),
     inspect:(...args)=>nativeHandler('inspect',...args),sessionStore,audit:auditHandler
   }));
 `;
@@ -43,5 +54,5 @@ export function patchBackgroundTabs(source) {
 `;
  const reply='        reply(res,200,{ok:true,data:result}); return;';
  if(!source.includes(reply))throw Error('BACKGROUND_TABS_REPLY_ANCHOR');
- return "import {BackgroundBrowserTabs} from './background-browser-tabs.mjs';\n"+source.replace(anchor,init+anchor).replace(route,branch+route).replace(reply,'        if(result?.provider===\'native\')result=await backgroundTabs.augment(result);\n'+reply);
+ return patchBackgroundDiscovery("import {BackgroundBrowserTabs} from './background-browser-tabs.mjs';\n"+source.replace(anchor,init+anchor).replace(route,branch+route).replace(reply,'        if(result?.provider===\'native\')result=await backgroundTabs.augment(result);\n'+reply));
 }

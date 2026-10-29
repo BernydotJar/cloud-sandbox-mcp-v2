@@ -36,3 +36,16 @@ test('background permission errors are visible instead of silently suggesting fo
  assert.match(result.background_ax_notice,/not permission for foreground input/);
  assert.equal(f.calls.length,0);
 });
+test('AX discovery creates usable opaque references without invented native indices',async()=>{
+ const calls=[];
+ const adapter=new BackgroundBrowserTabs(async(route,body)=>{
+  calls.push([route,body]);
+  if(route==='discover')return {tabs:[{title:'Own chat',url:'https://teams.example.test/',window_title:'Own chat - Microsoft Edge'}]};
+  if(route==='windows')return {windows:['Own chat - Microsoft Edge']};
+  return {revision:'a'.repeat(64),nodes:[],frontmost_unchanged:true};
+ });
+ const result=await adapter.discover({browser:'edge',title:'Own chat',exact:true});
+ assert.equal(result.discovery_backend,'same_mac_background_ax');assert.equal(result.tabs[0].native_target,undefined);
+ const state=await adapter.inspect({browser:'edge',tab_ref:result.tabs[0].background_ax.tab_ref});
+ assert.equal(state.ax_semantic_available,true);assert.equal(calls.at(-1)[1].window_index,undefined);
+});

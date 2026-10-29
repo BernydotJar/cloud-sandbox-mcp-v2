@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {setTimeout as sleep} from 'node:timers/promises';
 import {machineDigest,platformUuidFromIoreg} from './identity.mjs';
 
 const allowedRole={
@@ -71,8 +72,20 @@ export function createLedger(filename,{persist=true}={}){
     }
   };
 }
+export function readNativeProcessReply(run){
+  let output;
+  try{output=run();}catch(error){
+    let code='FAILED';
+    try{const reply=JSON.parse(String(error.stdout||''));if(/^[A-Z_]{3,55}$/.test(reply.error))code=reply.error;}catch{/* Never expose stderr, program paths or input. */}
+    throw Error('SAME_MAC_NATIVE_'+code);
+  }
+  const response=JSON.parse(output);
+  if(response.ok!==true)throw Error(/^[A-Z_]{3,55}$/.test(response.error||'')?'SAME_MAC_NATIVE_'+response.error:'SAME_MAC_AX_NATIVE_FAILED');
+  return response.data;
+}
 export function readNativeHealth({runner,textRunner,processTextEnabled=false}){
-  const ax=runner({operation:'health'}).ax_permission===true;
+  const native=runner({operation:'health'});
+  const ax=native.ax_permission===true;
   let processText=false;
   if(ax&&processTextEnabled){
     try{
@@ -80,7 +93,7 @@ export function readNativeHealth({runner,textRunner,processTextEnabled=false}){
       processText=h.ax_permission===true&&h.post_event_access===true;
     }catch{/* Ordinary AX remains available if only the text helper is unavailable. */}
   }
-  return {ax_permission:ax,process_text_ready:processText};
+  return {ax_permission:ax,process_text_ready:processText,...(native.resident===true?{native_resident:true}:{})};
 }
 export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[],
   machineDigest:machineId,expectedMachineDigest:expectedMachineId,
@@ -92,22 +105,23 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
      !Array.isArray(pressBundles)||pressBundles.some(b=>!allowedBundles.includes(b)))
     throw Error('SAME_MAC_CONFIG_INVALID');
   const refs=new Map();
+  let nativeResident=false;
   let currentAxPermission=axPermission;
   let currentProcessTextEnabled=processTextEnabled;
   function ready(){
     if(healthProbe){
       try {
         const health=healthProbe();
-        currentAxPermission=health?.ax_permission===true;
+        currentAxPermission=health?.ax_permission===true;nativeResident=health?.native_resident===true;
         currentProcessTextEnabled=processTextEnabled&&currentAxPermission&&health?.process_text_ready===true;
-      }catch{currentAxPermission=false;currentProcessTextEnabled=false;}
+      }catch{currentAxPermission=false;currentProcessTextEnabled=false;nativeResident=false;}
     }
     return guiSession===true&&currentAxPermission===true;
   }
   function status(){
     return {...noRecord(),same_machine_verified:true,
       mac_machine_digest:machineId,
-      ready:ready(),gui_session:guiSession,ax_permission:currentAxPermission,
+      ready:ready(),native_backend:nativeResident?'resident_ax':'unverified',gui_session:guiSession,ax_permission:currentAxPermission,
       background_scope:currentProcessTextEnabled?'AX_WITH_CERTIFIED_PROCESS_TEXT':'AX_SEMANTIC_ONLY',
       simulated_keyboard:currentProcessTextEnabled,process_scoped_keyboard:currentProcessTextEnabled,
       focus_preservation:'checked_before_after_not_universal_guarantee',
@@ -129,6 +143,17 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
     const raw=runner({operation:'windows',bundle_id:input.bundle_id,window_title:'discovery'});
     if(!raw||!Array.isArray(raw.windows)||raw.windows.length>50||raw.windows.some(t=>typeof t!=='string'||t.length>300)||raw.frontmost_unchanged!==true)throw Error('SAME_MAC_AX_INVALID_WINDOWS');
     return {...noRecord(),windows:raw.windows,frontmost_unchanged:true};
+  }
+  function identity(input){
+    if(!ready())throw Error('SAME_MAC_AX_NOT_READY');
+    const target=validateTarget(input);
+    if(!['com.microsoft.edgemac','com.google.Chrome'].includes(target.bundle_id))throw Error('SAME_MAC_TARGET_DENIED');
+    const raw=runner({operation:'identity',...target});
+    let url;try{url=new URL(raw.browser_url);}catch{throw Error('SAME_MAC_AX_INVALID_IDENTITY');}
+    if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash||
+       url.href!==raw.browser_url||raw.window_title!==target.window_title||raw.frontmost_unchanged!==true)
+      throw Error('SAME_MAC_AX_INVALID_IDENTITY');
+    return {...noRecord(),browser_url:url.href,document_title:typeof raw.document_title==='string'?raw.document_title.slice(0,300):'',window_title:target.window_title,frontmost_unchanged:true};
   }
   function snapshot(input){
     if(!ready())throw Error('SAME_MAC_AX_NOT_READY');
@@ -208,12 +233,13 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
         frontmost_unchanged:true,request_id:input.request_id,
         ...(result.input_backend==='process_unicode'?{input_backend:result.input_backend,global_event_posts:0}:{}),
         persistence:'UNVERIFIED_REQUIRE_READBACK'};
-    }catch{
-      ledger.append({...base,state:'failed'});
+    }catch(error){
+      const code=/^SAME_MAC_[A-Z_]{3,80}$/.test(error?.message||'')?error.message:'SAME_MAC_NATIVE_UNAVAILABLE';
+      ledger.append({...base,state:'failed',error_code:code});
       throw Error('SAME_MAC_AX_ACTION_UNCERTAIN_INSPECT_BEFORE_RETRY');
     }
   }
-  return {status,windows,snapshot,action};
+  return {status,windows,identity,snapshot,action};
 }
 export function createServer(worker,token){
   if(typeof token!=='string'||token.length<32)throw Error('SAME_MAC_TOKEN_INVALID');
@@ -246,6 +272,7 @@ export function createServer(worker,token){
       const actions={
         '/v1/status':()=>worker.status(),
         '/v1/windows':()=>worker.windows(body),
+        '/v1/identity':()=>worker.identity(body),
         '/v1/snapshot':()=>worker.snapshot(body),
         '/v1/action':()=>worker.action(body)
       };
@@ -267,7 +294,7 @@ function localIdentity(){
     {encoding:'utf8',timeout:5000,maxBuffer:12000});
   return machineDigest(platformUuidFromIoreg(info));
 }
-function main(){
+async function main(){
   if(process.platform!=='darwin'||process.argv.length!==3||
      process.argv[2]!=='--serve')
     throw Error('SAME_MAC_SERVICE_DARWIN_ONLY');
@@ -287,31 +314,38 @@ function main(){
   if(cfg.machine_digest!==machineId)throw Error('SAME_MAC_IDENTITY_MISMATCH');
   if(cfg.port!==9779)throw Error('SAME_MAC_INVALID_PORT');
   const binary=path.join(home,'bin','SameMacAX');
-  const runBinary=(program,request)=>{
-    const output=execFileSync(program,[],{input:JSON.stringify(request),encoding:'utf8',timeout:12000,maxBuffer:150000,stdio:['pipe','pipe','pipe']});
-    const response=JSON.parse(output);if(response.ok!==true)throw Error('SAME_MAC_AX_NATIVE_FAILED');return response.data;
+  const runBinary=(program,request)=>readNativeProcessReply(()=>
+    execFileSync(program,program===binary?['--client']:[],{input:JSON.stringify(request),encoding:'utf8',timeout:12000,maxBuffer:150000,stdio:['pipe','pipe','pipe']}));
+  let listening=false,stopping=false;
+  const startNative=()=>{
+    const child=spawn(binary,['--worker'],{stdio:'ignore'});
+    child.once('error',()=>process.exit(2));
+    child.once('exit',()=>{if(listening&&!stopping)process.exit(2);});
+    return child;
   };
+  let nativeWorker=startNative();
+  const stopNative=()=>{stopping=true;nativeWorker.kill('SIGTERM');};
+  process.once('exit',stopNative);
+  process.once('SIGTERM',()=>{stopNative();process.exit(0);});
+  process.once('SIGINT',()=>{stopNative();process.exit(0);});
+  for(let attempt=0;attempt<24;attempt++){
+    try{const h=runBinary(binary,{operation:'health'});if(h.resident===true&&h.worker_parent_pid===process.pid){listening=true;break;}}catch{/* Bounded startup; no GUI actions or permission changes. */}
+    await sleep(150);
+    if(nativeWorker.exitCode!==null)nativeWorker=startNative();
+  }
+  if(!listening)throw Error('SAME_MAC_RESIDENT_WORKER_UNAVAILABLE');
   const runner=request=>{
-    if(request.text_method==='process_unicode') {
+    if(request.text_method==='process_unicode'){
       if(cfg.process_text_enabled!==true)throw Error('SAME_MAC_PROCESS_TEXT_NOT_CERTIFIED');
       runBinary(binary,{...request,operation:'validate_text'});
-      return runBinary(path.join(home,'bin','BackgroundProcessText'),request);
+      return runBinary(binary,{...request,operation:'process_text'});
     }
-    let output;
-    try { output=execFileSync(binary,[],{input:JSON.stringify(request),encoding:'utf8',timeout:12000,maxBuffer:150000,stdio:['pipe','pipe','pipe']}); }
-    catch(error) {
-      let code='FAILED';
-      try { const reply=JSON.parse(String(error.stdout||'')); if(/^[A-Z_]{3,70}$/.test(reply.error))code=reply.error; } catch { /* Keep diagnostics content-free. */ }
-      throw Error('SAME_MAC_NATIVE_'+code);
-    }
-    const response=JSON.parse(output);
-    if(response.ok!==true)throw Error('SAME_MAC_AX_NATIVE_FAILED');
-    return response.data;
+    return runBinary(binary,request);
   };
   // TCC and the responsible Node binary can change after startup (e.g. brew
   // cleanup removes a running Cellar executable). Never cache permission as ready.
   const healthProbe=()=>readNativeHealth({runner,
-    textRunner:()=>runBinary(path.join(home,'bin','BackgroundProcessText'),{operation:'health'}),
+    textRunner:()=>runBinary(binary,{operation:'health'}),
     processTextEnabled:cfg.process_text_enabled===true});
   let aqua=false;
   try{
@@ -330,9 +364,8 @@ function main(){
   });
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  try{main();}
-  catch(error){
+  main().catch(error=>{
     process.stderr.write('[Same Mac AX] STOP='+String(error?.message||'UNKNOWN')+'\n');
-    process.exitCode=2;
-  }
+    process.exit(2);
+  });
 }

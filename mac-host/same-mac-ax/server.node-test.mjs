@@ -134,3 +134,18 @@ test('authenticated local HTTP refuses missing token and accepts same-Mac status
     assert.equal(value.result.data.background_scope,'AX_SEMANTIC_ONLY');
   }finally{await new Promise(done=>server.close(done));h.clean();}
 });
+test('browser identity strips no security checks and does not invalidate snapshot node references',()=>{
+ const machine='a'.repeat(64),browser='com.microsoft.edgemac',title='Test - Microsoft Edge';
+ const worker=createSameMacWorker({ledger:{get:()=>undefined,append:()=>{}},allowedBundles:[browser],machineDigest:machine,expectedMachineDigest:machine,
+  runner:r=>r.operation==='identity'?{browser_url:'https://example.test/',window_title:title,frontmost_unchanged:true}:raw});
+ assert.equal(worker.identity({bundle_id:browser,window_title:title}).browser_url,'https://example.test/');
+ const bad=createSameMacWorker({ledger:{get:()=>undefined,append:()=>{}},allowedBundles:[browser],machineDigest:machine,expectedMachineDigest:machine,
+  runner:()=>({browser_url:'https://user:secret@example.test/?token=x',window_title:title,frontmost_unchanged:true})});
+ assert.throws(()=>bad.identity({bundle_id:browser,window_title:title}),/INVALID_IDENTITY/);
+});
+test('writable textarea metadata does not certify actual Teams editor commits',()=>{
+ const machine='a'.repeat(64);const worker=createSameMacWorker({ledger:{get:()=>undefined,append:()=>{}},allowedBundles:['com.microsoft.edgemac'],machineDigest:machine,expectedMachineDigest:machine,processTextEnabled:true,
+  runner:()=>({...raw,nodes:[{...raw.nodes[0],role:'AXTextArea',value_settable:true}]})});
+ const snapshot=worker.snapshot({bundle_id:'com.microsoft.edgemac',window_title:'Own chat'});
+ assert.equal(snapshot.nodes[0].fill_backend,'process_unicode');
+});

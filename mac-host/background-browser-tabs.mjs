@@ -3,8 +3,18 @@ const roles={button:['AXButton'],link:['AXLink'],textbox:['AXTextArea','AXTextFi
 export class BackgroundBrowserTabs {
  constructor(request){this.request=request;this.tabs=new Map();this.used=new Set();}
  has(ref){return this.tabs.has(ref);}
+ async discover(input){
+  const data=await this.request('discover',input);
+  const tabs=data.tabs.map(row=>{
+   const ref='tab_'+crypto.randomBytes(16).toString('hex');
+   this.tabs.set(ref,{target:{browser:input.browser,expected_title:row.title,expected_url:row.url,window_title:row.window_title},revision:1,expires:Date.now()+300000,last:null});
+   return {title:row.title,url:row.url,active:true,background_ax:{tab_ref:ref,revision:1,provider:'same_mac_background_ax',inspection_mode:'native_ax',background_only:true}};
+  });
+  return {browser:input.browser,provider:'native',discovery_backend:'same_mac_background_ax',semantic_available:false,running:true,launch_available:false,tabs,background_ax_available:tabs.length>0,
+   next_step:'Use background_ax.tab_ref with browser_inspect/browser_action. AX discovery has no native window/tab indices; foreground actions are unavailable on this target.'};
+ }
  async augment(result) {
-  if(result.provider!=='native'||!Array.isArray(result.tabs))return result;
+  if(result.provider!=='native'||result.discovery_backend==='same_mac_background_ax'||!Array.isArray(result.tabs))return result;
   let windows;
   try {windows=(await this.request('windows',{browser:result.browser})).windows;}
   catch(error){return {...result,background_ax_available:false,
@@ -42,7 +52,7 @@ export class BackgroundBrowserTabs {
   const found=tab.last.nodes.filter(n=>n.enabled&&n.name===input.locator.name&&(input.locator.by!=='role'||roles[input.locator.role]?.includes(n.role)));
   if(found.length!==1)throw Error('BACKGROUND_CONTROL_NOT_UNIQUE');
   const node=found[0];this.used.add(id);
-  const result=await this.request('action',{...tab.target,action:input.action==='fill'?'set_value':'press',node_ref:node.node_ref,expected_revision:tab.last.revision,request_id:id,session_id:input.session_id,reason:'User-authorized background browser AX '+input.action,...(input.action==='fill'?{value:input.value,...(node.fill_backend==='process_unicode'?{text_method:'process_unicode'}:{})}:{})});
+  const result=await this.request('action',{...tab.target,action:input.action==='fill'?'set_value':'press',node_ref:node.node_ref,expected_revision:tab.last.revision,request_id:id,session_id:input.session_id,reason:'User-authorized background browser AX '+input.action,...(input.action==='fill'?{value:input.value,...(['process_unicode','selected_text'].includes(node.fill_backend)?{text_method:node.fill_backend}:{})}:{})});
   tab.last=null;tab.revision++;
   return {...result,provider:'same_mac_background_ax',revision:tab.revision,outcome:'dispatched',requires_readback:true};
  }

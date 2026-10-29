@@ -110,3 +110,50 @@ readiness errors. Synthetic passes do not establish live browser interaction
 or message delivery. Validate through the actual Sandbox V3 tool path, using
 an own scoped grant and a disposable self-chat marker that is read back and
 removed, with no sends or changes to existing drafts.
+
+## Backend resident AX worker
+
+The repaired backend uses a native process supervised by the existing same-Mac
+Node LaunchAgent. Private user-only Unix IPC carries bounded requests. It retains
+real AX window references for up to 15 minutes, renews leases when used, and
+invalidates a browser's references when its PID changes. The native worker exits
+when its owning Node parent disappears. No public listener, VM, browser restart,
+profile transfer, global input or focus activation is introduced.
+
+Full Chromium accessibility is requested through AXEnhancedUserInterface, with
+actual readback after Chromium's debounce. An attributeUnsupported return can
+still accompany a successful transition; real control actions and readback remain
+required. Live status probes the resident process, AX consent and the certified
+per-process text backend. Process text uses the resident worker's same verified
+window/control objects, rather than a second process rediscovering by title.
+
+AX identity reads the selected document's safe URL before snapshot/dispatch.
+It does not depend on legacy JXA inspect. If Apple Events discovery fails, the
+same existing browser_tabs tool can return AX-discovered explicit refs, with
+`discovery_backend=same_mac_background_ax` and no fabricated native indices.
+These targets support browser_inspect/browser_action only. Origin, own grant,
+revision, protected controls, anti-replay and independent readback still apply.
+A newly started worker must first acquire a window actually exposed by macOS AX;
+retention cannot invent access to a window never observed by that native process.
+
+These backend changes require Mac compilation, installation and real connector
+verification. Source tests alone do not demonstrate Teams draft persistence or
+message delivery. Consult the current shared runtime repair receipt for those
+separate outcomes, including failed attempts and any marker cleanup.
+
+The resident worker never relies on a cached NSWorkspace foreground object.
+It reads live system AX focus for every guard, using a bounded, fixed self-process
+AppKit probe when that system AX attribute is unavailable. The probe does not
+launch/activate apps, issue Apple Events or input; unknown identity blocks dispatch.
+The short error BACKGROUND_TARGET_FRONTMOST survives the existing MCP diagnostic
+length boundary. Uncertain actions retain a content-free native cause in the
+private audit, and still require readback before any further intended action.
+
+Live qualification update: native full-mode AXSetValue and AXSelectedText both
+returned dispatched but left the Teams composer at its empty-placeholder digest.
+Neither is certified as a working Teams fill backend. The advertised Teams
+backend remains process_unicode, which requires the target application behind
+another application. A per-tab DOM bridge is being prepared for the requirement
+that the operator can continue using Edge; it is not installed or live-qualified.
+The test markers from the rejected direct-setter probes were not present on
+independent readback, and no messages were sent.

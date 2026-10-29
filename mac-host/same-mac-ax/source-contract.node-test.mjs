@@ -63,3 +63,23 @@ test('acceptance runs only on a disposable same-Mac AX fixture, without syntheti
   assert.match(acceptance,/OS_KEYSTROKES_SENT/);
   assert.doesNotMatch(acceptance,/osascript|CGEvent|Modify Entry|Log Work/);
 });
+
+test('Chromium requests complete AX mode before discovering web controls without activating the browser',()=>{
+ const code=source('SameMacAX.swift');
+ assert(code.indexOf('"AXEnhancedUserInterface"')<code.indexOf('let windows=retainedWindows(root'));
+ assert(code.includes('["com.microsoft.edgemac","com.google.Chrome"].contains(bundle)'));
+ assert(code.includes('Thread.sleep(forTimeInterval:3.2)'));
+ assert(code.includes('guard frontmost()==before'));
+});
+test('resident backend keeps bounded real AX leases with parent-bound private IPC and process-only input',()=>{
+ const code=source('SameMacAX.swift');
+ for(const guard of ['--worker','--client','existing.st_uid==getuid()','S_IFSOCK','chmod(socketPath,0o600)','getppid()==parent','WindowLease','timeIntervalSince($0.touched)<900','event.postToPid(app.processIdentifier)','PROCESS_INPUT_TARGET_CHANGED_BEFORE_DISPATCH','PROCESS_CLEAR_SELECTION_NOT_VERIFIED'])assert(code.includes(guard),guard);
+ for(const forbidden of ['post(tap:','NSPasteboard','.activate(','CGEventPost('])assert(!code.includes(forbidden),forbidden);
+});
+test('resident focus checks do not trust a cached NSWorkspace foreground object',()=>{
+ const code=source('SameMacAX.swift');const guard=code.slice(code.indexOf('func frontmost()'),code.indexOf('func execute('));
+ assert(guard.includes('AXUIElementCreateSystemWide'));assert(guard.includes('freshForegroundProbe()'));
+ assert(!guard.includes('NSWorkspace.shared.frontmostApplication'));
+ assert(code.includes('task.arguments=["--foreground"]'));assert(code.includes('Date().addingTimeInterval(1)'));
+ assert(code.includes('FOREGROUND_IDENTITY_UNAVAILABLE'));
+});

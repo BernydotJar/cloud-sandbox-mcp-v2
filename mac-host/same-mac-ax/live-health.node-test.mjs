@@ -34,3 +34,9 @@ test('an unavailable text helper does not falsely revoke ordinary AX health',()=
  const result=readNativeHealth({runner:()=>({ax_permission:true}),textRunner:()=>{throw Error('ENOENT');},processTextEnabled:true});
  assert.deepEqual(result,{ax_permission:true,process_text_ready:false});
 });
+test('native text helper failures preserve a controlled code without exposing subprocess diagnostics',async()=>{
+ const {readNativeProcessReply}=await import('./server.mjs');
+ const e=Object.assign(new Error('private command stderr'),{stdout:'{"ok":false,"error":"AX_TARGET_STALE"}'});
+ assert.throws(()=>readNativeProcessReply(()=>{throw e;}),{message:'SAME_MAC_NATIVE_AX_TARGET_STALE'});
+ assert.throws(()=>readNativeProcessReply(()=>{throw Object.assign(new Error('private'),{stdout:'private text'});}),{message:'SAME_MAC_NATIVE_FAILED'});
+});
