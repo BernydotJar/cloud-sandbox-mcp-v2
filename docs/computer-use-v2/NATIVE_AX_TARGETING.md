@@ -174,3 +174,25 @@ Installed helper SHA:
 `79d441615fcdd2280a7ac5a7552740631ec153412e9f54a55ffed048ef257f13`.
 Supervisor evidence and original-client retest:
 `/workspace/_shared/evidence/toyota-sandbox-drafts-20261028/`.
+
+### Actual OS window focus guard (2026-10-28)
+
+Chromium's scripting window index and `activeTab` are insufficient proof of the
+macOS keyboard destination. The installed native helper now compares the real
+`AXFocusedWindow` title and point rectangle with the selected browser window.
+An already verified window is left alone, preserving focused controls and menus.
+Otherwise it attempts a uniquely matched AXRaise, then an exact unique Window
+menu selection. Both paths require independent OS focus readback.
+
+`computer_use_focus` reports `window_focus_verified` and a matching focused
+control; an unverified window returns `focused=false` and no unrelated field
+value. Input and screenshot bounds fail with `TARGET_AX_WINDOW_NOT_FOCUSED`
+before dispatch when this binding cannot be established. Browser title/URL
+identity checks still run independently. This is foreground native automation;
+it does not add DOM/ARIA, background isolation, or simultaneous UI ownership.
+The supervisor must not paste while another agent owns the GUI. Agent grants
+remain private to their issuing task.
+
+The interaction-only acceptance uses the original ChatGPT agent's own Sandbox V3
+session: empty Search -> z -> empty, then Chat -> Calendar -> Chat. It must not
+edit, restore, revalidate, or send the already accepted three Teams drafts.

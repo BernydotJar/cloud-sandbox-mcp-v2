@@ -10,7 +10,8 @@ function observe({role='AXTextArea',name='Type a message',value='Draft',subrole=
  const el={role:()=>role,name:()=>name,value(){reads++;return value;},
    position:()=>[100,200],size:()=>[300,60],
    attributes:{byName:key=>({value:()=>key==='AXSubrole'?subrole:''})}};
- const proc={frontmost:()=>true,attributes:{byName:()=>({value:()=>{if(unavailable)throw Error('no AX');return el;}})}};
+ const axWindow={name:()=> 'Teams - Microsoft Edge',position:()=>[10,20],size:()=>[800,600]};
+ const proc={frontmost:()=>true,attributes:{byName:key=>({value:()=>{if(unavailable)throw Error('no AX');return key==='AXFocusedWindow'?axWindow:el;}})}};
  const ctx={Application(n){if(n==='Microsoft Edge')return {running:()=>true,windows:()=>[win],activate(){activations++;}};if(n==='System Events')return {processes:{'Microsoft Edge':proc}};throw Error('Unexpected app');}};
  vm.runInNewContext(code,ctx);
  const result=JSON.parse(ctx.run(['focus','edge','1','1','https://teams.example.test/','Teams']));

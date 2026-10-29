@@ -17,7 +17,48 @@ function fail(code) { return JSON.stringify({ok: false, error: code}); }
 function ok(data) { return JSON.stringify({ok: true, data: data}); }
 
 
-function nativeFocusedControl(proc) {
+function nativeAXWindowMatches(win, title, rect) {
+  try {
+    const name=String(win.name() || '');
+    const p=win.position(),s=win.size();
+    return Boolean(title) && (name===title || name.startsWith(title+' - ')) &&
+      [Number(p[0])-rect.x,Number(p[1])-rect.y,Number(s[0])-rect.width,Number(s[1])-rect.height].every(v=>Number.isFinite(v)&&Math.abs(v)<=2);
+  } catch (_) { return false; }
+}
+function nativeTargetFocused(proc,title,rect) {
+  try { return Boolean(proc.frontmost()) && nativeAXWindowMatches(proc.attributes.byName('AXFocusedWindow').value(),title,rect); }
+  catch (_) { return false; }
+}
+function nativeWaitForTargetFocus(proc,title,rect) {
+  for(let attempt=0;attempt<8;attempt++) {
+    if(nativeTargetFocused(proc,title,rect)) return true;
+    delay(0.1);
+  }
+  return false;
+}
+function nativeEnsureTargetFocus(app,proc,target,tabIndex,title,rect) {
+  if(nativeTargetFocused(proc,title,rect)) return true;
+  target.activeTabIndex=tabIndex;
+  app.activate();
+  try {
+    const matches=proc.windows().filter(w=>nativeAXWindowMatches(w,title,rect));
+    if(matches.length===1) matches[0].actions.byName('AXRaise').perform();
+  } catch (_) {}
+  if(nativeWaitForTargetFocus(proc,title,rect)) return true;
+  // Chromium's scripting window order is not the OS key window. Select a
+  // unique exact Window-menu title only when AXRaise could not prove focus.
+  try {
+    const item=proc.menuBars[0].menuBarItems.byName('Window');
+    item.actions.byName('AXPress').perform();
+    const matches=item.menus[0].menuItems().filter(m=>String(m.name()||'')===title);
+    if(matches.length===1) matches[0].actions.byName('AXPress').perform();
+    else { try { item.menus[0].actions.byName('AXCancel').perform(); } catch (_) {} }
+  } catch (_) {}
+  return nativeWaitForTargetFocus(proc,title,rect);
+}
+
+function nativeFocusedControl(proc,title,rect) {
+  if(!nativeTargetFocused(proc,title,rect)) return {available:false,error:'TARGET_AX_WINDOW_NOT_FOCUSED'};
   try {
     const el = proc.attributes.byName('AXFocusedUIElement').value();
     const role = String(el.role() || '');
@@ -200,7 +241,7 @@ function run(argv) {
     // Before mutating a global GUI, require a single identity even when the
     // original index still matches. Two identically titled URLs in different
     // windows are not distinguishable by the current MCP input contract.
-    if ((operation === 'action' || operation === 'bounds') && !selected.rebound) {
+    if (operation === 'action' && !selected.rebound) {
       let matches=0;
       for (const candidateWindow of windows) {
         let candidates;
@@ -215,24 +256,18 @@ function run(argv) {
     const target = selected.window;
     const selectedTabIndex = selected.tab_index;
     if (operation === 'focus') {
-      // Preserve the focused control when this is already the selected front tab.
-      let p=null, already=false;
+      let p=null,verified=false,rect;
       try {
+        rect=nativeWindowBounds(target);
         p=Application('System Events').processes[apps[browser]];
-        const front=app.windows()[0];
-        already=Boolean(p.frontmost()) && !!front && tabMatches(front.activeTab()) &&
-          tabMatches(target.activeTab());
+        verified=nativeEnsureTargetFocus(app,p,target,selectedTabIndex,String(selected.tab.title()||''),rect);
       } catch (_) {}
-      if (!already) {
-        target.activeTabIndex = selectedTabIndex;
-        target.index = 1;
-        app.activate();
-      }
-      const result={focused:true,browser:browser,url:expected,
+      const result={focused:verified,window_focus_verified:verified,browser:browser,url:expected,
                     recovered_stale_index:selected.rebound};
-      try { result.window_bounds_points=nativeWindowBounds(target); } catch (_) {}
+      if(rect) result.window_bounds_points=rect;
+      try { const w=p.attributes.byName('AXFocusedWindow').value(); result.focused_window={name:String(w.name()||''),position:w.position(),size:w.size()}; } catch (_) { result.focused_window={available:false}; }
       result.mouse_event_access=nativeMouseAccess();
-      result.focused_control=p?nativeFocusedControl(p):{available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'};
+      result.focused_control=p?nativeFocusedControl(p,String(selected.tab.title()||''),rect):{available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'};
       return ok(result);
     }
     if (operation === 'inspect') {
@@ -247,17 +282,11 @@ function run(argv) {
     const systems = Application('System Events');
     const proc = systems.processes[apps[browser]];
     if (!proc.exists()) return fail('ACCESSIBILITY_PROCESS_UNAVAILABLE');
-    let sameFrontTab=false;
-    try {
-      const top=app.windows()[0];
-      sameFrontTab=Boolean(proc.frontmost()) && !!top &&
-        tabMatches(top.activeTab()) && tabMatches(target.activeTab());
-    } catch (_) { sameFrontTab=false; }
-    if (!sameFrontTab) {
-      target.activeTabIndex = selectedTabIndex;
-      target.index = 1;
-      app.activate();
-    }
+    const actualTitle=String(selected.tab.title()||'');
+    let actualRect;
+    try { actualRect=nativeWindowBounds(target); } catch (_) { return fail('INVALID_BOUNDS'); }
+    if(!nativeEnsureTargetFocus(app,proc,target,selectedTabIndex,actualTitle,actualRect))
+      return fail('TARGET_AX_WINDOW_NOT_FOCUSED');
     if (operation === 'bounds') {
       // The capture backend crops the FRONTMOST window, so refuse to return
       // a screenshot of a different tab after a focus/order race.
@@ -286,6 +315,7 @@ function run(argv) {
       const current = app.windows()[0];
       if (!current || !tabMatches(current.activeTab()) ||
           !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
+      if(!nativeTargetFocused(proc,actualTitle,region)) return fail('TARGET_AX_WINDOW_NOT_FOCUSED');
       return ok(region);
     }
     if (operation === 'action') {
@@ -297,10 +327,11 @@ function run(argv) {
       const activeWindow = refreshed[0];
       if (!activeWindow || !tabMatches(activeWindow.activeTab()) ||
           !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
+      if(!nativeTargetFocused(proc,actualTitle,actualRect)) return fail('TARGET_AX_WINDOW_NOT_FOCUSED');
       const action = String(argv[6] || '');
       if (action === 'click') {
         const x = Number(argv[7]), y = Number(argv[8]);
-        if (!Number.isInteger(x) || !Number.isInteger(y) || Math.abs(x) > 32768 || Math.abs(y) > 32768) return fail('INVALID_COORDINATES');
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 32768 || y > 32768) return fail('INVALID_COORDINATES');
         const rect=nativeWindowBounds(target);
         if(x<rect.x || y<rect.y || x>=rect.x+rect.width || y>=rect.y+rect.height) return fail('CLICK_OUTSIDE_TARGET_WINDOW');
         if(!nativeMouseAccess()) return fail('MAC_POST_EVENT_PERMISSION_REQUIRED');
@@ -308,7 +339,7 @@ function run(argv) {
       } else if (action === 'type_text') {
         const value = String(argv[7] || '');
         if (!value || value.length > 2000) return fail('INVALID_INPUT');
-        const control=nativeFocusedControl(proc);
+        const control=nativeFocusedControl(proc,actualTitle,actualRect);
         if(!control.available || !control.is_text_input || control.protected) return fail('VERIFIED_TEXT_CONTROL_REQUIRED');
         pasteNativeText(value,systems);
       } else if (action === 'press_key') {
@@ -319,7 +350,7 @@ function run(argv) {
         systems.keyCode(codes[key]);
       } else return fail('INVALID_ACTION');
       return ok({performed:true,action:action,browser:browser,
-                 recovered_stale_index:selected.rebound,input_backend:action==='click'?'quartz_mouse_event':action==='type_text'?'clipboard_paste':'system_events_key',focused_control:nativeFocusedControl(proc)});
+                 recovered_stale_index:selected.rebound,input_backend:action==='click'?'quartz_mouse_event':action==='type_text'?'clipboard_paste':'system_events_key',focused_control:nativeFocusedControl(proc,actualTitle,actualRect)});
     }
     return fail('INVALID_OPERATION');
   } catch (error) {

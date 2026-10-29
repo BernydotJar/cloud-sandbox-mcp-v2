@@ -15,6 +15,7 @@ function capture({browser='edge',rect={x:434,y:98,width:1342,height:687},changed
   }};
   const app={running:()=>true,windows:()=>moved?[other,window]:[window],activate(){activated++;}};
   const proc={exists:()=>true,frontmost:()=>true,
+    attributes:{byName:()=>({value:()=>({name:()=> 'Support - Microsoft Edge',position:()=>Array.isArray(rect)?rect.slice(0,2):[rect?.x,rect?.y],size:()=>Array.isArray(rect)?[rect[2]-rect[0],rect[3]-rect[1]]:[rect?.width,rect?.height]})})},
     windows:[{position(){axReads++;return [600,500];},size(){axReads++;return [66,20];}}]};
   const context={Application(name){
     if(name===(browser==='edge'?'Microsoft Edge':'Google Chrome'))return app;

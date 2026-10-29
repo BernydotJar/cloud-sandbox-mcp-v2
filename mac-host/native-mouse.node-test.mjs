@@ -8,7 +8,7 @@ function invoke({allowed=true,x=300,y=120,operation='action'}={}) {
  const tab={title:()=> 'Teams',url:()=> 'https://teams.example.test/'};
  const win={tabs:()=>[tab],activeTab:()=>tab,bounds:()=>({x:100,y:80,width:800,height:600})};
  const proc={exists:()=>true,frontmost:()=>true,click(){throw Error('AX click must never be the mouse backend');},
-   attributes:{byName:()=>({value:()=>{throw Error('No focused element fixture');}})}};
+   attributes:{byName:key=>({value:()=>{if(key==='AXFocusedWindow')return {name:()=> 'Teams - Microsoft Edge',position:()=>[100,80],size:()=>[800,600]};throw Error('No focused element fixture');}})}};
  const dollar={CGPreflightPostEventAccess:()=>allowed,kCGEventLeftMouseDown:1,kCGEventLeftMouseUp:2,kCGMouseButtonLeft:0,kCGHIDEventTap:0,
  CGEventCreateMouseEvent(source,type,point,button){const e={type,x:point.x,y:point.y,button};created.push(e);return e;},
  CGEventPost(tap,e){posted.push({...e,tap});}};
