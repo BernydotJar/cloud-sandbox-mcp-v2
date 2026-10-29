@@ -88,7 +88,7 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
     return {...noRecord(),same_machine_verified:true,
       mac_machine_digest:machineId,
       ready:ready(),gui_session:guiSession,ax_permission:axPermission,
-      background_scope:'AX_SEMANTIC_ONLY',
+      background_scope:processTextEnabled?'AX_WITH_CERTIFIED_PROCESS_TEXT':'AX_SEMANTIC_ONLY',
       simulated_keyboard:processTextEnabled,process_scoped_keyboard:processTextEnabled,
       focus_preservation:'checked_before_after_not_universal_guarantee',
       supported:['status','windows','snapshot','set_value',...(processTextEnabled?['process_unicode']:[]),
