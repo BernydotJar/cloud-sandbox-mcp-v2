@@ -243,6 +243,7 @@ test('screenshot of already-focused Edge does not reactivate window or close a t
  const tab={url:()=> 'https://staging.uipath.com/apps/time',title:()=> 'FinancialForce Timecards'};
  const window={
    tabs:()=>[tab],activeTab(){return tab;},
+   bounds:()=>({x:25,y:35,width:1250,height:900}),
    set activeTabIndex(value){changedTab++;},
    set index(value){raised++;}
  };
@@ -273,6 +274,7 @@ test('screenshot of inactive browser foregrounds only the exact selected window'
  const tab={url:()=> 'https://staging.uipath.com/apps/time',title:()=> 'FinancialForce Timecards'};
  const window={
    tabs:()=>[tab],activeTab(){return tab;},
+   bounds:()=>({x:25,y:35,width:1250,height:900}),
    set activeTabIndex(value){},
    set index(value){raised++;}
  };

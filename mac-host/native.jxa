@@ -161,10 +161,29 @@ function run(argv) {
       const frontmost = app.windows()[0];
       if (!frontmost || !tabMatches(frontmost.activeTab()) ||
           !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
-      const win = proc.windows[0];
-      const p = win.position();
-      const s = win.size();
-      return ok({x: Number(p[0]), y: Number(p[1]), width: Number(s[0]), height: Number(s[1])});
+      // AX windows are a separate list: index zero may be a tooltip or
+      // auxiliary window (for example 66x20 points), not this browser window.
+      // Read the rectangle from the already identity-bound browser object.
+      const bounds = target.bounds();
+      let region;
+      if (Array.isArray(bounds) && bounds.length === 4) {
+        region = {x: Number(bounds[0]), y: Number(bounds[1]),
+                  width: Number(bounds[2]) - Number(bounds[0]),
+                  height: Number(bounds[3]) - Number(bounds[1])};
+      } else if (bounds && typeof bounds === 'object' && !Array.isArray(bounds)) {
+        region = {x: Number(bounds.x), y: Number(bounds.y),
+                  width: Number(bounds.width), height: Number(bounds.height)};
+      }
+      if (!region || ![region.x,region.y,region.width,region.height].every(
+          value => Number.isFinite(value) && value >= 0) ||
+          region.width < 1 || region.height < 1 ||
+          region.width > 5000 || region.height > 4000) return fail('INVALID_BOUNDS');
+      // Reading browser properties is another Apple Event: recheck identity
+      // afterwards so a focus race cannot produce a stale capture rectangle.
+      const current = app.windows()[0];
+      if (!current || !tabMatches(current.activeTab()) ||
+          !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
+      return ok(region);
     }
     if (operation === 'action') {
       // Revalidate the visible selection immediately before the UI event.

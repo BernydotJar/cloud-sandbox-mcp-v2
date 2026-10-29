@@ -109,3 +109,23 @@ A release package is **not** proof of actual installation.
 
 **GO only after installed Mac smoke + safe benign action succeed**.
 No source-only pass is permission to write corporate timesheets.
+
+## Browser-bound screenshot region (28 October 2026)
+
+The native capture driver now reads bounds from the browser window already
+selected by exact tab title and sanitized URL. It must not read
+`System Events.process.windows[0]`: that separate AX list can put a tooltip
+or auxiliary window first. A 66 by 20 point auxiliary window produces a
+132 by 40 pixel image on a Retina display, even when tab discovery is correct.
+Both object and four-coordinate rectangle representations are normalized,
+invalid bounds fail closed, and the active tab is checked again after the
+property read. The regression fixture fails on the old implementation and
+passes for Chrome and Edge. This does not add AX/DOM control identity or
+change the coordinate-action contract.
+
+For the installed Mac helper, preserve its exact baseline and change only
+the bounds block. The bridge spawns `osascript ... native.jxa` on every call,
+so a validated atomic helper replacement needs no bridge/browser restart.
+Record before/after hashes, own no active delegation, keep a private backup,
+compile on macOS, then obtain an independent Sandbox client capture. A full
+screenshot still does not verify a Teams recipient, draft or sent message.
