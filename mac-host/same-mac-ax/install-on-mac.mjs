@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {launchAgentNodePath} from './launchd-runtime.mjs';
 /**
  * Install a native background AX agent on THIS SAME Mac only.
  * Uses a private per-user LaunchAgent; never restarts browsers/Bridge,
@@ -19,7 +20,7 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const home=path.join(os.homedir(),'Library/Application Support/LCH/SameMacBackgroundAX');
 const agent=path.join(os.homedir(),'Library/LaunchAgents/com.lch.same-mac-ax.plist');
 const bundle='com.lch.SameMacAXFixture';
-const required=['SameMacAX.swift','SameMacAXFixture.swift','BackgroundProcessText.swift','server.mjs','identity.mjs'];
+const required=['SameMacAX.swift','SameMacAXFixture.swift','BackgroundProcessText.swift','server.mjs','identity.mjs','launchd-runtime.mjs'];
 const log=(k,v)=>console.log('[Same Mac Background AX] '+k+'='+String(v));
 const sha=v=>crypto.createHash('sha256').update(v).digest('hex');
 const machine=()=>machineDigest(platformUuidFromIoreg(
@@ -132,7 +133,7 @@ async function install(){
       crypto.randomBytes(48).toString('hex')+'\n',{flag:'wx',mode:0o600});
     const launchDir=path.dirname(agent);
     fs.mkdirSync(launchDir,{recursive:true,mode:0o700});
-    const program=[process.execPath,path.join(home,'server.mjs'),'--serve'];
+    const program=[launchAgentNodePath(),path.join(home,'server.mjs'),'--serve'];
     const xmlValue=v=>v.replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const plist='<?xml version="1.0" encoding="UTF-8"?>\n'+

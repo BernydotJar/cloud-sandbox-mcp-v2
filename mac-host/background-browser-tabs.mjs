@@ -6,7 +6,10 @@ export class BackgroundBrowserTabs {
  async augment(result) {
   if(result.provider!=='native'||!Array.isArray(result.tabs))return result;
   let windows;
-  try {windows=(await this.request('windows',{browser:result.browser})).windows;}catch{return result;}
+  try {windows=(await this.request('windows',{browser:result.browser})).windows;}
+  catch(error){return {...result,background_ax_available:false,
+   background_ax_error:/^SAME_MAC_[A-Z_]{3,80}$/.test(error?.message||'')?error.message:'BACKGROUND_AX_UNAVAILABLE',
+   background_ax_notice:'Background AX unavailable. This is not permission for foreground input. Repair actual AX readiness before background mutations.'};}
   const tabs=result.tabs.map(tab=>{
    const matching=windows.filter(w=>w===tab.title||w.startsWith(tab.title+' - '));
    if(matching.length!==1)return tab;

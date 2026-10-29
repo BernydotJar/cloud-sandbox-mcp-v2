@@ -71,9 +71,20 @@ export function createLedger(filename,{persist=true}={}){
     }
   };
 }
+export function readNativeHealth({runner,textRunner,processTextEnabled=false}){
+  const ax=runner({operation:'health'}).ax_permission===true;
+  let processText=false;
+  if(ax&&processTextEnabled){
+    try{
+      const h=textRunner();
+      processText=h.ax_permission===true&&h.post_event_access===true;
+    }catch{/* Ordinary AX remains available if only the text helper is unavailable. */}
+  }
+  return {ax_permission:ax,process_text_ready:processText};
+}
 export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[],
   machineDigest:machineId,expectedMachineDigest:expectedMachineId,
-  now=()=>Date.now(),guiSession=true,axPermission=true,processTextEnabled=false}){
+  now=()=>Date.now(),guiSession=true,axPermission=true,processTextEnabled=false,healthProbe=null}){
   if(typeof runner!=='function'||!ledger||
      !hex.test(machineId)||machineId!==expectedMachineId||
      !Array.isArray(allowedBundles)||!allowedBundles.length||
@@ -81,17 +92,26 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
      !Array.isArray(pressBundles)||pressBundles.some(b=>!allowedBundles.includes(b)))
     throw Error('SAME_MAC_CONFIG_INVALID');
   const refs=new Map();
+  let currentAxPermission=axPermission;
+  let currentProcessTextEnabled=processTextEnabled;
   function ready(){
-    return guiSession===true&&axPermission===true;
+    if(healthProbe){
+      try {
+        const health=healthProbe();
+        currentAxPermission=health?.ax_permission===true;
+        currentProcessTextEnabled=processTextEnabled&&currentAxPermission&&health?.process_text_ready===true;
+      }catch{currentAxPermission=false;currentProcessTextEnabled=false;}
+    }
+    return guiSession===true&&currentAxPermission===true;
   }
   function status(){
     return {...noRecord(),same_machine_verified:true,
       mac_machine_digest:machineId,
-      ready:ready(),gui_session:guiSession,ax_permission:axPermission,
-      background_scope:processTextEnabled?'AX_WITH_CERTIFIED_PROCESS_TEXT':'AX_SEMANTIC_ONLY',
-      simulated_keyboard:processTextEnabled,process_scoped_keyboard:processTextEnabled,
+      ready:ready(),gui_session:guiSession,ax_permission:currentAxPermission,
+      background_scope:currentProcessTextEnabled?'AX_WITH_CERTIFIED_PROCESS_TEXT':'AX_SEMANTIC_ONLY',
+      simulated_keyboard:currentProcessTextEnabled,process_scoped_keyboard:currentProcessTextEnabled,
       focus_preservation:'checked_before_after_not_universal_guarantee',
-      supported:['status','windows','snapshot','set_value',...(processTextEnabled?['process_unicode']:[]),
+      supported:['status','windows','snapshot','set_value',...(currentProcessTextEnabled?['process_unicode']:[]),
         ...(pressBundles.length?['press_certified']:[])],
       allowed_bundle_count:allowedBundles.length};
   }
@@ -138,7 +158,7 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
         expires:now()+30_000,used:false});
       entries.push({node_ref:ref,role:node.role,
         name:node.name,enabled:node.enabled,
-        ...(processTextEnabled&&target.bundle_id==='com.microsoft.edgemac'&&node.role==='AXTextArea'?{fill_backend:'process_unicode'}:{}),
+        ...(currentProcessTextEnabled&&target.bundle_id==='com.microsoft.edgemac'&&node.role==='AXTextArea'?{fill_backend:'process_unicode'}:{}),
         ...(typeof node.press_available==='boolean'?{press_available:node.press_available}:{}),
         ...(value?{value_observation:value}:{})});
     }
@@ -168,7 +188,7 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
     if(input.action==='press'&&ref.node.role==='AXRow'&&ref.node.press_available!==true)throw Error('SAME_MAC_AX_ACTION_UNSUPPORTED');
     if(input.action==='press'&&!pressBundles.includes(target.bundle_id))
       throw Error('SAME_MAC_AX_PRESS_NOT_CERTIFIED');
-    if(input.text_method==='process_unicode'&&(!processTextEnabled||target.bundle_id!=='com.microsoft.edgemac'||ref.node.role!=='AXTextArea'))throw Error('SAME_MAC_PROCESS_TEXT_NOT_CERTIFIED');
+    if(input.text_method==='process_unicode'&&(!currentProcessTextEnabled||target.bundle_id!=='com.microsoft.edgemac'||ref.node.role!=='AXTextArea'))throw Error('SAME_MAC_PROCESS_TEXT_NOT_CERTIFIED');
     // Record intent before any action, then mark the one-shot reference used.
     // A crash or ambiguous result is never automatically replayed.
     const base={request_id:input.request_id,
@@ -288,26 +308,22 @@ function main(){
     if(response.ok!==true)throw Error('SAME_MAC_AX_NATIVE_FAILED');
     return response.data;
   };
-  // Read actual TCC status of the stable compiled helper. Never prompt
-  // for permissions or activate an application on startup.
-  let axPermission=false;
-  try{axPermission=runner({operation:'health'}).ax_permission===true;}
-  catch{axPermission=false;}
+  // TCC and the responsible Node binary can change after startup (e.g. brew
+  // cleanup removes a running Cellar executable). Never cache permission as ready.
+  const healthProbe=()=>readNativeHealth({runner,
+    textRunner:()=>runBinary(path.join(home,'bin','BackgroundProcessText'),{operation:'health'}),
+    processTextEnabled:cfg.process_text_enabled===true});
   let aqua=false;
   try{
     aqua=execFileSync('/bin/launchctl',['managername'],
       {encoding:'utf8',timeout:4000}).trim()==='Aqua';
   }catch{/* fail closed */}
-  let processReady=false;
-  if(cfg.process_text_enabled===true) {
-    try {const health=runBinary(path.join(home,'bin','BackgroundProcessText'),{operation:'health'});processReady=health.ax_permission===true&&health.post_event_access===true;} catch {/* Never prompt for permissions or fall back to global input. */}
-  }
   const worker=createSameMacWorker({
     runner,ledger:createLedger(path.join(home,'audit.jsonl')),
     allowedBundles:cfg.allowed_bundles,
     pressBundles:cfg.press_certified_bundles||[],
     machineDigest:machineId,expectedMachineDigest:cfg.machine_digest,
-    guiSession:aqua,axPermission,processTextEnabled:processReady
+    guiSession:aqua,axPermission:false,processTextEnabled:cfg.process_text_enabled===true,healthProbe
   });
   createServer(worker,token).listen(9779,'127.0.0.1',()=>{
     process.stdout.write('[Same Mac AX] LOOPBACK_READY=YES\n');

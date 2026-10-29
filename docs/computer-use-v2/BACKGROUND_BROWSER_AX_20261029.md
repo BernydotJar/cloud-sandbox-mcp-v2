@@ -78,3 +78,35 @@ and supports explicit `--certify-process-text com.microsoft.edgemac` after a
 real app compatibility test. Source, installed hashes, live smoke and fixture
 acceptance are separate evidence. The live pilot result is in the shared
 Toyota evidence directory as `background-interaction-result.json`.
+
+## Runtime repair after Homebrew Node upgrade (2026-10-29)
+
+A live incident exposed two separate failures: launchd still ran deleted
+`Cellar/node/26.5.0/bin/node` processes after an upgrade, and the AX service
+reported the startup permission value even after native helper calls returned
+permission denied. Reusing a connected listener did not establish usable Edge
+access. Reloading the two existing services against the verified current Node
+restored native Edge discovery. The new executable's AX consent remains an OS
+boundary, and must be checked separately from Apple Events discovery.
+
+Installers and the AX repair command now select the existing Homebrew `opt`
+link only when it resolves to the exact executing Node. They never select a
+different runtime, upgrade Node or transfer macOS permissions. Future upgrades
+may still require macOS consent for the updated executable. No TCC database
+writes, reset, browser restart, profile migration or cookie transfer is allowed.
+
+The installed AX service must probe the compiled helpers on each status/read/
+action instead of caching permission at startup. AX permission and certified
+process-text permission are measured independently; denied/failed probes clear
+the advertised readiness and block dispatch. Restored permission is recognized
+without restarting the service. Native tab discovery now exposes an explicit
+`background_ax_error` when AX is unavailable, rather than silently presenting
+foreground guidance as the remaining background path.
+
+Regression coverage: a removed Cellar target with stable launchd link; mismatched
+runtime rejection; permission loss/restoration while the service stays alive;
+process text unavailable while ordinary AX stays ready; explicit background
+readiness errors. Synthetic passes do not establish live browser interaction
+or message delivery. Validate through the actual Sandbox V3 tool path, using
+an own scoped grant and a disposable self-chat marker that is read back and
+removed, with no sends or changes to existing drafts.

@@ -1,3 +1,4 @@
+import {launchAgentNodePath} from '../mac-host/same-mac-ax/launchd-runtime.mjs';
 /** Mac LaunchAgent setup. Run after enabling COMPUTER_USE_ENABLED in .env.
  * The LaunchAgent reads .env at runtime; no credentials appear in its plist.
  */
@@ -24,7 +25,7 @@ const plist = [
   '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
   '<plist version="1.0"><dict>',
   '<key>Label</key>',v('com.lch.cloud-sandbox.computer-use'),
-  '<key>ProgramArguments</key><array>',v(process.execPath),v(path.join(root,'mac-host','bridge.mjs')),'</array>',
+  '<key>ProgramArguments</key><array>',v(launchAgentNodePath()),v(path.join(root,'mac-host','bridge.mjs')),'</array>',
   '<key>WorkingDirectory</key>',v(root),
   '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>',
   '<key>StandardOutPath</key>',v(log),

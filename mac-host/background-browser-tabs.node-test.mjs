@@ -29,3 +29,10 @@ test('request replay stays blocked across freshly discovered references in same 
 test('keys and test IDs cannot trigger an implicit global input fallback',async()=>{
  const f=fixture();const p=await prepare(f);await assert.rejects(f.adapter.perform({browser:'edge',tab_ref:p.tab_ref,expected_revision:p.s.revision,action:'press',key:'Enter',locator:{by:'label',name:'Type a message'}}),/ACTION_UNSUPPORTED/);assert(!f.calls.some(c=>c[0]==='action'));
 });
+test('background permission errors are visible instead of silently suggesting foreground fallback',async()=>{
+ const f=fixture();f.adapter.request=async()=>{throw Error('SAME_MAC_AX_NOT_READY');};
+ const result=await f.adapter.augment(f.discovered);
+ assert.equal(result.background_ax_available,false);assert.equal(result.background_ax_error,'SAME_MAC_AX_NOT_READY');
+ assert.match(result.background_ax_notice,/not permission for foreground input/);
+ assert.equal(f.calls.length,0);
+});

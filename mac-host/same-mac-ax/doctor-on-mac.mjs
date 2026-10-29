@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {launchAgentNodePath} from './launchd-runtime.mjs';
 /**
  * This SAME Mac only; inspect (read-only), or explicit repair of this
  * application's own user LaunchAgent. Never touch the Browser Bridge,
@@ -194,7 +195,7 @@ async function repair({token,job}){
     return current;
   }
   originalReleaseIntegrity();
-  const node=process.execPath;
+  const node=launchAgentNodePath();
   const version=exec(node,['--version']);
   if(version.status!==0)throw Error('NODE_RUNTIME_UNAVAILABLE');
   const syntax=exec(node,['--check',service]);
