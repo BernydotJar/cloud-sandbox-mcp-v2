@@ -1,3 +1,12 @@
+## Live update — 2026-10-29
+
+The existing Mac now passed the disposable fixture and a real Toyota Teams
+background interaction smoke through Sandbox V3. Read
+[Background browser AX](./BACKGROUND_BROWSER_AX_20261029.md) for the current
+explicit-ref workflow, certified per-process text backend and limits. This
+update supersedes historical source-only/background-provider availability
+statements below; it does not claim an isolated desktop or universal app support.
+
 # Architecture correction: native background CUA on this same Mac
 
 **Decision 2026-10-26.** The operator explicitly rejected a VM, another Mac, and external APFS storage for background native Computer Use. The previous architecture recommendation was wrong. Do not propose isolated hardware again as a prerequisite for this P0.

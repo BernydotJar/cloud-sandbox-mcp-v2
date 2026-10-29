@@ -9,12 +9,12 @@ import {machineDigest,platformUuidFromIoreg} from './identity.mjs';
 
 const allowedRole={
   set_value:new Set(['AXTextField','AXTextArea','AXComboBox']),
-  press:new Set(['AXButton','AXLink','AXCheckBox','AXRadioButton','AXPopUpButton','AXMenuItem'])
+  press:new Set(['AXButton','AXLink','AXCheckBox','AXRadioButton','AXPopUpButton','AXMenuItem','AXRow'])
 };
 const sha=v=>crypto.createHash('sha256').update(v).digest('hex');
 const hex=/^[a-f0-9]{64}$/;
 const bundleRegex=/^[a-zA-Z0-9.-]{8,120}$/;
-const allowedProps=new Set(['kind','value','has_value']);
+const allowedProps=new Set(['kind','value','has_value','length','sha256']);
 const noRecord=()=>({provider:'same_mac_background_ax',
   no_global_keystrokes:true,no_pointer_events:true,
   no_activate_calls:true,not_isolated_session:true});
@@ -32,6 +32,8 @@ export function validObservation(v,role){
   if(v.kind==='boolean'&&['AXCheckBox','AXRadioButton'].includes(role)&&
     typeof v.value==='boolean'&&v.has_value===undefined)
     return {kind:v.kind,value:v.value};
+  if(v.kind==='text_digest'&&typeof v.sha256==='string'&&hex.test(v.sha256)&&Number.isInteger(v.length)&&v.length>0&&v.length<=10000000&&v.has_value===true&&v.value===undefined)
+    return {kind:v.kind,length:v.length,sha256:v.sha256,has_value:true};
   if(v.kind==='empty'&&v.value===undefined&&v.has_value===false)
     return {kind:v.kind,has_value:false};
   if(v.kind==='redacted'&&v.value===undefined&&v.has_value===true)
@@ -71,7 +73,7 @@ export function createLedger(filename,{persist=true}={}){
 }
 export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[],
   machineDigest:machineId,expectedMachineDigest:expectedMachineId,
-  now=()=>Date.now(),guiSession=true,axPermission=true}){
+  now=()=>Date.now(),guiSession=true,axPermission=true,processTextEnabled=false}){
   if(typeof runner!=='function'||!ledger||
      !hex.test(machineId)||machineId!==expectedMachineId||
      !Array.isArray(allowedBundles)||!allowedBundles.length||
@@ -87,9 +89,9 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
       mac_machine_digest:machineId,
       ready:ready(),gui_session:guiSession,ax_permission:axPermission,
       background_scope:'AX_SEMANTIC_ONLY',
-      simulated_keyboard:false,
+      simulated_keyboard:processTextEnabled,process_scoped_keyboard:processTextEnabled,
       focus_preservation:'checked_before_after_not_universal_guarantee',
-      supported:['status','snapshot','set_value',
+      supported:['status','windows','snapshot','set_value',...(processTextEnabled?['process_unicode']:[]),
         ...(pressBundles.length?['press_certified']:[])],
       allowed_bundle_count:allowedBundles.length};
   }
@@ -100,6 +102,13 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
        input.window_title.length>120)
       throw Error('SAME_MAC_TARGET_DENIED');
     return {bundle_id:input.bundle_id,window_title:input.window_title};
+  }
+  function windows(input){
+    if(!ready())throw Error('SAME_MAC_AX_NOT_READY');
+    if(!input||!allowedBundles.includes(input.bundle_id))throw Error('SAME_MAC_TARGET_DENIED');
+    const raw=runner({operation:'windows',bundle_id:input.bundle_id,window_title:'discovery'});
+    if(!raw||!Array.isArray(raw.windows)||raw.windows.length>50||raw.windows.some(t=>typeof t!=='string'||t.length>300)||raw.frontmost_unchanged!==true)throw Error('SAME_MAC_AX_INVALID_WINDOWS');
+    return {...noRecord(),windows:raw.windows,frontmost_unchanged:true};
   }
   function snapshot(input){
     if(!ready())throw Error('SAME_MAC_AX_NOT_READY');
@@ -113,7 +122,7 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
     const seen=new Set();
     const entries=[];
     for(const node of raw.nodes){
-      if(!node||!Array.isArray(node.path)||node.path.length>10||
+      if(!node||!Array.isArray(node.path)||node.path.length>30||
          node.path.some(i=>!Number.isInteger(i)||i<0||i>=120)||
          !hex.test(node.fingerprint)||typeof node.name!=='string'||
          node.name.length>120||typeof node.role!=='string'||
@@ -129,6 +138,8 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
         expires:now()+30_000,used:false});
       entries.push({node_ref:ref,role:node.role,
         name:node.name,enabled:node.enabled,
+        ...(processTextEnabled&&target.bundle_id==='com.microsoft.edgemac'&&node.role==='AXTextArea'?{fill_backend:'process_unicode'}:{}),
+        ...(typeof node.press_available==='boolean'?{press_available:node.press_available}:{}),
         ...(value?{value_observation:value}:{})});
     }
     return {...noRecord(),revision:raw.revision,
@@ -152,11 +163,12 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
     if(!allowedRole[input.action].has(ref.node.role))
       throw Error('SAME_MAC_AX_ACTION_UNSUPPORTED');
     if(input.action==='set_value'&&
-       (typeof input.value!=='string'||input.value.length<1||
-        input.value.length>2000))
+       (typeof input.value!=='string'||input.value.length>2000))
       throw Error('SAME_MAC_AX_VALUE_INVALID');
+    if(input.action==='press'&&ref.node.role==='AXRow'&&ref.node.press_available!==true)throw Error('SAME_MAC_AX_ACTION_UNSUPPORTED');
     if(input.action==='press'&&!pressBundles.includes(target.bundle_id))
       throw Error('SAME_MAC_AX_PRESS_NOT_CERTIFIED');
+    if(input.text_method==='process_unicode'&&(!processTextEnabled||target.bundle_id!=='com.microsoft.edgemac'||ref.node.role!=='AXTextArea'))throw Error('SAME_MAC_PROCESS_TEXT_NOT_CERTIFIED');
     // Record intent before any action, then mark the one-shot reference used.
     // A crash or ambiguous result is never automatically replayed.
     const base={request_id:input.request_id,
@@ -168,19 +180,20 @@ export function createSameMacWorker({runner,ledger,allowedBundles,pressBundles=[
       const result=runner({operation:input.action,...target,
         expected_revision:ref.revision,path:ref.node.path,
         fingerprint:ref.node.fingerprint,
-        ...(input.action==='press'?{allow_press:true}:{value:input.value})});
+        ...(input.action==='press'?{allow_press:true}:{value:input.value,...(input.text_method==='process_unicode'?{text_method:'process_unicode',expected_text:ref.node.value_observation}:{}),...(input.text_method==='selected_text'?{text_method:'selected_text'}:{}),...(input.focus_element===true?{focus_element:true}:{})})});
       if(result?.dispatched!==true||result.frontmost_unchanged!==true)
         throw Error('SAME_MAC_AX_DISPATCH_UNCERTAIN');
       ledger.append({...base,state:'dispatched'});
       return {...noRecord(),dispatched:true,
         frontmost_unchanged:true,request_id:input.request_id,
+        ...(result.input_backend==='process_unicode'?{input_backend:result.input_backend,global_event_posts:0}:{}),
         persistence:'UNVERIFIED_REQUIRE_READBACK'};
     }catch{
       ledger.append({...base,state:'failed'});
       throw Error('SAME_MAC_AX_ACTION_UNCERTAIN_INSPECT_BEFORE_RETRY');
     }
   }
-  return {status,snapshot,action};
+  return {status,windows,snapshot,action};
 }
 export function createServer(worker,token){
   if(typeof token!=='string'||token.length<32)throw Error('SAME_MAC_TOKEN_INVALID');
@@ -212,6 +225,7 @@ export function createServer(worker,token){
       const body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');
       const actions={
         '/v1/status':()=>worker.status(),
+        '/v1/windows':()=>worker.windows(body),
         '/v1/snapshot':()=>worker.snapshot(body),
         '/v1/action':()=>worker.action(body)
       };
@@ -253,10 +267,23 @@ function main(){
   if(cfg.machine_digest!==machineId)throw Error('SAME_MAC_IDENTITY_MISMATCH');
   if(cfg.port!==9779)throw Error('SAME_MAC_INVALID_PORT');
   const binary=path.join(home,'bin','SameMacAX');
+  const runBinary=(program,request)=>{
+    const output=execFileSync(program,[],{input:JSON.stringify(request),encoding:'utf8',timeout:12000,maxBuffer:150000,stdio:['pipe','pipe','pipe']});
+    const response=JSON.parse(output);if(response.ok!==true)throw Error('SAME_MAC_AX_NATIVE_FAILED');return response.data;
+  };
   const runner=request=>{
-    const output=execFileSync(binary,[],{input:JSON.stringify(request),
-      encoding:'utf8',timeout:12000,maxBuffer:150000,
-      stdio:['pipe','pipe','pipe']});
+    if(request.text_method==='process_unicode') {
+      if(cfg.process_text_enabled!==true)throw Error('SAME_MAC_PROCESS_TEXT_NOT_CERTIFIED');
+      runBinary(binary,{...request,operation:'validate_text'});
+      return runBinary(path.join(home,'bin','BackgroundProcessText'),request);
+    }
+    let output;
+    try { output=execFileSync(binary,[],{input:JSON.stringify(request),encoding:'utf8',timeout:12000,maxBuffer:150000,stdio:['pipe','pipe','pipe']}); }
+    catch(error) {
+      let code='FAILED';
+      try { const reply=JSON.parse(String(error.stdout||'')); if(/^[A-Z_]{3,70}$/.test(reply.error))code=reply.error; } catch { /* Keep diagnostics content-free. */ }
+      throw Error('SAME_MAC_NATIVE_'+code);
+    }
     const response=JSON.parse(output);
     if(response.ok!==true)throw Error('SAME_MAC_AX_NATIVE_FAILED');
     return response.data;
@@ -271,12 +298,16 @@ function main(){
     aqua=execFileSync('/bin/launchctl',['managername'],
       {encoding:'utf8',timeout:4000}).trim()==='Aqua';
   }catch{/* fail closed */}
+  let processReady=false;
+  if(cfg.process_text_enabled===true) {
+    try {const health=runBinary(path.join(home,'bin','BackgroundProcessText'),{operation:'health'});processReady=health.ax_permission===true&&health.post_event_access===true;} catch {/* Never prompt for permissions or fall back to global input. */}
+  }
   const worker=createSameMacWorker({
     runner,ledger:createLedger(path.join(home,'audit.jsonl')),
     allowedBundles:cfg.allowed_bundles,
     pressBundles:cfg.press_certified_bundles||[],
     machineDigest:machineId,expectedMachineDigest:cfg.machine_digest,
-    guiSession:aqua,axPermission
+    guiSession:aqua,axPermission,processTextEnabled:processReady
   });
   createServer(worker,token).listen(9779,'127.0.0.1',()=>{
     process.stdout.write('[Same Mac AX] LOOPBACK_READY=YES\n');

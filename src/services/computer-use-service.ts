@@ -68,6 +68,11 @@ export class ComputerUseService {
   constructor(private readonly config: Pick<AppConfig,
     'COMPUTER_USE_ENABLED' | 'COMPUTER_USE_BRIDGE_URL' | 'COMPUTER_USE_BRIDGE_TOKEN'>) {}
 
+  async backgroundRequest(route:string,input:unknown) {
+    if(!['status','windows','snapshot','action'].includes(route))throw Error('BACKGROUND_ROUTE_DENIED');
+    return this.request('/v1/background/'+route,input);
+  }
+
   async status() {
     if (!this.config.COMPUTER_USE_ENABLED) {
       return { enabled: false, connected: false, reason: 'Operator has not enabled native Computer Use.' };

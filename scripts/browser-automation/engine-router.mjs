@@ -120,6 +120,19 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
     if(background && backgroundMode==='isolated')
       return unavailable('BACKGROUND_PERSONAL_BROWSER_NOT_ISOLATED',
         'An attached personal Mac tab is not an isolated background session. Use headless Playwright with a separately authorized isolated profile.');
+    if(background && backgroundMode==='focus_preserving' && task.background_ax_approved===true &&
+       task.explicitly_requested_mac_session===true && ['chrome','edge'].includes(browser) &&
+       capabilities.same_mac_background_ax_available===true &&
+       capabilities.same_mac_background_ax_live_verified===true &&
+       capabilities.same_mac_background_ax_tab_ref_present===true) {
+      if(task.requires_dom===true)return unavailable('BACKGROUND_DOM_PROVIDER_REQUIRED','Native AX is not DOM/ARIA.');
+      return chosen('same_mac_background_ax','VERIFIED_SAME_MAC_BACKGROUND_AX',
+        'Use the explicitly selected, live-verified native AX background reference and certified per-process text backend.',
+        {browser,context,requires_authorization:true,background_mode:'focus_preserving',
+         focus_impact:'os_focus_not_required',fully_isolated:false,semantic_evidence:false,ax_semantic_evidence:true,
+         prerequisites:['fresh_background_ax_ref_and_revision','own_browser_grant','allowlisted_origin','verified_control_and_value_fingerprint'],
+         evidence:['before_state','independent_readback','unchanged_foreground','audit_receipt']});
+    }
     if(background && (capabilities.browser_provider!=='persistent' ||
         !bool(capabilities.browser_semantic_available) ||
         !bool(capabilities.browser_tab_ref_present) ||

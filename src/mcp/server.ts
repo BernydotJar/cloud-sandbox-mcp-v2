@@ -1,3 +1,4 @@
+import {registerBackgroundBrowserTools} from './background-browser-tools.js';
 import { registerBrowserRuntimeTools } from './browser-runtime-tools.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
@@ -329,5 +330,6 @@ export function createMcpServer(service: WorkspaceService,
       annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
     },async(input)=>await safely(()=>sameMacAX.action(input)));
   }
+  if(computer)registerBackgroundBrowserTools(server,computer);
   return server;
 }

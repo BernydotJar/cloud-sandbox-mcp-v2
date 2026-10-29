@@ -1,3 +1,10 @@
+## Live update — 2026-10-29
+
+Fixture and real Teams self-chat background tests passed. The operative
+workflow is documented in `docs/computer-use-v2/BACKGROUND_BROWSER_AX_20261029.md`.
+Existing source-only status below is historical. Process-targeted text is a
+separate, explicitly enabled helper; pure AX remains free of global input.
+
 ## Repair: installation PASS followed by fetch failed (2026-10-26)
 
 The first on-Mac run of v1 reported Swift compilation PASS, user LaunchAgent

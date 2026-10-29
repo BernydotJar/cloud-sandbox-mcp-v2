@@ -79,7 +79,7 @@ func observation(_ item: AXUIElement, _ role: String,
        let number=Double(trimmed), number<=168 {
         return ["kind":"hours_numeric","value":trimmed,"has_value":true]
     }
-    return ["kind":"redacted","has_value":true]
+    return ["kind":"text_digest","length":string.utf16.count,"sha256":sha(string),"has_value":true]
 }
 struct AXEntry {
     let item: AXUIElement
@@ -90,12 +90,17 @@ struct AXEntry {
     let value: [String:Any]?
     var fingerprint: String {
         let kind=value?["kind"] as? String ?? ""
-        let observed=value?["value"].map{String(describing:$0)} ?? ""
+        let observed=value?["value"].map{String(describing:$0)} ?? value?["sha256"] as? String ?? ""
         return sha("\(path.map(String.init).joined(separator:"."))|\(role)|\(name)|\(active)|\(kind)|\(observed)")
+    }
+    var pressAvailable: Bool {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(item,&names) == .success else {return false}
+        return (names as? [String] ?? []).contains(kAXPressAction)
     }
     var record: [String:Any] {
         var result: [String:Any]=["path":path,"role":role,
-            "name":name,"enabled":active,"fingerprint":fingerprint]
+            "name":name,"enabled":active,"fingerprint":fingerprint,"press_available":pressAvailable]
         if let value=value {result["value_observation"]=value}
         return result
     }
@@ -112,7 +117,7 @@ func snapshot(_ root:AXUIElement) -> [AXEntry] {
         let title=label(item)
         rows.append(AXEntry(item:item,path:path,role:role,name:title,
             active:enabled(item),value:observation(item,role,title)))
-        if path.count>=10 {continue}
+        if path.count>=30 {continue}
         for (index,child) in children(item).prefix(120).enumerated() {
             if queue.count>=1200 {break}
             queue.append((child,path+[index]))
@@ -134,20 +139,24 @@ func main() {
             "global_input":false,"requires_foreground":false]])
     }
     guard AXIsProcessTrusted() else {fail("AX_PERMISSION_DENIED")}
-    guard ["snapshot","set_value","press"].contains(operation),
+    guard ["windows","snapshot","validate_text","set_value","press"].contains(operation),
        let bundle=request["bundle_id"] as? String,
        bundle.count>=8 && bundle.count<=120 &&
        bundle.range(of:"^[A-Za-z0-9.-]+$",options:.regularExpression) != nil,
        let windowTitle=request["window_title"] as? String,
        !windowTitle.isEmpty && windowTitle.count<=120 else {fail("INVALID_TARGET")}
     let before=frontmost()
-    guard before != bundle else {fail("TARGET_IS_FRONTMOST_USE_FOREGROUND_MODE")}
+    guard before != bundle || operation=="windows" else {fail("TARGET_IS_FRONTMOST_USE_FOREGROUND_MODE")}
     let apps=NSRunningApplication.runningApplications(withBundleIdentifier:bundle)
         .filter{!$0.isTerminated}
     guard apps.count==1,let app=apps.first else {fail("APP_INSTANCE_NOT_UNIQUE")}
     let root=AXUIElementCreateApplication(app.processIdentifier)
     AXUIElementSetMessagingTimeout(root,3)
     let windows=(ax(root,kAXWindowsAttribute) as? [AXUIElement]) ?? []
+    if operation=="windows" {
+        guard frontmost()==before else {fail("FOREGROUND_CHANGED_DURING_AX_READ")}
+        respond(["ok":true,"data":["windows":windows.prefix(50).map{text($0,kAXTitleAttribute)},"frontmost_unchanged":true]])
+    }
     let matches=windows.filter{text($0,kAXTitleAttribute)==windowTitle}
     guard matches.count==1,let window=matches.first else {
         fail("WINDOW_NOT_UNIQUE_OR_AX_UNAVAILABLE")
@@ -163,27 +172,43 @@ func main() {
     guard let expected=request["expected_revision"] as? String,
         expected==revision,
         let targetPath=request["path"] as? [Int],
-        targetPath.count<=10 &&
+        targetPath.count<=30 &&
         targetPath.allSatisfy({$0>=0 && $0<120}),
         let fingerprint=request["fingerprint"] as? String,
         let target=entries.first(where:{$0.path==targetPath}),
         target.fingerprint==fingerprint,target.active,
         !isProtected(target.item) else {fail("AX_TARGET_STALE")}
+    if operation=="validate_text" {respond(["ok":true,"data":["validated":true,"frontmost_unchanged":true]])}
     if operation=="set_value" {
         guard ["AXTextField","AXTextArea","AXComboBox"].contains(target.role),
             let value=request["value"] as? String,
-            !value.isEmpty && value.count<=2000 else {fail("AX_VALUE_INVALID")}
+            value.count<=2000 else {fail("AX_VALUE_INVALID")}
         var writable: DarwinBoolean=false
         guard AXUIElementIsAttributeSettable(target.item,
             kAXValueAttribute as CFString,&writable) == .success &&
             writable.boolValue else {fail("AX_VALUE_NOT_SETTABLE")}
-        guard AXUIElementSetAttributeValue(target.item,
-            kAXValueAttribute as CFString,value as CFTypeRef) == .success
-        else {fail("AX_SET_VALUE_FAILED")}
+        if request["focus_element"] as? Bool == true {
+            var focusWritable: DarwinBoolean=false
+            guard AXUIElementIsAttributeSettable(target.item,kAXFocusedAttribute as CFString,&focusWritable) == .success && focusWritable.boolValue else {fail("AX_ELEMENT_FOCUS_UNSUPPORTED")}
+            guard AXUIElementSetAttributeValue(target.item,kAXFocusedAttribute as CFString,kCFBooleanTrue) == .success else {fail("AX_ELEMENT_FOCUS_FAILED")}
+            guard frontmost()==before else {fail("FOREGROUND_CHANGED_BY_TARGET_APP")}
+        }
+        if request["text_method"] as? String == "selected_text" {
+            let count=(ax(target.item,kAXNumberOfCharactersAttribute) as? NSNumber)?.intValue ?? 0
+            var range=CFRange(location:0,length:count)
+            guard let rangeValue=AXValueCreate(.cfRange,&range),
+                AXUIElementSetAttributeValue(target.item,kAXSelectedTextRangeAttribute as CFString,rangeValue) == .success else {fail("AX_SELECTION_UNSUPPORTED")}
+            guard frontmost()==before else {fail("FOREGROUND_CHANGED_BY_TARGET_APP")}
+            guard AXUIElementSetAttributeValue(target.item,kAXSelectedTextAttribute as CFString,value as CFTypeRef) == .success else {fail("AX_REPLACE_TEXT_FAILED")}
+        } else {
+            guard AXUIElementSetAttributeValue(target.item,
+                kAXValueAttribute as CFString,value as CFTypeRef) == .success
+            else {fail("AX_SET_VALUE_FAILED")}
+        }
     } else {
         guard request["allow_press"] as? Bool == true,
             ["AXButton","AXLink","AXCheckBox","AXRadioButton",
-             "AXPopUpButton","AXMenuItem"].contains(target.role)
+             "AXPopUpButton","AXMenuItem","AXRow"].contains(target.role) && target.pressAvailable
         else {fail("AX_PRESS_NOT_CERTIFIED")}
         guard AXUIElementPerformAction(target.item,kAXPressAction as CFString)
            == .success else {fail("AX_PRESS_FAILED")}

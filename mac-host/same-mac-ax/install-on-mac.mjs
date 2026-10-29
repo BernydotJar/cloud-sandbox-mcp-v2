@@ -19,7 +19,7 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const home=path.join(os.homedir(),'Library/Application Support/LCH/SameMacBackgroundAX');
 const agent=path.join(os.homedir(),'Library/LaunchAgents/com.lch.same-mac-ax.plist');
 const bundle='com.lch.SameMacAXFixture';
-const required=['SameMacAX.swift','SameMacAXFixture.swift','server.mjs','identity.mjs'];
+const required=['SameMacAX.swift','SameMacAXFixture.swift','BackgroundProcessText.swift','server.mjs','identity.mjs'];
 const log=(k,v)=>console.log('[Same Mac Background AX] '+k+'='+String(v));
 const sha=v=>crypto.createHash('sha256').update(v).digest('hex');
 const machine=()=>machineDigest(platformUuidFromIoreg(
@@ -80,6 +80,7 @@ function inspected(){
   try{
     compile(stage,'SameMacAX.swift');
     compile(stage,'SameMacAXFixture.swift');
+    compile(stage,'BackgroundProcessText.swift');
     log('NATIVE_SWIFT_SOURCE','TYPECHECK_PASS');
   }finally{fs.rmSync(stage,{recursive:true,force:true});}
   log('INSTALLED',fs.existsSync(path.join(home,'config.json'))?'YES':'NO');
@@ -98,6 +99,7 @@ async function install(){
   try{
     compile(stage,'SameMacAX.swift','SameMacAX');
     compile(stage,'SameMacAXFixture.swift','SameMacAXFixture');
+    compile(stage,'BackgroundProcessText.swift','BackgroundProcessText');
     fs.mkdirSync(home,{recursive:true,mode:0o700});
     const bin=path.join(home,'bin');
     fs.mkdirSync(bin,{mode:0o700});
@@ -108,6 +110,7 @@ async function install(){
     }
     fs.writeFileSync(path.join(bin,'SameMacAX'),
       fs.readFileSync(path.join(stage,'SameMacAX')),{flag:'wx',mode:0o700});
+    fs.writeFileSync(path.join(bin,'BackgroundProcessText'),fs.readFileSync(path.join(stage,'BackgroundProcessText')),{flag:'wx',mode:0o700});
     const fixture=path.join(home,'SameMacAXFixture.app','Contents');
     fs.mkdirSync(path.join(fixture,'MacOS'),{recursive:true,mode:0o700});
     fs.writeFileSync(path.join(fixture,'MacOS','SameMacAXFixture'),
@@ -122,7 +125,7 @@ async function install(){
       '<key>LSUIElement</key><true/></dict></plist>';
     fs.writeFileSync(path.join(fixture,'Info.plist'),info,{flag:'wx',mode:0o600});
     const config={machine_digest:machineId,port:9779,
-      allowed_bundles:[bundle],press_certified_bundles:[bundle]};
+      allowed_bundles:[bundle],press_certified_bundles:[bundle],process_text_enabled:false};
     fs.writeFileSync(path.join(home,'config.json'),JSON.stringify(config,null,2)+'\n',
       {flag:'wx',mode:0o600});
     fs.writeFileSync(path.join(home,'token'),
@@ -211,6 +214,10 @@ function configure(mode,bundleName){
   if(mode==='--allow-app'){
     if(!cfg.allowed_bundles.includes(bundleName))
       cfg.allowed_bundles.push(bundleName);
+  }else if(mode==='--certify-process-text'){
+    if(bundleName!=='com.microsoft.edgemac'||!cfg.allowed_bundles.includes(bundleName))throw Error('PROCESS_TEXT_APP_NOT_ALLOWED');
+    if(!fs.existsSync(path.join(home,'bin','BackgroundProcessText')))throw Error('PROCESS_TEXT_BINARY_NOT_INSTALLED');
+    cfg.process_text_enabled=true;
   }else{
     if(!cfg.allowed_bundles.includes(bundleName))
       throw Error('ALLOW_APP_BEFORE_PRESS');
@@ -224,12 +231,12 @@ function configure(mode,bundleName){
     fs.renameSync(temp,configFile);
   }finally{if(fs.existsSync(temp))fs.unlinkSync(temp);}
   restartService();
-  log('APP_CAPABILITY_UPDATED',mode==='--allow-app'?'AX_OBSERVE_AND_SET':'AX_PRESS_CERTIFIED');
+  log('APP_CAPABILITY_UPDATED',mode==='--allow-app'?'AX_OBSERVE_AND_SET':mode==='--certify-process-text'?'PROCESS_TEXT_CERTIFIED':'AX_PRESS_CERTIFIED');
   log('APP_BUNDLE',bundleName);
 }
 async function main(){
   const mode=process.argv[2];
-  if((mode==='--allow-app'||mode==='--certify-press') &&
+  if((mode==='--allow-app'||mode==='--certify-press'||mode==='--certify-process-text') &&
      process.argv.length===4){
     configure(mode,process.argv[3]);return;
   }

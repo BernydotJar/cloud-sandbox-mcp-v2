@@ -86,6 +86,11 @@ export function evaluateAgentPlan({task,capabilities,plan}={}) {
       !exactBrowserTarget(task,plan))
       return block('FRESH_UNIQUE_BROWSER_TARGET_REQUIRED',decision.engine,
         ['exact_browser','exact_sanitized_url','exact_title','fresh_window_and_tab_index','unique_tab_match']);
+    if(decision.engine==='same_mac_background_ax' &&
+       (typeof plan.background_tab_ref!=='string'||!/^tab_[a-f0-9]{32}$/.test(plan.background_tab_ref)||
+        !Number.isInteger(plan.background_revision)||plan.background_revision<1||
+        plan.ax_control_identity_verified!==true))
+      return block('FRESH_BACKGROUND_AX_CONTROL_REQUIRED',decision.engine,['background_ax_ref','revision','verified_control']);
     if(plan.delegated_session_ownership==='another_agent')
       return block('ACTIVE_OTHER_AGENT_SESSION',decision.engine);
     const uiAction=plan.operation!=='inspect' && plan.operation!=='run_qa';
