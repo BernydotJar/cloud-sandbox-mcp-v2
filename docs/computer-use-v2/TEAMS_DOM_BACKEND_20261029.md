@@ -1,4 +1,4 @@
-# Teams DOM backend candidate — 29 October 2026
+# Teams DOM backend — 29 October 2026
 
 The operator requires Sandbox V3 to interact with the existing authenticated
 Toyota Edge session while continuing to use other apps/windows. The previous
@@ -31,6 +31,21 @@ are returned only as empty or digest/length. Rich edit uses the browser editing
 command and real input event, with no direct textContent write fallback.
 A nonempty rich composer cannot be overwritten with another nonempty value.
 
+Real Toyota uses CKEditor 5. Generic execCommand fired a trusted input event
+but CKEditor discarded the DOM change. The final typed editor-main.js companion
+runs as a static MAIN-world content script on the same sole Teams origin.
+It uses the documented editable.ckeditorInstance.setData API, with escaped plain
+text and no focus call. The isolated script checks the exact live node, URL,
+title and value fingerprint; the companion repeats these checks and verifies
+the matching editor root/read-only state before writing. Its page-only channel
+exposes no Chrome API, host grant, Native Messaging, arbitrary code or selectors.
+The website already controls its own editor; host authorization remains solely
+in the private broker/bridge route. MAIN-world replies do not prove persistence:
+independent DOM and reload readback are mandatory.
+
+References: https://ckeditor.com/docs/ckeditor5/latest/framework/how-tos.html
+and https://ckeditor.com/docs/ckeditor5/latest/getting-started/setup/getting-and-setting-data.html.
+
 The host still checks own grant, current origin policy and shared busy state.
 Disconnection, expiry, changed URL/control or uncertain dispatch cannot trigger
 automatic native input or mutation replay. Once configured, Edge DOM discovery
@@ -47,8 +62,20 @@ A separate operator tab stayed active and unchanged. No sends and zero calls
 to the native transport. Replaced node, changed full URL, duplicate locator,
 wrong profile/origin/grant, code drift and replay tests reject.
 
-This fixture is not real Mac Edge or Toyota Teams. Installation and live
-acceptance remain pending; do not report live capability from the fixture.
+The approved extension and backend are installed on the operator Mac, in
+Toyota Work11 only. Actual Sandbox V3 browser tools observed Toyota identity,
+self recipient and empty composer. The CKEditor model adapter filled the
+33-character marker (SHA256 b9c8737d81fbeafdf340cfd50273772d49cf841a214e779449a21be595c10167),
+read it back, reloaded and confirmed the same digest, cleared it, then reloaded
+and independently confirmed empty. Teams remained inactive with the Extensions
+tab active in Edge. No sends, Jira writes or changes to other drafts. The own
+grant was revoked. The final 0.1.1 run additionally passed while Docker (com.docker.docker) stayed
+foreground before, during and after fill/reload/clear plus Calendar/Chat
+navigation; Edge remained behind and Teams inactive. The final own grant was
+revoked. No UI or native fallback performed the tested DOM mutations.
+The generic browser fixture is additionally joined by a genuine CKEditor 49.0.1
+npm-distribution E2E (GPL fixture, bundle hash pinned), including escaped text,
+model edit, reload persistence and empty cleanup without tab activation.
 The original cloud chat has not independently exercised this backend.
 
 ## Deployment
@@ -81,6 +108,6 @@ It still requires fresh unique title/URL, exact control, own grant, allowlist
 and persistence proof plan for business writes. Disconnection must block
 rather than silently selecting a different account or native input.
 
-Checks: npm run test:browser:dom, test:browser:policy,
+Checks: npm run test:browser:dom:ckeditor, test:browser:policy,
 test:browser:reinforcement, test:mac and verify:v2. Production dependency
 findings predate this change; a source/fixture pass is not production GO.

@@ -11,7 +11,7 @@ function directory(dir,mode=0o700){if(!fs.existsSync(dir))fs.mkdirSync(dir,{mode
 function envValue(source,key,optional=false){const rows=source.split(/\r?\n/).filter(s=>s.startsWith(key+'='));if(rows.length===0&&optional)return '';if(rows.length!==1)stop('BRIDGE_SETTING_AMBIGUOUS');const v=rows[0].slice(key.length+1).trim();return /^(['"]).*\1$/.test(v)?v.slice(1,-1):v;}
 function atomic(file,bytes,mode){const tmp=file+'.dom-'+process.pid;fs.writeFileSync(tmp,bytes,{mode,flag:'wx'});fs.renameSync(tmp,file);}
 const quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
-export function verifyRelease(root){const bytes=safe(path.join(root,'release.json')).bytes;if(sha(bytes)!==safe(path.join(root,'release.sha256')).bytes.toString().trim())stop('RELEASE_MANIFEST_CHANGED');const m=JSON.parse(bytes);if(m.schema!=='sandbox-v3.teams-dom.v1'||m.baseline_sha256!==BASELINE||m.extension_id!==extensionId)stop('RELEASE_INVALID');for(const [file,hash]of Object.entries(m.files)){if(!/^[a-zA-Z0-9_./-]+$/.test(file)||file.split('/').includes('..')||path.isAbsolute(file)||safe(path.join(root,file)).hash!==hash)stop('RELEASE_FILE_CHANGED');}for(const file of ['install-on-mac.mjs','patch-bridge.mjs','payload/browser-dom/broker.mjs','payload/browser-dom/tabs.mjs','payload/native-host.mjs','extension/manifest.json','extension/worker.js','extension/content.js'])if(!m.files[file])stop('RELEASE_FILE_MISSING');return m;}
+export function verifyRelease(root){const bytes=safe(path.join(root,'release.json')).bytes;if(sha(bytes)!==safe(path.join(root,'release.sha256')).bytes.toString().trim())stop('RELEASE_MANIFEST_CHANGED');const m=JSON.parse(bytes);if(m.schema!=='sandbox-v3.teams-dom.v1'||m.baseline_sha256!==BASELINE||m.extension_id!==extensionId)stop('RELEASE_INVALID');for(const [file,hash]of Object.entries(m.files)){if(!/^[a-zA-Z0-9_./-]+$/.test(file)||file.split('/').includes('..')||path.isAbsolute(file)||safe(path.join(root,file)).hash!==hash)stop('RELEASE_FILE_CHANGED');}for(const file of ['install-on-mac.mjs','patch-bridge.mjs','payload/browser-dom/broker.mjs','payload/browser-dom/tabs.mjs','payload/native-host.mjs','extension/manifest.json','extension/worker.js','extension/content.js','extension/editor-main.js'])if(!m.files[file])stop('RELEASE_FILE_MISSING');return m;}
 async function main(){
  if(process.platform!=='darwin')stop('OPERATOR_MAC_REQUIRED');const mode=process.argv[2]||'--inspect';if(!['--inspect','--install','--rollback'].includes(mode))stop('INVALID_MODE');
  const release=path.dirname(fileURLToPath(import.meta.url));verifyRelease(release);
@@ -30,7 +30,7 @@ async function main(){
  if(mode==='--rollback'){
   const receipt=JSON.parse(safe(receiptFile,true).bytes);if(current.hash!==receipt.installed_sha256||receipt.baseline_sha256!==BASELINE)stop('ROLLBACK_CODE_DRIFT');
   const original=safe(path.join(domHome,'bridge-before.mjs'),true);if(original.hash!==BASELINE)stop('ROLLBACK_BACKUP_INVALID');
-  const allowedFiles=new Set([path.join(modules,'broker.mjs'),path.join(modules,'tabs.mjs'),path.join(domHome,'native-host.mjs'),path.join(domHome,'native-host'),nativeManifest,...['manifest.json','worker.js','content.js'].map(f=>path.join(domHome,'extension',f))]);
+  const allowedFiles=new Set([path.join(modules,'broker.mjs'),path.join(modules,'tabs.mjs'),path.join(domHome,'native-host.mjs'),path.join(domHome,'native-host'),nativeManifest,...['manifest.json','worker.js','content.js','editor-main.js'].map(f=>path.join(domHome,'extension',f))]);
   if(!receipt.owned_files||Object.keys(receipt.owned_files).length!==allowedFiles.size||sha(patchDOMBridge(original.bytes.toString()))!==receipt.installed_sha256)stop('ROLLBACK_RECEIPT_INVALID');
   for(const [file,hash]of Object.entries(receipt.owned_files))if(!allowedFiles.has(file)||safe(file).hash!==hash)stop('ROLLBACK_OWNED_FILE_CHANGED');
   await noGrant();atomic(target,original.bytes,receipt.baseline_mode);restart();await wait();
@@ -39,6 +39,16 @@ async function main(){
   const socket=path.join(domHome,'dom.sock');if(fs.existsSync(socket)){const st=fs.lstatSync(socket);if(!st.isSocket()||st.uid!==process.getuid())stop('ROLLBACK_SOCKET_UNTRUSTED');fs.unlinkSync(socket);}
   for(const dir of [modules,path.join(domHome,'extension'),domHome]){try{fs.rmdirSync(dir);}catch{/* Preserve unknown files, never recursive-delete. */}}
   process.stdout.write('ROLLBACK_PASS: original bridge restored; unload the extension from Toyota Edge.\n');return;
+ }
+ if(fs.existsSync(receiptFile)){
+  const previous=JSON.parse(safe(receiptFile,true).bytes),original=safe(path.join(domHome,'bridge-before.mjs'),true);
+  if(original.hash!==BASELINE||current.hash!==sha(patchDOMBridge(original.bytes.toString()))||current.hash!==previous.installed_sha256)stop('INSTALLED_BRIDGE_CODE_DRIFT');
+  const expected=new Map([['payload/browser-dom/broker.mjs',path.join(modules,'broker.mjs')],['payload/browser-dom/tabs.mjs',path.join(modules,'tabs.mjs')],['payload/native-host.mjs',path.join(domHome,'native-host.mjs')],...['manifest.json','worker.js','content.js','editor-main.js'].map(f=>['extension/'+f,path.join(domHome,'extension',f)])]);
+  for(const [sourceFile,targetFile]of expected)if(safe(targetFile).hash!==safe(path.join(release,sourceFile)).hash||safe(targetFile).hash!==previous.owned_files?.[targetFile])stop('INSTALLED_DOM_CODE_DRIFT');
+  const native=JSON.parse(safe(nativeManifest).bytes);if(native.name!==hostName||native.type!=='stdio'||native.path!==path.join(domHome,'native-host')||JSON.stringify(native.allowed_origins)!==JSON.stringify(['chrome-extension://'+extensionId+'/']))stop('INSTALLED_NATIVE_REGISTRATION_DRIFT');
+  for(const f of [nativeManifest,path.join(domHome,'native-host')])if(safe(f).hash!==previous.owned_files?.[f])stop('INSTALLED_HOST_CODE_DRIFT');
+  const status=await post('/v1/status');if(status.extension_dom?.enabled!==true)stop('INSTALLED_DOM_BACKEND_UNAVAILABLE');
+  process.stdout.write('ALREADY_MATCHED: installed bridge and DOM payload match this release; no files or services changed.\n');return;
  }
  if(current.hash!==BASELINE)stop('LIVE_BRIDGE_CODE_DRIFT');if(fs.existsSync(domHome)||fs.existsSync(modules)||fs.existsSync(nativeManifest))stop('DOM_INSTALLATION_ALREADY_PRESENT');
  const candidate=patchDOMBridge(current.bytes.toString());if(safe(envFile,true).hash!==env.hash)stop('BRIDGE_POLICY_CHANGED');
@@ -58,7 +68,7 @@ async function main(){
   fs.writeFileSync(path.join(domHome,'config.json'),JSON.stringify({enabled:true,extension_id:extensionId,scope})+'\n',{mode:0o600,flag:'wx'});
   for(const f of ['broker.mjs','tabs.mjs'])put(path.join(modules,f),safe(path.join(release,'payload/browser-dom',f)).bytes);
   put(path.join(domHome,'native-host.mjs'),safe(path.join(release,'payload/native-host.mjs')).bytes);
-  for(const f of ['manifest.json','worker.js','content.js'])put(path.join(domHome,'extension',f),safe(path.join(release,'extension',f)).bytes);
+  for(const f of ['manifest.json','worker.js','content.js','editor-main.js'])put(path.join(domHome,'extension',f),safe(path.join(release,'extension',f)).bytes);
   const launcher=path.join(domHome,'native-host');put(launcher,'#!/bin/sh\nexec '+quote('/opt/homebrew/opt/node/bin/node')+' '+quote(path.join(domHome,'native-host.mjs'))+' "$@"\n',0o700);
   put(nativeManifest,JSON.stringify({name:hostName,description:'Sandbox V3 paired Toyota Teams DOM transport',path:launcher,type:'stdio',allowed_origins:['chrome-extension://'+extensionId+'/']},null,2)+'\n');
   if(safe(target).hash!==BASELINE||safe(envFile,true).hash!==env.hash)stop('LIVE_CODE_OR_POLICY_CHANGED');await noGrant();

@@ -6,6 +6,12 @@
  const docId=crypto.randomUUID(),snapshots=new Map(),nodeIds=new WeakMap();
  const sha=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(b=>b.toString(16).padStart(2,'0')).join('');
  const fail=code=>{throw Error(code);};
+ const mainEditor=(el,operation,input)=>new Promise(resolve=>{
+  const id=crypto.randomUUID();let timer;const listener=event=>{if(event.source===window&&event.origin===location.origin&&event.data?.kind==='sandbox-teams-editor-response'&&event.data.id===id){globalThis.clearTimeout(timer);window.removeEventListener('message',listener);resolve(event.data.ok?event.data.data:{error:event.data.error});}};
+  window.addEventListener('message',listener);timer=globalThis.setTimeout(()=>{window.removeEventListener('message',listener);resolve({error:'DOM_EDITOR_TIMEOUT_INSPECT'});},2500);
+  window.postMessage({kind:'sandbox-teams-editor-request',version:1,id,operation,name:name(el),...input},location.origin);
+ });
+
  const visible=el=>el.isConnected&&el.getClientRects().length>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';
  const name=el=>String(el.getAttribute('aria-label')||String(el.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.textContent||'').join(' ').trim()||el.labels?.[0]?.textContent||el.getAttribute('placeholder')||el.getAttribute('data-placeholder')||el.getAttribute('title')||((el.matches('input,textarea')||el.isContentEditable||el.getAttribute('role')==='textbox')?'':el.textContent)||'').replace(/\s+/g,' ').trim().slice(0,200);
  const protectedField=el=>el.matches('input[type=password],input[type=file],input[type=hidden],[data-private]')||!!el.closest('[data-private]')||/password|passcode|one.time|\botp\b|credit.card|\bcvv\b|verification.code|access.token|secret/i.test([el.autocomplete,el.getAttribute('type'),el.getAttribute('aria-label'),el.getAttribute('name')].join(' '));
@@ -18,7 +24,7 @@
   if(el.matches('input[type=checkbox]'))return 'checkbox';
   if(el.matches('input[type=radio]'))return 'radio';return '';
  }
- function elements(){return [...new Set(document.querySelectorAll('button,a[href],input,textarea,select,[role],[contenteditable="true"],[contenteditable="plaintext-only"]'))].filter(el=>visible(el)&&!protectedField(el)&&['button','link','textbox','combobox','checkbox','radio','tab','menuitem','switch'].includes(role(el))).slice(0,500);}
+ function elements(){return [...new Set(document.querySelectorAll('button,a[href],input,textarea,select,[role],[contenteditable="true"],[contenteditable="plaintext-only"]'))].filter(el=>visible(el)&&!protectedField(el)&&['button','link','textbox','combobox','checkbox','radio','tab','menuitem','switch','treeitem'].includes(role(el))).slice(0,500);}
  const enabled=el=>!el.disabled&&el.getAttribute('aria-disabled')!=='true'&&!el.readOnly;
  const value=el=>el.isContentEditable?el.innerText:String(el.value??'');
  async function observeValue(el){const s=value(el);return s.trim()?{kind:'text_digest',length:s.length,sha256:await sha(s),has_value:true}:{kind:'empty',has_value:false};}
@@ -34,6 +40,7 @@
    let ref=nodeIds.get(el);if(!ref){ref='node_'+crypto.randomUUID();nodeIds.set(el,ref);}
    const r=role(el),n=name(el),record={node_ref:ref,role:r,name:n,enabled:enabled(el)};
    if(['textbox','combobox'].includes(r))record.value_observation=await observeValue(el);
+   if(r==='textbox'&&el.isContentEditable)record.fill_backend=(el.getAttribute('data-tid')==='ckeditor'||el.classList.contains('ck-editor__editable'))?'ckeditor5_model':'browser_edit_command';
    if(el.matches('input[type=checkbox],input[type=radio]')||el.hasAttribute('aria-checked')||el.hasAttribute('aria-selected'))record.selected=el.checked===true||el.getAttribute('aria-checked')==='true'||el.getAttribute('aria-selected')==='true';
    controls.push(record);refs.set(ref,{el,record});
   }
@@ -54,8 +61,15 @@
    if(typeof input.value!=='string'||input.value.length>2000||role(el)!=='textbox')fail('DOM_FILL_INVALID');
    if(el.isContentEditable){
     const before=value(el);if(before.trim()&&input.value)fail('DOM_NONEMPTY_REPLACE_DENIED');
+    if(el.getAttribute('data-tid')==='ckeditor'||el.classList.contains('ck-editor__editable')){
+     el.setAttribute('data-lch-dom-ref',ref);
+     const response=await mainEditor(el,'fill',{node_ref:ref,value:input.value,url_digest:current.url_digest,expected_title:current.title,expected_value:prior.record.value_observation});
+     if(response.error)fail(response.error);if(response.backend!=='ckeditor5_set_data'||response.dispatched!==true)fail('DOM_EDITOR_RESPONSE_INVALID');
+    }else{
     el.focus({preventScroll:true});const range=document.createRange();range.selectNodeContents(el);const selection=document.getSelection();selection.removeAllRanges();selection.addRange(range);
-    const ok=document.execCommand(input.value?'insertText':'delete',false,input.value);if(!ok)fail('DOM_EDIT_UNAVAILABLE_INSPECT');
+    const ok=document.execCommand(input.value?'insertText':'delete',false,input.value);
+    if(!ok)fail('DOM_EDIT_UNAVAILABLE_INSPECT');
+    }
    }else{
     const proto=el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
     const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;if(!setter)fail('DOM_FILL_UNSUPPORTED');setter.call(el,input.value);

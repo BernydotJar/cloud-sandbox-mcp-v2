@@ -22,7 +22,7 @@
     "test:qa:offscreen": "CUA_OFFSCREEN_QA=1 node scripts/offscreen-qa/smoke.mjs",
     "test:release:sim": "python3 deploy/browser-auto/test-install-sim.py && python3 deploy/browser-hardening/test-install-sim.py",
     "test:browser:auto:installer": "python3 deploy/browser-auto/test-install-sim.py",
-    "verify:v2": "npm run verify && npm run test:browser:e2e && npm run test:qa:offscreen && npm run test:release:sim && npm run test:browser:dom",
+    "verify:v2": "npm run verify && npm run test:browser:e2e && npm run test:qa:offscreen && npm run test:release:sim && npm run test:browser:dom:ckeditor",
     "test:engine-routing": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs",
     "test:browser:policy": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs scripts/browser-automation/acceptance-gate.node-test.mjs scripts/browser-automation/audit-recovery.node-test.mjs deploy/edge-native-rebind/install.node-test.mjs scripts/browser-automation/background-ax-policy.node-test.mjs scripts/browser-automation/extension-dom-policy.node-test.mjs",
     "test:browser:reinforcement": "node --test scripts/browser-automation/reinforcement-eval.node-test.mjs && node scripts/browser-automation/reinforcement-eval.mjs",
@@ -34,7 +34,8 @@
     "test:mac:isolated": "node --test mac-host/isolated-desktop/*.node-test.mjs",
     "test:mac:same-background": "node --test mac-host/same-mac-ax/*.node-test.mjs",
     "test:cli:v3": "node --test scripts/sandbox-v3-cli/*.node-test.mjs",
-    "test:browser:dom": "CUA_DOM_E2E=1 node mac-host/browser-dom/extension-e2e.mjs"
+    "test:browser:dom": "CUA_DOM_E2E=1 node mac-host/browser-dom/extension-e2e.mjs",
+    "test:browser:dom:ckeditor": "CUA_DOM_E2E=1 CUA_CKEDITOR_E2E=1 node mac-host/browser-dom/extension-e2e.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

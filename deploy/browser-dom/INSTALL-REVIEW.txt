@@ -1,5 +1,5 @@
 Sandbox V3 — backend DOM para Teams Toyota
-Candidato 2026-10-29. No equivale a instalación ni aceptación en Teams real.
+Versión 0.1.1 — 2026-10-29. Prueba real Toyota documentada en LIVE-RESULT.json.
 
 Qué se instala
 - Una extensión local MV3 de Edge, ID ecamjbhjlcacmchoebdligpmhcebdgci.
@@ -56,5 +56,10 @@ El candidato se prueba en Chromium Linux aislado usando extensión real, Native
 Messaging real, socket privado, bridge HTTP y herramientas MCP actuales.
 Comprueba escritura rica, recarga, persistencia, limpieza, ausencia de envío y
 cero llamadas nativas; rechaza origen/perfil/sesión/revisión/control/URL distintos.
-La instalación/reversión se simulan sobre archivos y servicios de prueba.
-La aceptación Mac + Teams Toyota queda PENDIENTE hasta la prueba real.
+La instalación/reversión también se simulan sobre archivos y servicios de prueba.
+La versión se verificó en Mac + Teams Toyota mediante herramientas reales de
+Sandbox V3: marcador, persistencia tras recarga y limpieza persistida; Teams
+inactivo, Edge detrás y Docker al frente. Calendar/Chat también pasó. No equivale a prueba universal de otras apps.
+El adaptador CKEditor usa su API setData en un script estático MAIN; el canal
+solo admite edición de ese control local con contexto y huella verificados.
+No añade Chrome APIs, permisos ni ejecución arbitraria de código.

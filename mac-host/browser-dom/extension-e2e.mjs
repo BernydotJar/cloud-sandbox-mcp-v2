@@ -1,5 +1,6 @@
 /** Owned isolated Linux Chromium only. Never attach to a Mac or user profile. */
 import fs from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -95,6 +96,24 @@ try{
  assert.deepEqual(await sw.evaluate(async()=> (await globalThis.chrome.tabs.query({active:true})).map(t=>t.id)),activeBefore);
  assert.equal(await page.evaluate(()=>globalThis.sent),0);assert.equal(nativeCalls,0);
  evidence.checks.push('native_host_reconnect_after_broker_restart','old_refs_invalidated_on_reconnect','no_mutation_replay_on_reconnect');
+ if(process.env.CUA_CKEDITOR_E2E==='1'){
+  const asset=path.join(os.tmpdir(),'sandbox-ckeditor5-npm-49.0.1.umd.js'),assetHash='d00faf38df0532180459affb6a4b150e822a96294806456357e1d344b787fa87';
+  if(!fs.existsSync(asset)){execFileSync('npm',['pack','ckeditor5@49.0.1','--pack-destination',temp,'--silent'],{cwd:temp,stdio:'pipe',timeout:30000});const bytes=execFileSync('tar',['-xOzf',path.join(temp,'ckeditor5-49.0.1.tgz'),'package/dist/browser/ckeditor5.umd.js'],{maxBuffer:3000000,timeout:5000});fs.writeFileSync(asset,bytes,{flag:'wx',mode:0o600});}
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(asset)).digest('hex'),assetHash);
+  await browser.route('https://teams.cloud.microsoft/vendor/ckeditor.js',route=>route.fulfill({contentType:'text/javascript; charset=utf-8',path:asset}));
+  await browser.route('https://teams.cloud.microsoft/ckeditor-fixture',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><title>Real CKEditor self fixture</title><main><h1>Real CKEditor self fixture</h1><div id="editor"></div><button id="send" aria-label="Send">Send</button></main><script src="/vendor/ckeditor.js"></script><script>globalThis.sent=0;document.getElementById('send').onclick=()=>globalThis.sent++;const {ClassicEditor,Essentials,Paragraph}=CKEDITOR;ClassicEditor.create(document.getElementById('editor'),{licenseKey:'GPL',plugins:[Essentials,Paragraph],toolbar:[],initialData:localStorage.getItem('ck-draft')||''}).then(editor=>{editor.editing.view.change(w=>w.setAttribute('aria-label','Type a message',editor.editing.view.document.getRoot()));editor.model.document.on('change:data',()=>localStorage.setItem('ck-draft',editor.getData()));globalThis.ckReady=true;}).catch(e=>{globalThis.ckError=String(e);});</script>`}));
+  const ck=await browser.newPage();ck.on('pageerror',error=>console.log('CK_FIXTURE_PAGE_ERROR '+error.message));await ck.goto('https://teams.cloud.microsoft/ckeditor-fixture');await ck.waitForFunction(()=>globalThis.ckReady===true||globalThis.ckError,undefined,{timeout:5000});assert.equal(await ck.evaluate(()=>globalThis.ckError),undefined);
+  await operator.bringToFront();const ckActiveBefore=await sw.evaluate(async()=> (await globalThis.chrome.tabs.query({active:true})).map(t=>t.id));
+  const ckTabs=await call('browser_tabs',{browser:'edge',title:'Real CKEditor self fixture'}),ckRef=ckTabs.tabs[0].tab_ref;let ckObs=await call('browser_inspect',{browser:'edge',tab_ref:ckRef});assert.equal(ckObs.controls.find(n=>n.name==='Type a message').fill_backend,'ckeditor5_model');
+  const ckText='Sandbox <&> CKEditor model test',ckHash=crypto.createHash('sha256').update(ckText).digest('hex');
+  const ckRequest={browser:'edge',tab_ref:ckRef,session_id:wireGrant.session_id,expected_revision:ckObs.revision,request_id:'genuine-ckeditor-fill-0001',action:'fill',locator:{by:'role',role:'textbox',name:'Type a message'},value:ckText};await call('browser_action',ckRequest);
+  ckObs=await call('browser_inspect',{browser:'edge',tab_ref:ckRef});assert.equal(ckObs.controls.find(n=>n.name==='Type a message').value_observation.sha256,ckHash);assert.equal(await ck.locator('.ck-editor__editable').evaluate(el=>el.querySelector('script')),null);
+  const reloadCK=async request_id=>{const r=await fetch(bridgeURL+'/v2/browser/reload',{method:'POST',headers:{authorization:'Bearer '+wireToken,'content-type':'application/json'},body:JSON.stringify({browser:'edge',tab_ref:ckRef,session_id:wireGrant.session_id,request_id})});assert.equal(r.status,200);await ck.waitForLoadState('domcontentloaded');await ck.waitForFunction(()=>globalThis.ckReady===true||globalThis.ckError,undefined,{timeout:5000});assert.equal(await ck.evaluate(()=>globalThis.ckError),undefined);};
+  await reloadCK('genuine-ckeditor-reload-0001');ckObs=await call('browser_inspect',{browser:'edge',tab_ref:ckRef});assert.equal(ckObs.controls.find(n=>n.name==='Type a message').value_observation.sha256,ckHash);
+  await call('browser_action',{...ckRequest,expected_revision:ckObs.revision,request_id:'genuine-ckeditor-clear-0001',value:''});await reloadCK('genuine-ckeditor-cleanup-reload');ckObs=await call('browser_inspect',{browser:'edge',tab_ref:ckRef});assert.equal(ckObs.controls.find(n=>n.name==='Type a message').value_observation.kind,'empty');
+  assert.deepEqual(await sw.evaluate(async()=> (await globalThis.chrome.tabs.query({active:true})).map(t=>t.id)),ckActiveBefore);assert.equal(await ck.evaluate(()=>globalThis.sent),0);assert.equal(nativeCalls,0);
+  evidence.checks.push('genuine_vendor_CKEditor_49_0_1','ckeditor_model_fill_escaped_text','ckeditor_reload_persistence','ckeditor_clear_reload_empty','ckeditor_inactive_tab_and_no_send');
+ }
  console.log(JSON.stringify({...evidence,result:'PASS'},null,2));
 }finally{
  if(client)await client.close();if(mcp)await mcp.close();if(hostBridge)await new Promise(resolve=>hostBridge.close(resolve));

@@ -14,7 +14,7 @@ export default tseslint.config(
   },
   {
     files: ['deploy/browser-dom/extension/*.js'],
-    languageOptions: {globals: {chrome:'readonly',document:'readonly',location:'readonly',crypto:'readonly',getComputedStyle:'readonly',NodeFilter:'readonly',HTMLInputElement:'readonly',HTMLTextAreaElement:'readonly',Event:'readonly',TextEncoder:'readonly',URL:'readonly'}}
+    languageOptions: {globals: {window:'readonly',chrome:'readonly',document:'readonly',location:'readonly',crypto:'readonly',getComputedStyle:'readonly',NodeFilter:'readonly',HTMLInputElement:'readonly',HTMLTextAreaElement:'readonly',Event:'readonly',TextEncoder:'readonly',URL:'readonly'}}
   },
   {
     files: ['**/*.ts'],

@@ -31,6 +31,7 @@ export class DOMBrowserTabs {
    if(typeof n.node_ref!=='string'||typeof n.role!=='string'||typeof n.name!=='string'||n.name.length>200||typeof n.enabled!=='boolean'||Object.hasOwn(n,'value')||Object.hasOwn(n,'raw_value'))throw Error('DOM_SNAPSHOT_INVALID');
    const out={node_ref:n.node_ref,role:n.role,name:n.name,enabled:n.enabled};
    if(n.value_observation){const v=n.value_observation;if(v.kind==='empty'&&v.has_value===false)out.value_observation={kind:'empty',has_value:false};else if(v.kind==='text_digest'&&hex.test(v.sha256)&&Number.isInteger(v.length)&&v.length>0&&v.length<10000000)out.value_observation={kind:v.kind,length:v.length,sha256:v.sha256,has_value:true};else throw Error('DOM_SNAPSHOT_INVALID');}
+   if(['ckeditor5_model','browser_edit_command'].includes(n.fill_backend))out.fill_backend=n.fill_backend;
    if(typeof n.selected==='boolean')out.selected=n.selected;return out;
   });
   t.last={snapshot:data.revision,docId:data.doc_id,urlDigest:data.url_digest};t.urlDigest=data.url_digest;t.revision++;t.expires=Date.now()+300000;
