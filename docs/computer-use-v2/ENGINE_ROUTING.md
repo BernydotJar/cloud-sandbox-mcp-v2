@@ -199,3 +199,14 @@ corporate authorization. The acceptance gate always sets
 policy tests; `npm run verify` runs that suite, and GitHub Actions runs
 the same independent gate plus a syntax-only macOS driver compile.
 See `docs/computer-use-v2/BROWSER_AUTOMATION_ENFORCEMENT.md`.
+
+
+### Profile-paired Teams DOM candidate (2026-10-29)
+
+The optional extension_dom provider uses existing Browser MCP tools through
+Native Messaging, not CDP or native AX. The router selects
+browser_mcp_extension_dom only for an explicit existing Edge request, observed
+connected/profile-pinned DOM and actual reference. Focus preservation for a
+background task must be verified; this is not an isolated session. The preflight
+requires actual DOM ref/revision and exact control without fabricated native
+indices. Read TEAMS_DOM_BACKEND_20261029.md for installation/acceptance state.

@@ -120,6 +120,24 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
     if(background && backgroundMode==='isolated')
       return unavailable('BACKGROUND_PERSONAL_BROWSER_NOT_ISOLATED',
         'An attached personal Mac tab is not an isolated background session. Use headless Playwright with a separately authorized isolated profile.');
+    // A profile-paired DOM extension is distinct from native AX and CDP.
+    // It never falls back to shared-desktop input when disconnected.
+    if(capabilities.browser_provider==='extension_dom') {
+      if(task.explicitly_requested_mac_session!==true || browser!=='edge')
+        return unavailable('MAC_BROWSER_CONSENT_REQUIRED','The paired existing Edge session must be explicitly requested.');
+      if(!bool(capabilities.browser_semantic_available) || !bool(capabilities.browser_tab_ref_present) ||
+         !bool(capabilities.extension_dom_connected) || !bool(capabilities.extension_profile_pinned) ||
+         (background && !bool(capabilities.browser_focus_preserving_verified)))
+        return unavailable('EXTENSION_DOM_NOT_VERIFIED','Require the connected approved profile and fresh DOM reference; never substitute native input.');
+      return chosen('browser_mcp_extension_dom','PAIRED_PROFILE_DOM_BROWSER',
+        'Use exact per-tab DOM actions in the paired Edge profile through existing Browser MCP tools.',
+        {browser,context,requires_authorization:true,semantic_evidence:true,
+         allowed_operations:['inspect','semantic_action'],
+         prerequisites:['fresh_dom_ref_and_revision','own_browser_grant','allowlisted_origin','verified_dom_control'],
+         evidence:intent==='mutate'?evidenceWrite:evidenceWeb,
+         transport:'native_messaging_private_unix',
+         ...(background?{background_mode:'focus_preserving',focus_impact:'os_focus_not_required',fully_isolated:false}: {})});
+    }
     if(background && backgroundMode==='focus_preserving' && task.background_ax_approved===true &&
        task.explicitly_requested_mac_session===true && ['chrome','edge'].includes(browser) &&
        capabilities.same_mac_background_ax_available===true &&

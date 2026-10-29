@@ -1,0 +1,60 @@
+Sandbox V3 — backend DOM para Teams Toyota
+Candidato 2026-10-29. No equivale a instalación ni aceptación en Teams real.
+
+Qué se instala
+- Una extensión local MV3 de Edge, ID ecamjbhjlcacmchoebdligpmhcebdgci.
+- Acceso para leer/modificar únicamente https://teams.cloud.microsoft/*.
+- nativeMessaging para comunicarse con el backend local de Sandbox.
+- storage para un identificador aleatorio de esta instalación/perfil.
+- Un host Native Messaging registrado solo en Microsoft Edge y solo para ese ID.
+- Un socket Unix privado; no abre nuevos puertos ni requiere Remote Debugging.
+- Un parche aditivo al bridge Mac; conserva herramientas, sesiones, orígenes y AX.
+
+Alcance del perfil
+Cargar la extensión únicamente en la ventana Toyota, perfil Work11. La extensión
+y la sesión Teams permanecen en Edge. El backend empareja un identificador local
+con ese perfil; otro perfil/incógnito se rechaza. El identificador NO demuestra
+la identidad Toyota: antes de cualquier escritura se comprueba cuenta/destinatario.
+No se transfieren cookies, contraseñas ni sesiones a Linux.
+
+Permisos que se revisan en Edge
+nativeMessaging, storage y https://teams.cloud.microsoft/*.
+La extensión puede leer y modificar Teams en las pestañas de este perfil.
+No solicita cookies, history, debugger, tabs global ni acceso a otros sitios.
+Para cargar el paquete local se usa Developer Mode de extensiones; esto NO activa
+Remote Debugging. Si una política corporativa lo impide, no se modifica la política.
+
+Instalación
+1. install-on-mac.mjs --inspect verifica hashes, bridge exacto y ausencia de grant.
+2. --install escribe archivos propios, crea un secreto local privado y recarga
+   únicamente com.lch.cloud-sandbox.computer-use. No reinicia Edge, AX ni Docker.
+3. En edge://extensions del perfil Toyota: Load Unpacked y seleccionar
+   ~/Library/Application Support/LCH/SandboxDOM/extension.
+4. Si la pestaña Teams ya estaba abierta, recargarla una vez para cargar el
+   content script, tras verificar que no hay datos pendientes de guardar.
+
+Prueba autorizada, sin envío
+Con la ventana/pestaña del operador al frente y Toyota detrás:
+- descubrir e inspeccionar mediante herramientas reales de Sandbox V3;
+- verificar cuenta Toyota y chat Eduardo Sacahui (You), compositor vacío;
+- escribir un marcador, comprobar su huella, recargar y leer persistencia;
+- limpiar solo el marcador verificado y comprobar vacío;
+- verificar que no cambió el foco ni la pestaña activa del operador;
+- cerrar el grant propio. No usar Enviar, Enter ni Jira ni tocar otros borradores.
+Una llamada aceptada nunca constituye confirmación de texto o persistencia.
+El paquete aislado no prueba que la aplicación real de Teams acepte esta edición.
+
+Reversión
+--rollback exige bridge y archivos propios sin cambios y ningún grant activo.
+Restaura el bridge previo, retira los archivos conocidos y recarga solo el bridge.
+Después se descarga/elimina la extensión en el perfil Toyota y se puede apagar
+Developer Mode si estaba desactivado antes. Archivos desconocidos se conservan.
+No se cambia el controlador MCP ni se publica código remoto.
+
+Estado de validación
+El candidato se prueba en Chromium Linux aislado usando extensión real, Native
+Messaging real, socket privado, bridge HTTP y herramientas MCP actuales.
+Comprueba escritura rica, recarga, persistencia, limpieza, ausencia de envío y
+cero llamadas nativas; rechaza origen/perfil/sesión/revisión/control/URL distintos.
+La instalación/reversión se simulan sobre archivos y servicios de prueba.
+La aceptación Mac + Teams Toyota queda PENDIENTE hasta la prueba real.

@@ -25,12 +25,12 @@ function outcome(state,code,engine=null,extra={}) {
 function block(code,engine,missing=[]) {
   return outcome('BLOCKED',code,engine,{missing});
 }
-function exactBrowserTarget(task,plan) {
+function exactBrowserTarget(task,plan,dom=false) {
   const target=plan.target;
   if(!target || typeof target!=='object' || Array.isArray(target) ||
     target.browser!==task.browser ||
-    !Number.isInteger(target.window_index) || target.window_index<1 ||
-    !Number.isInteger(target.tab_index) || target.tab_index<1 ||
+    (!dom && (!Number.isInteger(target.window_index) || target.window_index<1 ||
+      !Number.isInteger(target.tab_index) || target.tab_index<1)) ||
     typeof target.expected_title!=='string' ||
     target.expected_title.trim().length===0 || target.expected_title.length>300 ||
     typeof target.expected_url!=='string' ||
@@ -83,9 +83,14 @@ export function evaluateAgentPlan({task,capabilities,plan}={}) {
 
   if(task.context==='existing_mac') {
     if(!['chrome','edge'].includes(task.browser) ||
-      !exactBrowserTarget(task,plan))
+      !exactBrowserTarget(task,plan,decision.engine==='browser_mcp_extension_dom'))
       return block('FRESH_UNIQUE_BROWSER_TARGET_REQUIRED',decision.engine,
         ['exact_browser','exact_sanitized_url','exact_title','fresh_window_and_tab_index','unique_tab_match']);
+    if(decision.engine==='browser_mcp_extension_dom' &&
+       (typeof plan.dom_tab_ref!=='string'||!/^tab_[a-f0-9]{32}$/.test(plan.dom_tab_ref)||
+        !Number.isInteger(plan.dom_revision)||plan.dom_revision<1||
+        (plan.operation!=='inspect'&&plan.dom_control_identity_verified!==true)))
+      return block('FRESH_DOM_CONTROL_REQUIRED',decision.engine,['dom_ref','revision','verified_control']);
     if(decision.engine==='same_mac_background_ax' &&
        (typeof plan.background_tab_ref!=='string'||!/^tab_[a-f0-9]{32}$/.test(plan.background_tab_ref)||
         !Number.isInteger(plan.background_revision)||plan.background_revision<1||

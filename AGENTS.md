@@ -1,3 +1,15 @@
+## Per-tab Teams DOM backend candidate — 2026-10-29
+
+The extension_dom provider is a source candidate for the existing Toyota Edge
+profile. Read docs/computer-use-v2/TEAMS_DOM_BACKEND_20261029.md. Its isolated
+extension/Native Messaging/MCP acceptance is not installed Mac/Teams proof.
+Do not repeat the native AX setter success claim: real Teams can accept a
+setter without changing its composer. No native input fallback from DOM error.
+When actually installed and observed, use the existing browser tools with fresh
+opaque refs/revisions and the own grant; never invent native window indices.
+Verify account, recipient and persistence; preserve existing drafts and no-send
+scope. New extension access requires operator review before profile loading.
+
 ## Verified background browser capability — 2026-10-29
 
 For an explicitly requested existing Mac browser task with background required,
