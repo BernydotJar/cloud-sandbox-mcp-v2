@@ -107,3 +107,41 @@ is a separate acceptance gate. No Save, Submit, Modify Entry or Log Work;
 HCL WOF/CH is a real business restriction and must never be circumvented.
 REA's browser-observation surface is passive CDP evidence and is not used
 as a replacement native GUI executor.
+
+## Installed focused-control observation and safe paste (28 October 2026)
+
+The operator Mac now has an additive focused-control observation on the
+existing `computer_use_focus` response. It reports `window_bounds_points`
+from the selected browser window and `focused_control` from the process's
+real `AXFocusedUIElement`. The latter includes role, name, text-input status,
+protected status, frame, and up to 2000 characters of a non-protected
+focused text control's value. Unavailable AX is explicit. Already active
+tabs are not reactivated, so observation preserves the selected field.
+
+This is not the full Swift AX tree API described above. It needs no new
+tool schema, DOM/CDP connection or browser profile. `semantic_available=false`
+still describes the native browser provider; it must not erase the separately
+observed focused AX control.
+
+The installed `type_text` operation requires a verified non-protected AX text
+control and dispatches one Command-V. It preserves the clipboard's existing
+formats and restores them only if the operator has not changed the clipboard
+in the meantime. Multiline text is not dispatched as Return keystrokes.
+It inserts at the current caret; it does not promise replacement of existing
+content. Inspect before/after and never append to an unrelated draft.
+Action receipts add a focused-control observation, which can be transitional;
+rediscover after title changes and inspect settled state before writing.
+
+On this Mac, `https://teams.cloud.microsoft` was added only after an explicit
+operator approval in the supervising chat. The existing 20 origins and strict
+allowlist policy were preserved, and only the Mac Bridge was reloaded after
+its own delegated session was revoked. Edge's main PID remained unchanged.
+These are installation observations for this operator, not authorization to
+add more origins or reload a service during another agent's grant.
+
+Native helper hash for this focused-control/paste deployment:
+`e1d3ce54718e9e6bf254e8dac4b3b96fd1584e755a526f7f5d163e95861b9b64`.
+The original Toyota agent receives its continuation at
+`/workspace/_shared/evidence/toyota-sandbox-drafts-20261028/EXECUTE-IN-ORIGINAL-CHAT.txt`.
+Draft presence, recipient identity, persistence, and sending remain distinct
+business outcomes and must be verified by the executing agent.

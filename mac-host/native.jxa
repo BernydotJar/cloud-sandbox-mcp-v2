@@ -16,6 +16,77 @@ function safeUrl(input) {
 function fail(code) { return JSON.stringify({ok: false, error: code}); }
 function ok(data) { return JSON.stringify({ok: true, data: data}); }
 
+
+function nativeFocusedControl(proc) {
+  try {
+    const el = proc.attributes.byName('AXFocusedUIElement').value();
+    const role = String(el.role() || '');
+    function attr(name) {
+      try { const value=el.attributes.byName(name).value(); return typeof value==='string'?value:''; }
+      catch (_) { return ''; }
+    }
+    let name='';
+    try { name=String(el.name() || ''); } catch (_) {}
+    name=name || attr('AXDescription') || attr('AXTitle') || attr('AXPlaceholderValue');
+    const subrole=attr('AXSubrole');
+    const protectedInput=/secure|password/i.test(subrole) ||
+      /password|passcode|verification code|security code|credit card|cvv|otp/i.test(name);
+    const input=/^AX(TextArea|TextField|ComboBox)$/.test(role);
+    const data={available:true,source:'AXFocusedUIElement',role:role,
+                name:name.slice(0,300),is_text_input:input,protected:protectedInput};
+    if (input && !protectedInput) {
+      try { const value=el.value(); if(typeof value==='string') data.value=value.slice(0,2000); } catch (_) {}
+    }
+    try { const p=el.position(),s=el.size(); data.bounds_points={x:Number(p[0]),y:Number(p[1]),width:Number(s[0]),height:Number(s[1])}; } catch (_) {}
+    return data;
+  } catch (_) { return {available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'}; }
+}
+function nativeWindowBounds(target) {
+  const b=target.bounds();
+  const r=Array.isArray(b)?{x:Number(b[0]),y:Number(b[1]),width:Number(b[2])-Number(b[0]),height:Number(b[3])-Number(b[1])}:
+    {x:Number(b.x),y:Number(b.y),width:Number(b.width),height:Number(b.height)};
+  if (![r.x,r.y,r.width,r.height].every(Number.isFinite) || r.width<=0 || r.height<=0) throw Error('INVALID_BOUNDS');
+  return r;
+}
+
+
+function pasteNativeText(value, systems) {
+  ObjC.import('AppKit');
+  const board=$.NSPasteboard.generalPasteboard;
+  const originals=[];
+  const items=board.pasteboardItems;
+  if (items) for(let i=0;i<Number(items.count);i++) {
+    const item=items.objectAtIndex(i),types=item.types,formats=[];
+    for(let j=0;j<Number(types.count);j++) {
+      const type=types.objectAtIndex(j),data=item.dataForType(type);
+      if(data)formats.push({type:type,data:data});
+    }
+    originals.push(formats);
+  }
+  board.clearContents;
+  let ownCount=Number(board.changeCount);
+  try {
+    if(!board.setStringForType($(value),$.NSPasteboardTypeString))throw Error('PASTE_UNAVAILABLE');
+    ownCount=Number(board.changeCount);
+    systems.keystroke('v',{using:'command down'});
+    delay(0.25);
+  } finally {
+    // Restore every format only if the user has not replaced the clipboard.
+    if(Number(board.changeCount)===ownCount) {
+      board.clearContents;
+      if(originals.length) {
+        const restored=$.NSMutableArray.alloc.init;
+        for(const formats of originals) {
+          const item=$.NSPasteboardItem.alloc.init;
+          for(const format of formats)item.setDataForType(format.data,format.type);
+          restored.addObject(item);
+        }
+        board.writeObjects(restored);
+      }
+    }
+  }
+}
+
 function run(argv) {
   const operation = String(argv[0] || '');
   const browser = String(argv[1] || '');
@@ -125,12 +196,24 @@ function run(argv) {
     const target = selected.window;
     const selectedTabIndex = selected.tab_index;
     if (operation === 'focus') {
-      // Window focus requires only browser Automation permission, not AX.
-      target.activeTabIndex = selectedTabIndex;
-      target.index = 1;
-      app.activate();
-      return ok({focused:true,browser:browser,url:expected,
-                 recovered_stale_index:selected.rebound});
+      // Preserve the focused control when this is already the selected front tab.
+      let p=null, already=false;
+      try {
+        p=Application('System Events').processes[apps[browser]];
+        const front=app.windows()[0];
+        already=Boolean(p.frontmost()) && !!front && tabMatches(front.activeTab()) &&
+          tabMatches(target.activeTab());
+      } catch (_) {}
+      if (!already) {
+        target.activeTabIndex = selectedTabIndex;
+        target.index = 1;
+        app.activate();
+      }
+      const result={focused:true,browser:browser,url:expected,
+                    recovered_stale_index:selected.rebound};
+      try { result.window_bounds_points=nativeWindowBounds(target); } catch (_) {}
+      result.focused_control=p?nativeFocusedControl(p):{available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'};
+      return ok(result);
     }
     if (operation === 'inspect') {
       return ok({browser: browser, window_index: selected.window_index,
@@ -202,7 +285,9 @@ function run(argv) {
       } else if (action === 'type_text') {
         const value = String(argv[7] || '');
         if (!value || value.length > 2000) return fail('INVALID_INPUT');
-        systems.keystroke(value);
+        const control=nativeFocusedControl(proc);
+        if(!control.available || !control.is_text_input || control.protected) return fail('VERIFIED_TEXT_CONTROL_REQUIRED');
+        pasteNativeText(value,systems);
       } else if (action === 'press_key') {
         const key = String(argv[7] || '');
         const codes = {tab: 48, escape: 53, enter: 36, space: 49,
@@ -210,8 +295,8 @@ function run(argv) {
         if (!Object.prototype.hasOwnProperty.call(codes, key)) return fail('INVALID_KEY');
         systems.keyCode(codes[key]);
       } else return fail('INVALID_ACTION');
-      return ok({performed: true, action: action, browser: browser,
-                 recovered_stale_index: selected.rebound});
+      return ok({performed:true,action:action,browser:browser,
+                 recovered_stale_index:selected.rebound,focused_control:nativeFocusedControl(proc)});
     }
     return fail('INVALID_OPERATION');
   } catch (error) {
