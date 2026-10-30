@@ -173,9 +173,10 @@ function installShortcut() {
   const bin=path.join(home,'.local','bin');
   safeOperatorDirectory(privateRoot);
   safeOperatorDirectory(bin);
-  const installed=fs.existsSync(versionDir);
-  if(installed){
-    const dir=fs.lstatSync(versionDir);
+  let dir;
+  try{dir=fs.lstatSync(versionDir);}
+  catch(error){if(error?.code!=='ENOENT')throw error;}
+  if(dir){
     if(!dir.isDirectory()||dir.isSymbolicLink()||
        dir.uid!==process.getuid()||(dir.mode&0o077)!==0)
       fail('UNSAFE_INSTALLED_RELEASE_DIRECTORY');
