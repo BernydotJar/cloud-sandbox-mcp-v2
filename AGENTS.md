@@ -590,3 +590,39 @@ provider may proceed without physical mouse or keyboard events; existing
 tab contents are NOT independent of the operator. Block a native fallback.
 39. Follow BKG01-BKG09 acceptance gates. Source tests and an agent
 process running unattended are not proof that a Mac desktop is independent.
+
+## Self-service Mac Bridge domain authorization (Sandbox V3)
+
+For new authenticated HTTPS application domains, use the **Mac operator's
+general-purpose exact-origin CLI**, not a new code patch and deployment
+for every site. Contract:
+    /workspace/projects/cloud-sandbox-mcp-v2/deploy/allowed-origins/README.md
+
+One-time setup on macOS Terminal:
+    node "$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/allowed-origins/manage-on-mac.mjs" install-cli
+
+Then the operator can run sandbox-origins add https://TARGET, check,
+list, or remove. The user must invoke mutations from their authorized
+Mac Terminal; this is NOT an agent-controlled bypass of the origin gate.
+Only exact HTTPS public DNS origins are approved, with no arbitrary
+wildcards, ports, query-based grants or browser profile changes.
+The command preserves previous origins, makes a private backup,
+checks for active delegated sessions, reloads only the Mac Bridge
+LaunchAgent, verifies native + browser runtime policy, audits and
+rolls back on failure. Do not claim live activation from a staged
+script alone. Keep GH04/GH05 independent of origin allowlist changes.
+
+https://admin.powerplatform.microsoft.com is an explicitly requested
+Power Platform administration origin. Operator activation must still
+be confirmed from the actual Mac.
+
+### Recovery when an agent encounters a new HTTPS origin
+
+On MUTATION_ORIGIN_DENIED or an equivalent allowlist block:
+1. Establish the requested app's actual HTTPS origin, ignoring path/query.
+2. Ensure that interacting with this app is explicitly within the user's task.
+3. Ask the Mac operator to run sandbox-origins add https://exact.host.
+4. Require ACTIVATED=PASS and BRIDGE_HEALTH=PASS (or verified already allowed)
+   before retrying. Refresh browser identity and authorization.
+5. Never broaden to a wildcard, migrate session credentials, or bypass
+   Graph Harness GH04/GH05 to get around an origin gate.

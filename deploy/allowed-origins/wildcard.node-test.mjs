@@ -6,7 +6,7 @@ import {fileURLToPath,URL} from 'node:url';
 import process from 'node:process';
 import {LCH_APEX,LCH_WILDCARD,validAllowlistEntry,allowsWebOrigin}
   from './allowed-origins.mjs';
-import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN,OUTLOOK_ORIGIN,COPILOT_ORIGIN} from './wildcard-config.mjs';
+import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN,OUTLOOK_ORIGIN,COPILOT_ORIGIN,POWER_PLATFORM_ADMIN_ORIGIN} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 const here=fileURLToPath(new URL('.',import.meta.url));
@@ -76,13 +76,13 @@ test('user wildcard expands to apex and explicit dot-bounded rule, keeping previ
   const result=addLchOrigins(input);
   assert.equal(result.changed,true);
   assert.equal(result.beforeCount,2);
-  assert.equal(result.afterCount,13);
+  assert.equal(result.afterCount,14);
   assert(result.updated.includes('https://admin.microsoft.com,https://www.linkedin.com,'+
     LCH_APEX+','+LCH_WILDCARD));
   assert(result.updated.includes('SOME_SECRET=do-not-touch\n'));
   assert(result.updated.endsWith('OTHER=alive\n'));
   assert.deepEqual(addLchOrigins(result.updated),{
-    updated:result.updated,beforeCount:13,afterCount:13,changed:false,
+    updated:result.updated,beforeCount:14,afterCount:14,changed:false,
     alreadyApex:true,alreadyWildcard:true
   });
 });
@@ -91,7 +91,7 @@ test('single or double quoting and CRLF remain byte preserving',()=>{
     for(const eol of ['\n','\r\n']){
       const input=['X=y','COMPUTER_USE_ALLOWED_ORIGINS='+quote+'https://www.linkedin.com'+quote,'Y=z',''].join(eol);
       const result=addLchOrigins(input);
-      assert.equal(result.afterCount,12);
+      assert.equal(result.afterCount,13);
       assert(result.updated.includes(quote+'https://www.linkedin.com,'+LCH_APEX+','+LCH_WILDCARD));
       assert(result.updated.includes('https://*.atlassian.net'+quote));
       assert.equal(addLchOrigins(result.updated).updated,result.updated);
@@ -195,4 +195,20 @@ test("Microsoft Outlook and Copilot cloud origins are exact, additive, and idemp
     "https://copilot.cloud.microsoft.evil.example/chat",
     "https://copilot.cloud.microsoft:4444/chat"])
     assert.equal(allowsWebOrigin(no,allow),false,no);
+});
+
+
+test('Power Platform Admin is an exact HTTPS origin for existing Chrome and Edge policies',()=>{
+  const source='COMPUTER_USE_ALLOWED_ORIGINS=https://www.linkedin.com\n';
+  const configured=addLchOrigins(source);
+  assert(configured.updated.includes(POWER_PLATFORM_ADMIN_ORIGIN));
+  assert.equal(addLchOrigins(configured.updated).changed,false);
+  const allow=new Set([POWER_PLATFORM_ADMIN_ORIGIN]);
+  assert.equal(allowsWebOrigin('https://admin.powerplatform.microsoft.com/',allow),true);
+  assert.equal(allowsWebOrigin('https://admin.powerplatform.microsoft.com/environments',allow),true);
+  for(const denied of ['http://admin.powerplatform.microsoft.com/',
+    'https://anything.powerplatform.microsoft.com/',
+    'https://admin.powerplatform.microsoft.com.evil.example/',
+    'https://admin.powerplatform.microsoft.com:4444/'])
+    assert.equal(allowsWebOrigin(denied,allow),false,denied);
 });

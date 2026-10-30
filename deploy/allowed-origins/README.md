@@ -189,3 +189,68 @@ Allow the exact origin https://staging.uipath.com in Chrome and Edge. This does 
 ## Microsoft Outlook and Copilot exact origins
 
 The installer adds https://outlook.cloud.microsoft and https://copilot.cloud.microsoft as exact HTTPS origins for Chrome and Edge. URL paths/query strings are not copied into the allowlist. Existing origins are preserved; other cloud.microsoft subdomains are not included.
+
+## Sandbox V3: self-service exact HTTPS origins (no per-domain release)
+
+For **Power Platform Admin Center**, authorize the exact origin:
+
+    https://admin.powerplatform.microsoft.com
+
+This origin is also included in the legacy base installer, but the preferred
+operator path is the **general-purpose Mac origin manager**. It accepts any
+reasonable public HTTPS URL, extracts the exact origin (discarding paths,
+queries and fragments without logging them), and adds it without modifying
+source code or releasing a new Bridge version. It preserves previously
+approved origins and the existing four reviewed wildcard rules.
+
+Once, optionally register a short Terminal command from the trusted shared
+handoff (does NOT modify the existing sandbox V3 CLI). This action copies
+a reviewed version into a **Mac-private pinned directory** under
+~/.local/share/sandbox-v3-origins/v1 (mode 0700) and installs only a new
+~/.local/bin/sandbox-origins shortcut. Subsequent operations use the private
+snapshot, **not** a mutable shared script. Existing shortcuts or installed
+code with unknown changes are never overwritten. A later manager upgrade
+requires a separately reviewed new version:
+
+    node "$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/allowed-origins/manage-on-mac.mjs" install-cli
+
+Then operate from macOS Terminal:
+
+    sandbox-origins add https://admin.powerplatform.microsoft.com
+    sandbox-origins check https://admin.powerplatform.microsoft.com
+    sandbox-origins list
+    sandbox-origins remove https://admin.powerplatform.microsoft.com
+
+Without the shortcut, run the identical manager using its full node path
+and add, check, list, or remove arguments.
+
+**Important gates that remain:** only an explicit user/operator invocation
+can mutate the Mac configuration. The manager rejects non-HTTPS, wildcard
+grants, credentials, ports, malformed DNS hostnames, reserved local/TLD
+destinations, duplicate or conflicting settings and more than 50 origins.
+Adding an origin already covered by an approved wildcard is idempotent.
+Removing an exact rule while an existing wildcard still authorizes the
+target is refused rather than reporting a false revocation.
+
+**No disruption policy:** requires the known running controller and Bridge,
+reads both native and browser-runtime policies and their origin counts,
+refuses changes while a delegated browser session is active, guards
+concurrent writes, makes a private backup, updates only the controller's
+COMPUTER_USE_ALLOWED_ORIGINS value, and restarts **only the Mac Bridge
+LaunchAgent**. Chrome, Edge, browser profiles, Docker controller, dev-main
+and Cloudflare Tunnel are never restarted. After restart, verifies both
+Bridge endpoints, counts, origin read-back and security policy. Failure
+triggers a rollback from the private backup. A receipt is saved on Mac
+without credentials or private URL query parameters.
+
+This is an **operator authorization workflow**, not a blanket auto-approval
+for arbitrary agents or a substitute for per-task browser delegation.
+It does not bypass Graph Harness GH04/GH05, identity/access checks, or
+business-level acceptance of web actions. An installed tool is not a
+verified live allowance until the Mac command reports ACTIVATED=PASS
+and BRIDGE_HEALTH=PASS, or PASS_ALREADY_ALLOWED for an already active
+origin. If an agent's session is active, finish it before retrying.
+
+Mac Bridge configuration and private backups remain on the operator's Mac.
+Sandbox V3 and V2 may share the same Mac Bridge, but a connected Linux
+workstation cannot by itself claim host-side activation.

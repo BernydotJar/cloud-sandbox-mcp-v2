@@ -17,7 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {TextDecoder} from 'node:util';
 import {setTimeout as sleep} from 'node:timers/promises';
-import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN,OUTLOOK_ORIGIN,COPILOT_ORIGIN,LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
+import {addLchOrigins,HCL_ITIME_ORIGIN,UIPATH_STAGING_ORIGIN,OUTLOOK_ORIGIN,COPILOT_ORIGIN,POWER_PLATFORM_ADMIN_ORIGIN,LINKEDIN_APEX,LINKEDIN_WILDCARD,LCH_APEX,LCH_WILDCARD,UIPATH_APEX,UIPATH_WILDCARD,ATLASSIAN_APEX,ATLASSIAN_WILDCARD} from './wildcard-config.mjs';
 import {patchBridgeForLchWildcard,patchRuntimeForLchWildcard}
   from './upgrade-lch-wildcard.mjs';
 import {validAllowlistEntry} from './allowed-origins.mjs';
@@ -189,6 +189,7 @@ async function main(){
   log('UIPATH_STAGING_ORIGIN',UIPATH_STAGING_ORIGIN);
   log('OUTLOOK_ORIGIN',OUTLOOK_ORIGIN);
   log('COPILOT_ORIGIN',COPILOT_ORIGIN);
+  log('POWER_PLATFORM_ADMIN_ORIGIN',POWER_PLATFORM_ADMIN_ORIGIN);
   log('ORIGINS_BEFORE',next.beforeCount);
   log('ORIGINS_AFTER',next.afterCount);
   log('EXISTING_ORIGINS','PRESERVED');
