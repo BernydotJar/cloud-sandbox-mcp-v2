@@ -1,3 +1,43 @@
+## External APFS Toshiba SSD storage migration preparation (2026-11-01)
+
+User has reconnected existing Toshiba 2 TB APFS SSD previously mounted
+at /Volumes/SSD (~1.6 TB available). This disk already has Downloads,
+Documents, Sandbox V2 artifacts and other working files; DO NOT
+erase, repartition, delete, move or overwrite any of that data. Separate
+Mac storage work can use /Volumes/SSD/MacStorage and must remain
+untouched. Target proposed dedicated /Volumes/SSD/SandboxV3/ only
+after a read-only Mac inventory confirms no collision.
+
+Live Sandbox V3 Linux confirmed /workspace and /shared-auth are
+Mac-backed (about 26 GiB internal free / 95% used). The Toshiba SSD
+is NOT mounted inside this Linux namespace. The nested Docker daemon
+inside dev-main is NOT Docker Desktop on the Mac; do not use nested
+docker inspect to infer Mac container mounts or manipulate Docker.raw.
+
+Prepared operator preflight:
+  scripts/ssd-migration/preflight-on-mac.mjs --inspect
+and complete staged rollback plan:
+  scripts/ssd-migration/RUNBOOK.md
+Mac handoff:
+  ~/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/
+  cloud-sandbox-computer-use/sandbox-v3-ssd-migration-20261101/
+
+The preflight must verify external APFS, UUID, mount, free capacity,
+current Docker container bind mount paths, host data root, and target
+collision. It writes only a sanitized small report to shared-auth.
+No migration, copying, Docker settings or Mac launchd changes
+are authorized by merely preparing this code.
+
+Docker Desktop disk image should be relocated ONLY from
+Docker Desktop > Settings > Resources > Advanced > Disk image location,
+never by moving Docker.raw manually. Host bind data
+(~/.cloud-sandbox-mcp-data) is a second separately verified move.
+After any cutover, safeguard startup against a missing/mismatched
+external Volume UUID; keep all original paths/data for rollback.
+Preferred controller remains Sandbox V3 with one dev-main container,
+existing Bridge, Cloudflare, Caddy, macOS Keychain and original user
+browsers, all on the SAME Mac.
+
 ## Handoff / reliability boundary — 2026-10-29 20:29 UTC
 
 Read docs/computer-use-v2/TEAMS_BACKEND_TECHNICAL_HANDOFF_20261029.txt before
