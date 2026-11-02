@@ -1,3 +1,35 @@
+## Toshiba SSD v2 preflight: do not delete versioned legacy checkout (2026-11-01)
+
+The Mac's actual SSD preflight showed external /Volumes/SSD,
+UUID A6268296-0330-4A69-9BE3-059BE8E4016A, 1663.56 GiB free,
+unencrypted. The v1 readWrite=false might be a missing diskutil
+property misclassified as read-only: this is being checked by a new
+read-only diagnostic, NOT by a write to the user's SSD.
+
+The historical /Volumes/SSD/Development/Workspaces/
+cloud-sandbox-mcp-v0.2.0-workstation is DIFFERENT from the currently
+active controller Compose working directory under the INTERNAL Mac
+~/Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation.
+Both must be preserved until paths, Git worktree state, content
+differences, active references and backups are reconciled.
+Never delete or rename either folder automatically.
+
+Use stable future names (no V3/V4 in persistent paths):
+new encrypted APFS sibling volume /Volumes/Sandbox on the same
+Toshiba APFS container, and source/cloud-sandbox-workstation/
+as controller checkout. Existing unencrypted SSD data remains intact.
+Adding this APFS volume must be a separately reviewed user action;
+do not run any diskutil mutation, use Disk Utility 'Erase',
+or move Docker.raw manually.
+
+A Mac read-only legacy reconciliation kit and revised runbook are
+at scripts/ssd-migration/ and shared-auth handoff
+sandbox-v3-ssd-reconcile-20261101. The original
+/Volumes/SSD/SandboxV3 target is superseded and must not be used
+for sensitive credentials. Startup later requires verifying the
+new encrypted volume's own UUID; mount failures block workloads
+rather than creating empty source folders.
+
 ## External APFS Toshiba SSD storage migration preparation (2026-11-01)
 
 User has reconnected existing Toshiba 2 TB APFS SSD previously mounted

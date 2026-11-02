@@ -1,5 +1,104 @@
 # Sandbox V3 -> Toshiba APFS SSD: staged, reversible migration
 
+## 2026-11-01 revision: version-neutral encrypted volume and historical checkout review
+
+The FIRST Mac preflight succeeded in retrieving actual external disk
+metadata: mounted /Volumes/SSD, APFS external, Volume UUID
+A6268296-0330-4A69-9BE3-059BE8E4016A, 1663.56 GiB free, 11%
+utilized, and no existing destination folder. The source host data is
+~/ .cloud-sandbox-mcp-data (without the space) and both existing
+cloud-sandbox-mcp and cloud-sandbox-dev-main containers use this
+internal Mac host path. The live controller Compose checkout is:
+
+    ~/Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation
+
+The separately named OLD FOLDER on Toshiba is:
+
+    /Volumes/SSD/Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation
+
+The same basename is NOT proof that they are the same physical
+directory, the same repo, or identical data. **Never delete or
+rename either directory at this stage.**
+
+The v1 preflight returned readWrite=false even though the volume
+was mounted. Its classifier treated ABSENT diskutil property keys
+as non-writable. This is an inconclusive observation, not definitive
+proof of a read-only SSD. Follow-up read-only diagnosis checks
+diskutil flag presence, actual mount options and user W_OK.
+It does NOT create any test file and cannot prove full physical I/O.
+
+The SSD is confirmed NOT ENCRYPTED. Because Sandbox storage contains
+corporate credentials and auth material, prefer adding a **separate,
+new APFS (Encrypted) volume** named Sandbox in the Toshiba's existing
+APFS container, rather than storing everything under unencrypted
+/Volumes/SSD/SandboxV3. A new APFS volume dynamically shares space
+without repartitioning the disk or modifying existing SSD files.
+Creating the new volume is a separate manual Mac operation, NOT
+part of the read-only inspection. Take an external backup first.
+
+New VERSION-NEUTRAL layout (replaces the provisional SandboxV3 path):
+
+    /Volumes/SSD/                         existing unencrypted SSD volume
+      Documents/                          never touch
+      Downloads/                          never touch
+      Development/                        old V2 checkout — preserve
+      MacStorage/                         preserve
+    /Volumes/Sandbox/                     proposed NEW encrypted APFS volume
+      source/cloud-sandbox-workstation/   version-independent controller checkout
+      docker-desktop/                     Docker Desktop UI-managed disk image
+      persistent/cloud-sandbox-mcp-data/  exact validated copy of host data root
+      reports/                            migration evidence
+      snapshots/                          rollback snapshots if capacity allows
+
+The names Sandbox and cloud-sandbox-workstation stay identical when
+software later becomes V4 or V5. Git branches, code versions and
+container images are versions; storage mount paths are not.
+
+NEVER click Disk Utility 'Erase' or 'Partition' for this task. To
+create a new APFS volume (only in a later reviewed cutover phase):
+select the existing Toshiba APFS volume -> Add Volume (+) ->
+name Sandbox -> APFS (Encrypted) -> manage the password securely.
+The additional volume should have its own UUID, checked at every
+subsequent startup. Protect the Toshiba's old data with an
+independent backup before any filesystem-metadata change.
+Apple's documented mechanism:
+https://support.apple.com/guide/disk-utility/dskua9e6a110/mac
+
+### Mac reconciliation (read-only; before any cutover)
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-reconcile-20261101"
+    node "$BASE/reconcile-on-mac.mjs" --inspect
+
+Its output is saved to last-mac-reconcile.json within that shared
+handoff for Sandbox V3 to analyze. It checks:
+- Original Toshiba UUID, APFS, read-only flag presence, OS mount flags
+  and user write permission WITHOUT writing to the SSD
+- The exact old SSD folder's existence, symlink status, top-level
+  project markers, Git HEAD if present, and comparison against the
+  LIVE Mac controller Compose checkout
+- Direct active Docker bind references (without inspecting Env secrets)
+- Confirmation that deletion is UNSAFE without file-level diff,
+  a confirmed backup and completed migration acceptance
+- Existence/collision of /Volumes/Sandbox if another workflow
+  has already created that mount
+
+A matching Git commit is NOT equivalence: untracked files, ignored
+secrets and Docker state can still differ substantially.
+If an old checkout is later redundant, classify it as an archived
+candidate first. Removing it will require an independently approved
+cleanup action following a full data-diff and backup.
+
+### Existing plan below
+
+The remainder of this original runbook documents the INITIAL
+provisional /Volumes/SSD/SandboxV3 target. **That provisional
+target is superseded by the version-neutral encrypted volume
+/Volumes/Sandbox**. Do not execute any step referring to the
+provisional target without reconciling it to the revision above.
+
+---
+
+
 Status: **PREPARATION ONLY — NO CUTOVER EXECUTED**  
 Date: November 1, 2026. Target is the **same macOS operator machine**, existing Sandbox V3 controller and the single persistent cloud-sandbox-dev-main workstation.
 
