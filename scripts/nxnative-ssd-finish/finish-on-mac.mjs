@@ -98,7 +98,7 @@ function verifyRelease(){
     manifest.src!==SRC||manifest.stage!==STAGING||manifest.dst!==FINAL)
     throw Error('RELEASE_PARAMETERS_UNEXPECTED');
   for(const [name,expected] of Object.entries(manifest.files_sha256)){
-    if(!/^[a-z0-9.-]+\.mjs$/.test(name))
+    if(!/^[A-Za-z0-9.-]+\.(?:mjs|md)$/.test(name))
       throw Error('RELEASE_FILENAME_INVALID');
     const file=path.join(releaseDir,name);
     if(sha(fs.readFileSync(file))!==expected)
@@ -252,6 +252,7 @@ async function main(){
   const mode=process.argv[2];
   if(process.argv.length!==3||!['--inspect','--finalize'].includes(mode))
     throw Error('EXPECTED_MODE_INSPECT_OR_FINALIZE');
+  if(process.platform!=='darwin')throw Error('MACOS_ONLY');
   verifyRelease();
   const volume=checkedHost();
   const paths=inspectPaths();
