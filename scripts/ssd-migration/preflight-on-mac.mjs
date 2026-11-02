@@ -225,7 +225,8 @@ function verifyRelease(){
   if(sha(bytes)!==fs.readFileSync(digest,'utf8').trim())
     throw Error('SSD_RELEASE_MANIFEST_HASH_INVALID');
   const data=JSON.parse(bytes.toString('utf8'));
-  if(data.schema!=='sandbox-v3.ssd-preflight-release.v1')
+  if(!['sandbox-v3.ssd-preflight-release.v1',
+    'sandbox-v3.ssd-stage-release.v1'].includes(data.schema))
     throw Error('SSD_RELEASE_SCHEMA_INVALID');
   for(const [name,expected] of Object.entries(data.files_sha256||{})){
     if(!/^[A-Za-z][A-Za-z0-9.-]+\.(?:mjs|md)$/.test(name))
