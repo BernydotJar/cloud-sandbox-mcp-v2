@@ -5,6 +5,37 @@ The runtime stays on the same Mac, the same Docker Desktop engine,
 the same two named Sandbox V3 containers, existing Cloudflare,
 Browser Bridge and authenticated browser sessions.
 
+## Recovery for stage directory permissions after successful controller copy
+
+After the first resumed attempt, the preflight passed but the guarded
+stage creation stopped with:
+
+    STAGE_DIRECTORY_NOT_PRIVATE:cloud-sandbox-workstation
+
+This is a self-inflicted *validation* failure, not a physical Toshiba
+failure. The earlier successful controller rsync used -a and restored
+the source checkout's 0755 permission mode on the terminal destination
+directory. The original guard unconditionally demanded 0700 on every
+directory, so it refused a directory which rsync itself had just made.
+
+The revised guard validates the pinned APFS volume UUID, stage marker,
+owner and symlink status as before. It requires 0700-compatible modes
+on the NEW Sandbox root and each intermediate path, but explicitly
+permits source-restored 0755 or 0750 modes on ONLY the two terminal
+copy roots, source/cloud-sandbox-workstation and
+persistent/cloud-sandbox-mcp-data, provided group and world are not
+writable. Since parent paths stay owner-only, this does not expose the
+secret-bearing contents to other macOS accounts.
+
+Nothing is deleted, chmodded or chowned to compensate. It reuses the
+existing partial stage with the same sudo archived-Git read fix and
+targeted volatile uv-cache exclusion. The repaired release is:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-stage-resume-r2-20261102"
+    node "$BASE/stage-on-mac.mjs" --stage
+
+This is still only live staging; it is not a Docker cutover.
+
 ## Recovery after live staging rsync rc=1 (November 2, 2026)
 
 The first real Mac staging attempt copied the controller checkout,

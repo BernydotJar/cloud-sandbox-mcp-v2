@@ -158,6 +158,18 @@ function writeAtomically(file,data,mode=0o600){
     fs.renameSync(temp,file);
   }finally{if(fs.existsSync(temp))fs.unlinkSync(temp);}
 }
+export function safeStageDirectoryMode(mode,{leaf=false}={}){
+  // The root and intermediate paths MUST be 0700-ish, enclosing
+  // the secret-bearing dataset. Rsync -a resets the final directory
+  // permissions to those of the original checkout/data root (often
+  // 0755); requiring 0700 there breaks every subsequent resume.
+  // Only the two terminal copy directories may be group/world
+  // READABLE; never group/world WRITABLE. The enclosing parents
+  // remain private. Require user read/write/execute on every path.
+  const bits=mode&0o777;
+  return (bits&0o700)===0o700&&
+    (leaf?(bits&0o022)===0:(bits&0o077)===0);
+}
 function guardedMkdir(directory,{shouldBeNew=false}={}){
   if(shouldBeNew){
     if(lstat(directory))throw Error('TARGET_COLLISION:'+path.basename(directory));
@@ -165,9 +177,12 @@ function guardedMkdir(directory,{shouldBeNew=false}={}){
   }else if(!lstat(directory)){
     fs.mkdirSync(directory,{mode:0o700});
   }
+  // Never change existing permissions or ownership. rsync -a
+  // legitimately restores source modes to its two destination roots.
+  const leaf=directory===CODE_DEST||directory===DATA_DEST;
   if(!isOwnedDirectory(directory)||
-     (fs.lstatSync(directory).mode&0o077)!==0)
-    throw Error('STAGE_DIRECTORY_NOT_PRIVATE:'+path.basename(directory));
+     !safeStageDirectoryMode(fs.lstatSync(directory).mode,{leaf}))
+    throw Error('STAGE_DIRECTORY_UNSAFE_MODE:'+path.basename(directory));
 }
 function openStage(){
   const existing=lstat(ROOT);
@@ -183,6 +198,7 @@ function openStage(){
     try{marker=JSON.parse(fs.readFileSync(markerFile(),'utf8'));}
     catch{throw Error('STAGE_MARKER_CORRUPT');}
     validateStageMarker(marker);
+    guardedMkdir(ROOT);
   }else{
     guardedMkdir(ROOT,{shouldBeNew:true});
     writeAtomically(markerFile(),

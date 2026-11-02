@@ -1,3 +1,15 @@
+## SSD resume stage root permissions correction (2026-11-02)
+
+A successful rsync -a controller stage applied source permissions,
+normally 0755, to its new terminal destination. The original
+STAGE_DIRECTORY_NOT_PRIVATE check rejected this legitimate state
+on the next run. New release sandbox-v3-ssd-stage-resume-r2-20261102
+allows modes such as 0755 on only terminal code and persistent data
+root directories, with owner and non-symlink verification plus no
+group/world write. All parent and staging marker directories remain
+owner-only (0700). This is a guard correction only; no broad chmod,
+no rm, no reinitialization and no Docker retarget or data deletion.
+
 ## Toshiba SSD V3 resumable staging after volatile uv cache and archived Git permission failure
 
 After the first Mac live staging copy returned rsync exit 1, the

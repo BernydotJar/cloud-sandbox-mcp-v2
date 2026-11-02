@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {
   classifyVolume,selectedDockerMounts,stageMarker,validateStageMarker,
   rsyncArgs,VOLUME,VOLUME_UUID,ROOT,DATA_DEST,CODE_DEST,
-  EPHEMERAL_UV_CACHE_RELATIVE,
+  EPHEMERAL_UV_CACHE_RELATIVE,safeStageDirectoryMode,
   LEGACY_SSD_WORKTREE
 } from './stage-on-mac.mjs';
 
@@ -131,4 +131,26 @@ test('resumed persistent staging excludes only regenerable uv cache, includes ar
   assert(!script.includes('--delete'));
   assert(!script.includes('chmod -R'));
   assert(!script.includes('chown -R'));
+});
+
+test('safe resume accepts rsync restored 0755 on destination leaf only',()=>{
+  assert.equal(safeStageDirectoryMode(0o40755,{leaf:true}),true);
+  assert.equal(safeStageDirectoryMode(0o40700,{leaf:true}),true);
+  assert.equal(safeStageDirectoryMode(0o40750,{leaf:true}),true);
+  assert.equal(safeStageDirectoryMode(0o40755),false);
+  assert.equal(safeStageDirectoryMode(0o40700),true);
+  // Reject ANY group/other write and any owner-nonwritable directory.
+  for(const unsafe of [0o40777,0o40775,0o40757,0o40555,0o40644]){
+    assert.equal(safeStageDirectoryMode(unsafe,{leaf:true}),false);
+  }
+  for(const unsafe of [0o40755,0o40750,0o40701,0o40777]){
+    assert.equal(safeStageDirectoryMode(unsafe),false);
+  }
+});
+test('only CODE and DATA destination leaves may inherit source permissions',()=>{
+  const src=fs.readFileSync(new URL('./stage-on-mac.mjs',import.meta.url),'utf8');
+  assert(src.includes('directory===CODE_DEST||directory===DATA_DEST'));
+  assert(src.includes('guardedMkdir(ROOT);'));
+  assert(!src.includes('chmodSync('));
+  assert(!src.includes('chownSync('));
 });
