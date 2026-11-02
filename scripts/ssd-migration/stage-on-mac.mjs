@@ -22,6 +22,8 @@ export const DATA_DEST=ROOT+'/persistent/cloud-sandbox-mcp-data';
 export const CODE_DEST=ROOT+'/source/cloud-sandbox-workstation';
 export const DOCKER_GUI_DEST=ROOT+'/docker-desktop';
 export const LEGACY_SSD_WORKTREE='/Volumes/SSD/Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation';
+export const EPHEMERAL_UV_CACHE_RELATIVE=
+  '/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/home/.cache/uv/';
 const packageDir=path.dirname(fileURLToPath(import.meta.url));
 const dataSource=path.join(os.homedir(),'.cloud-sandbox-mcp-data');
 const controllerSource=path.join(os.homedir(),
@@ -208,11 +210,30 @@ function openStage(){
 export function rsyncArgs(source,destination){
   if(!path.isAbsolute(source)||!path.isAbsolute(destination)||
      ![dataSource,controllerSource].includes(source)||
-     ![DATA_DEST,CODE_DEST].includes(destination))
+     ![DATA_DEST,CODE_DEST].includes(destination)||
+     (source===dataSource)!==(destination===DATA_DEST))
     throw Error('SOURCE_OR_TARGET_NOT_ALLOWLISTED');
-  return ['-aEH','--stats','--',source+'/',destination+'/'];
+  const args=['-aEH','--stats'];
+  // The uv archive is a disposable, actively regenerated cache; its
+  // ._ sidecars vanish during Mac rsync, causing rc=1 on every retry.
+  // Exclude the EXACT observed cache path, never all .cache or .git.
+  if(source===dataSource)args.push('--exclude='+EPHEMERAL_UV_CACHE_RELATIVE);
+  return [...args,'--',source+'/',destination+'/'];
 }
 async function runRsync(name,src,dest){
+  const persistent=name==='persistent'&&src===dataSource&&dest===DATA_DEST;
+  // The original Mac user cannot read a Git pack index in an archived
+  // nested-Docker dataset. Authenticate via terminal, then run ONLY the
+  // exact allowlisted rsync under sudo, preserving original UID/GID.
+  // This never performs chown/chmod on the SOURCE or overwrites old SSD
+  // directories. All writes are confined to the previously marked stage.
+  if(persistent){
+    const auth=spawnSync('/usr/bin/sudo',['-v'],{
+      stdio:'inherit',timeout:120000
+    });
+    if(auth.status!==0||auth.error)
+      throw Error('SUDO_AUTH_FAILED_NO_DATA_SOURCE_MODIFIED');
+  }
   const log=path.join(ROOT,'reports','rsync-'+name+'.private.log');
   const existingLog=lstat(log);
   if(existingLog&&(!existingLog.isFile()||existingLog.isSymbolicLink()||
@@ -228,8 +249,9 @@ async function runRsync(name,src,dest){
     let code;
     try{
       code=await new Promise((resolve,reject)=>{
-        const child=spawn('/usr/bin/rsync',args,
-          {stdio:['ignore',fd,fd],env:process.env});
+        const child=spawn(persistent?'/usr/bin/sudo':'/usr/bin/rsync',
+        persistent?['-n','/usr/bin/rsync',...args]:args,
+        {stdio:['ignore',fd,fd],env:process.env});
         heartbeat=setInterval(()=>{
           const elapsedMinutes=Math.floor((Date.now()-started)/60000);
           console.log('[SSD Stage] COPY_ACTIVE='+name+
@@ -297,6 +319,8 @@ async function main(){
   console.log('[SSD Stage] PHASE=CODE_STAGING_COPY');
   const code=await runRsync('controller',controllerSource,CODE_DEST);
   console.log('[SSD Stage] PHASE=PERSISTENT_DATA_STAGING_COPY');
+  console.log('[SSD Stage] EPHEMERAL_UV_CACHE=EXCLUDED_SOURCE_UNCHANGED');
+  console.log('[SSD Stage] PROTECTED_GIT_ARCHIVE=INCLUDED_VIA_SUDO');
   const data=await runRsync('persistent',dataSource,DATA_DEST);
   const receipt={
     schema:STAGE_SCHEMA,operation:'LIVE_STAGING_COPY_COMPLETED',
@@ -304,6 +328,8 @@ async function main(){
     sourcePathsPreserved:true,ssdLegacyFilesPreserved:true,
     copiedInto:ROOT,components:[code,data],
     activeDataMayHaveChangedDuringCopy:true,
+    excludedRegenerableUvCache:true,
+    privilegedRsyncReadForInaccessibleArchivedGitIndex:true,
     requireColdFinalSync:true,requireStrongVerification:true,
     dockerDesktopDiskImageMoved:false,
     dockerBindMountsRetargeted:false,

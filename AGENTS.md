@@ -1,3 +1,32 @@
+## Toshiba SSD V3 resumable staging after volatile uv cache and archived Git permission failure
+
+After the first Mac live staging copy returned rsync exit 1, the
+private log showed temporary AppleDouble files disappearing from
+the exact disposable uv archive cache (under the V3 workstation
+home/.cache/uv), and an unreadable Git pack index inside the
+archived container-root/legacy-barehands repository. The Mac SSD
+still has a partial /Volumes/SSD/Sandbox staging copy and signed
+stage marker; original internal data and both Docker bind mounts
+remain unchanged.
+
+The signed recovery release is
+sandbox-v3-ssd-stage-resume-20261102 under shared-auth deployment
+handoff. On the SAME Mac run its stage-on-mac.mjs --stage. It
+verifies the original pinned external APFS UUID, original Docker
+mounts and owned private stage marker. It excludes ONLY the uv
+cache in the live initial copy and runs ONLY persistent-data
+rsync under sudo after interactive sudo -v, preserving owner,
+group, extended attributes and archived Git history without
+editing source permissions. No --delete, no blanket
+chmod/chown, no Docker shutdown; unchanged copied files are
+skipped in place. The cache can be regenerated.
+
+Staging is NOT cutover or consistency: final cold sync and
+integrity checks, Docker Desktop GUI disk image move and volume
+UUID-gated mount retarget remain pending. Never remove the
+Mac original until independent acceptance. Do not run the
+old stage release if it reproduces the same rc=1.
+
 ## User accepted unencrypted Toshiba SSD; version-neutral Mac staging (2026-11-01)
 
 The Toshiba APFS external volume /Volumes/SSD is mounted writable,

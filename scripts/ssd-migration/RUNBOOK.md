@@ -5,6 +5,45 @@ The runtime stays on the same Mac, the same Docker Desktop engine,
 the same two named Sandbox V3 containers, existing Cloudflare,
 Browser Bridge and authenticated browser sessions.
 
+## Recovery after live staging rsync rc=1 (November 2, 2026)
+
+The first real Mac staging attempt copied the controller checkout,
+then returned RSYNC_PERSISTENT_EXIT_1 after approximately three
+minutes. The source remains on internal Mac; the Toshiba target
+has partial staged files and the original .sandbox-v3-stage.json.
+No macOS mount cutover or Docker.raw relocation occurred.
+
+Mac private log showed TWO classes of concrete errors:
+- workspaces/<UUID>/home/.cache/uv/archive-v0/**/._* source
+  AppleDouble sidecars disappear during the live copy.
+  The exact uv cache is disposable and excluded from the
+  resume, but NOT deleted from source.
+- workspaces/<UUID>/archive/container-root/legacy-barehands/
+  .cache/llama.cpp-src/.git/objects/pack/*.idx returned
+  Permission denied. That archived Git object is NOT excluded.
+  The resume runs only the persistent-data rsync via sudo after
+  a normal Mac sudo -v, so the original file can be read.
+
+The updated signed resume kit is staged at the shared-auth handoff
+sandbox-v3-ssd-stage-resume-20261102. Use its new Mac script:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-stage-resume-20261102"
+    node "$BASE/stage-on-mac.mjs" --stage
+
+The existing stage marker and its exact UUID, paths and owner must
+still match. Rsync copies incrementally into exactly the SAME
+/Volumes/SSD/Sandbox destination and uses NO --delete. The script
+prints no credentials and records private logs on the Toshiba.
+No broad chmod, chown, Docker restart, Finder move or data deletion.
+
+User consent to unencrypted removable SSD remains in force.
+When rsync returns success the result is still LIVE STAGING ONLY:
+final cold sync under quiesced Docker, Docker.raw GUI relocation,
+startup volume guard, mount retarget and acceptance remain pending.
+Even sudo cannot fix file disappearance outside the excluded cache
+if writers modify a file while it is read; those cases require cold
+final sync, not blind exclusion of business data.
+
 ## Accepted user policy
 
 - The existing Toshiba 2 TB SSD is APFS but **not encrypted**. The

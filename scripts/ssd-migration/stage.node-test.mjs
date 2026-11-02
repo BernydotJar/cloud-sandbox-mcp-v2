@@ -9,6 +9,7 @@ import {spawnSync} from 'node:child_process';
 import {
   classifyVolume,selectedDockerMounts,stageMarker,validateStageMarker,
   rsyncArgs,VOLUME,VOLUME_UUID,ROOT,DATA_DEST,CODE_DEST,
+  EPHEMERAL_UV_CACHE_RELATIVE,
   LEGACY_SSD_WORKTREE
 } from './stage-on-mac.mjs';
 
@@ -86,7 +87,9 @@ test('rsync command preserves attributes and forbids deletion or overwriting old
   const testHome=process.env.HOME||os.homedir();
   const root=path.join(testHome,'.cloud-sandbox-mcp-data');
   const args=rsyncArgs(root,DATA_DEST);
-  assert.deepEqual(args,['-aEH','--stats','--',root+'/',DATA_DEST+'/']);
+  assert.deepEqual(args,['-aEH','--stats',
+    '--exclude='+EPHEMERAL_UV_CACHE_RELATIVE,
+    '--',root+'/',DATA_DEST+'/']);
   assert(!args.includes('--delete'));
   assert(!args.some(arg=>arg.includes(LEGACY_SSD_WORKTREE)));
   const controller=path.join(testHome,
@@ -115,4 +118,17 @@ test('staging source contains no destructive operations or Docker mutation comma
   assert(!src.includes('diskutil erase'));
   assert(src.includes('requireColdFinalSync:true'));
   assert(src.includes('mac_installed_cli')===false);
+});
+
+test('resumed persistent staging excludes only regenerable uv cache, includes archival Git',()=>{
+  assert.match(EPHEMERAL_UV_CACHE_RELATIVE,
+    /^\/workspaces\/[0-9a-f-]+\/home\/\.cache\/uv\/$/);
+  const script=fs.readFileSync(new URL('./stage-on-mac.mjs',import.meta.url),'utf8');
+  assert(script.includes("spawnSync('/usr/bin/sudo',['-v']"));
+  assert(script.includes("['-n','/usr/bin/rsync',...args]"));
+  assert(script.includes("privilegedRsyncReadForInaccessibleArchivedGitIndex:true"));
+  assert(!script.includes("--exclude=/.git"));
+  assert(!script.includes('--delete'));
+  assert(!script.includes('chmod -R'));
+  assert(!script.includes('chown -R'));
 });
