@@ -1,3 +1,39 @@
+## User accepted unencrypted Toshiba SSD; version-neutral Mac staging (2026-11-01)
+
+The Toshiba APFS external volume /Volumes/SSD is mounted writable,
+UUID A6268296-0330-4A69-9BE3-059BE8E4016A. The Mac reconciliation
+found Writable=true, mount rw, and user W_OK. Encryption is optional:
+the operator explicitly accepts the currently unencrypted disk.
+Do not require an encrypted APFS sibling volume or block migration
+only because encryption is not enabled; comply with applicable
+corporate data policy.
+
+Future stable path is an ordinary directory /Volumes/SSD/Sandbox.
+No SandboxV3 path and no /Volumes/Sandbox separate volume.
+All future V4/V5 releases reuse /Volumes/SSD/Sandbox and
+source/cloud-sandbox-workstation, with persistent/
+cloud-sandbox-mcp-data and docker-desktop directories.
+
+The live Mac controller Compose source is
+~/Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation.
+The historical SSD repository under
+/Volumes/SSD/Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation
+has distinct Git HEAD bbe13f9... and is not actively bound by
+Docker, but contains untracked/ignored data not reviewed.
+Never erase, rename or remove it as part of migration.
+
+Prepared signed Mac stage script under scripts/ssd-migration/
+stage-on-mac.mjs. Its --inspect is read-only; --stage performs a
+non-destructive, non-authoritative live copy to the new folder
+with no --delete and no Mac container restart. It does not move
+Docker.raw or switch mounts. A cold final sync, integrity
+verification, Docker GUI image move, explicit mounts retarget,
+Volume UUID startup guard and complete acceptance are still
+mandatory before calling the migration complete.
+The original Mac data remains intact until a separate
+cleanup authorization. Earlier encrypted-volume proposals
+are SUPERSEDED by this explicit user decision.
+
 ## Toshiba SSD v2 preflight: do not delete versioned legacy checkout (2026-11-01)
 
 The Mac's actual SSD preflight showed external /Volumes/SSD,

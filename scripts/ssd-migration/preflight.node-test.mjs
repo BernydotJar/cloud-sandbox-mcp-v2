@@ -47,8 +47,11 @@ test('rejects missing mount or renamed volume, unknown filesystem and readonly',
   const withoutFlag={...goodDisk};
   delete withoutFlag.Encrypted;
   assert.equal(classifyDiskutil(withoutFlag).encryption,'NOT_VERIFIED');
+  const macDisk={...withoutFlag,Writable:true};
+  assert.equal(classifyDiskutil(macDisk).readWrite,true);
+  assert.equal(classifyDiskutil(macDisk).valid,true);
   assert.equal(VOLUME,'/Volumes/SSD');
-  assert.equal(DESTINATION,'/Volumes/SSD/SandboxV3');
+  assert.equal(DESTINATION,'/Volumes/SSD/Sandbox');
 });
 test('statfs capacity reported in GiB and preserves enough free margin',()=>{
   const result=filesystemSummary({location:'/Volumes/SSD',statfs:()=>({
@@ -113,13 +116,13 @@ test('existing target folder always needs manual reconciliation to preserve prio
   }
 });
 
-test('an unencrypted removable SSD requires review before migrating secrets',()=>{
+test('unencrypted SSD is explicitly accepted with advisory rather than migration blocker',()=>{
   const ssd={...classifyDiskutil({...goodDisk,Encrypted:false}),
     availableGiB:1600};
   const report=buildReport({mac:true,ssd,internal:{availableGiB:26},
     source,docker:{available:true,foundBoth:true,bindPathsOnSSD:0},
     image:{},destinationState:'ABSENT',previousDataMarkers:[]});
-  assert.equal(report.readiness,'MANUAL_REVIEW_REQUIRED');
-  assert(report.checks.some(x=>x.id==='SSD_SECRET_STORAGE_ENCRYPTION'&&
-    x.status==='REVIEW_REQUIRED'));
+  assert.equal(report.readiness,'PREPARED_NEEDS_CUTOVER');
+  assert(report.checks.some(x=>x.id==='SSD_SECRET_STORAGE_ENCRYPTION_OPTIONAL'&&
+    x.status==='ADVISORY'));
 });

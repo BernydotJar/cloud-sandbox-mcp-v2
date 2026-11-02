@@ -16,7 +16,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 export const VOLUME='/Volumes/SSD';
-export const DESTINATION='/Volumes/SSD/SandboxV3';
+export const DESTINATION='/Volumes/SSD/Sandbox';
 export const EXPECTED_CONTAINERS=Object.freeze([
   'cloud-sandbox-mcp','cloud-sandbox-dev-main'
 ]);
@@ -59,8 +59,10 @@ export function classifyDiskutil(info={},mountedAt=VOLUME){
     fsLabel?'OTHER':'UNKNOWN';
   const mountedCorrectly=info.MountPoint===mountedAt;
   const external=info.Internal===false;
-  const readWrite=info.ReadOnlyVolume===false ||
-    (info.ReadOnlyVolume==null&&info.ReadOnlyMedia===false);
+  const readWrite=(info.Writable===true||
+    info.ReadOnlyVolume===false||info.VolumeReadOnly===false) &&
+    info.ReadOnlyVolume!==true&&info.VolumeReadOnly!==true&&
+    info.ReadOnlyMedia!==true&&info.WriteProtected!==true;
   const uuid=String(info.VolumeUUID||'');
   const encryptionFlags=[info.Encrypted,info.APFSVolumeEncrypted,
     info.FileVault,info.EncryptionEnabled];
@@ -184,8 +186,7 @@ export function buildReport({mac,ssd,internal,source,docker,image,
     {id:'SSD_APFS_EXTERNAL_UUID',status:ssd.valid?'PASS':'FAIL'},
     {id:'SSD_FREE_500_GIB',status:
       ssd.availableGiB!=null&&ssd.availableGiB>=500?'PASS':'FAIL'},
-    {id:'SSD_SECRET_STORAGE_ENCRYPTION',status:
-      ssd.encryption==='CONFIRMED'?'PASS':'REVIEW_REQUIRED'},
+    {id:'SSD_SECRET_STORAGE_ENCRYPTION_OPTIONAL',status:'ADVISORY'},
     {id:'SOURCE_DATA_EXISTS',status:source.exists?'PASS':'FAIL'},
     {id:'SOURCE_ROOT_SYMLINK',status:
       source.isSymlink?'REVIEW_REQUIRED':'PASS'},
