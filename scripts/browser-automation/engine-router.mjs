@@ -9,8 +9,9 @@
 import {pathToFileURL} from 'node:url';
 import console from 'node:console';
 import process from 'node:process';
+import {evaluateHorizonWebClient} from './horizon-webclient-gate.mjs';
 
-export const ROUTING_POLICY_VERSION = '1.1.0';
+export const ROUTING_POLICY_VERSION = '1.2.0';
 const webIntents = new Set(['qa', 'navigate', 'mutate']);
 const browsers = new Set(['chromium', 'chrome', 'edge']);
 const evidenceWeb = Object.freeze(['observed_ui', 'business_assertions', 'screenshot_or_trace']);
@@ -110,6 +111,16 @@ export function chooseExecutionEngine({task={},capabilities={}}={}) {
   }
 
   if (kind !== 'web') return unavailable('INVALID_ROUTING_REQUEST','Unsupported task kind.');
+  if(task.remote_surface==='horizon_webclient') {
+    const decision=evaluateHorizonWebClient({task:{...task,kind},capabilities});
+    return decision.status==='selected'
+      ? chosen(decision.engine,decision.code,decision.reason,decision)
+      : unavailable(decision.code,decision.reason,decision);
+  }
+  if(task.remote_surface!==undefined)
+    return unavailable('UNSUPPORTED_REMOTE_SURFACE',
+      'Require an explicitly supported remote surface; never silently fall back to a browser engine.');
+
   const intent=task.intent ?? 'navigate';
   const context=task.context ?? 'isolated';
   const browser=task.browser ?? 'chromium';

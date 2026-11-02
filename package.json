@@ -24,7 +24,7 @@
     "test:browser:auto:installer": "python3 deploy/browser-auto/test-install-sim.py",
     "verify:v2": "npm run verify && npm run test:browser:e2e && npm run test:qa:offscreen && npm run test:release:sim && npm run test:browser:dom:ckeditor",
     "test:engine-routing": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs",
-    "test:browser:policy": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs scripts/browser-automation/acceptance-gate.node-test.mjs scripts/browser-automation/audit-recovery.node-test.mjs deploy/edge-native-rebind/install.node-test.mjs scripts/browser-automation/background-ax-policy.node-test.mjs scripts/browser-automation/extension-dom-policy.node-test.mjs",
+    "test:browser:policy": "node --test mac-host/engine-routing.node-test.mjs scripts/browser-automation/engine-router.node-test.mjs scripts/browser-automation/horizon-webclient-gate.node-test.mjs scripts/browser-automation/acceptance-gate.node-test.mjs scripts/browser-automation/audit-recovery.node-test.mjs deploy/edge-native-rebind/install.node-test.mjs scripts/browser-automation/background-ax-policy.node-test.mjs scripts/browser-automation/extension-dom-policy.node-test.mjs",
     "test:browser:reinforcement": "node --test scripts/browser-automation/reinforcement-eval.node-test.mjs && node scripts/browser-automation/reinforcement-eval.mjs",
     "browser:agent-preflight": "node scripts/browser-automation/agent-preflight.mjs",
     "test:browser:native-parity": "node --test mac-host/native-targeting.node-test.mjs mac-host/native-ax-provider.node-test.mjs mac-host/bridge.node-test.mjs mac-host/native.node-test.mjs",

@@ -66,3 +66,22 @@ an automatic Graph Harness GO.
 
 Run `npm run test:browser:policy` as a mandatory policy gate. Details:
 `docs/computer-use-v2/BROWSER_AUTOMATION_ENFORCEMENT.md`.
+
+## Authenticated Horizon Web Client VDI (2026-11-02 pilot)
+
+For a corporate Windows remote desktop rendered within an existing Mac
+browser, use the dedicated route remote_surface: horizon_webclient.
+Do not infer Windows DOM/ARIA from Horizon's outer HTML page, or run
+headless Playwright against another unauthenticated profile.
+
+Pure decision logic:
+- horizon-webclient-gate.mjs (fail-closed by default)
+- horizon-webclient-gate.node-test.mjs (adversarial routing regression)
+
+Architecture and live evidence summary:
+- docs/computer-use-v2/HORIZON_WEBCLIENT_GATEWAY.md
+
+The pilot passed one foreground native visual navigation (opened
+Power Platform Inventario inside the Toyota VDI with readback) and
+revoked its Edge session. It did not prove unattended operation,
+Windows guest selectors, tenant identity or administrative writes.

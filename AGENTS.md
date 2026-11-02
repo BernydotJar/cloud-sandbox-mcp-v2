@@ -734,3 +734,30 @@ On MUTATION_ORIGIN_DENIED or an equivalent allowlist block:
    before retrying. Refresh browser identity and authorization.
 5. Never broaden to a wildcard, migrate session credentials, or bypass
    Graph Harness GH04/GH05 to get around an origin gate.
+
+## Omnissa Horizon Web Client: authenticated VDI visual gateway
+
+40. For an authenticated Windows desktop rendered inside the operator's
+Mac browser, read docs/computer-use-v2/HORIZON_WEBCLIENT_GATEWAY.md.
+Set task.remote_surface=horizon_webclient and run the fail-closed
+horizon-webclient-gate policy. This is NOT a Windows DOM/AX/UIA provider,
+nor general Linux-to-Mac host access.
+41. Reuse only the observed exact HTTPS browser tab, user-approved Mac
+session, current title/window geometry and an independently verified
+remote image. The 2026-11-02 live Toyota pilot successfully opened
+Inventario de creadores in Windows through the existing Edge Web
+Client using ONE foreground native click plus screenshot readback;
+the delegated grant was revoked. No business record changed.
+42. A native browser screenshot/action CAN foreground the Mac window.
+Never claim that this is nonintrusive background automation. Block
+background-only VDI jobs, semantic guest selectors, profile migration,
+tenant ambiguity and screenshot-driven administrative writes.
+43. The currently exposed MCP computer_use_action schema does not
+surface screenshot_ref and coordinate_space even though the host
+Bridge implementation supports geometry-bound screenshot pixels.
+Until a validated MCP interface exports them, treat raw Mac screen-point
+navigation as a PILOT ONLY, avoid bulk coordinate execution, rediscover
+fresh geometry per action, and independently inspect each effect.
+44. Browser origin permission does not establish corporate authorization
+for unattended VDI control, screenshot retention, credential access or
+DTI-14819 writes. Respect Toyota policies and preserve GH04/GH05 gates.
