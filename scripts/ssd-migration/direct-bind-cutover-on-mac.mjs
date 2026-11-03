@@ -17,6 +17,7 @@ import {setInterval,clearInterval} from 'node:timers';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import {candidateConfig} from './direct-bind-rehearsal-on-mac.mjs';
+import {deltaCutoffMs,runRootRecentDelta} from './ssd-recent-delta-on-mac.mjs';
 
 export const UUID='A6268296-0330-4A69-9BE3-059BE8E4016A';
 export const SSD='/Volumes/SSD';
@@ -407,7 +408,7 @@ function priorColdSnapshot(originals){
     times[key]=st.mtimeMs;
   }
   fastSnapshotEvidence(previous,times);
-  return previous;
+  return {previous,times};
 }
 function noUnexpectedPortPublisher(){
   const text=run('docker',['ps','--format','{{.Names}}|{{.Ports}}']);
@@ -464,14 +465,28 @@ export async function stopDocker(ctx,id){
 export async function startDocker(ctx,id){
   const was=await current(ctx,id);
   if(!was.State?.Running){
-    try{await call(ctx,'POST','/containers/'+id+'/start',null,130000);}
-    catch(e){
-      // Docker Desktop may report a POST 500 after it actually started
-      // a container. Verify the Engine state before deciding to rollback.
-      // This matches the already tested false-error STOP strategy.
-      const now=await current(ctx,id);
-      if(!now.State?.Running)throw e;
-      out('ENGINE_START_ERROR_BUT_ACTUAL_RUNNING',String(id).slice(0,12));
+    for(let attempt=1;attempt<=5;attempt++){
+      try{await call(ctx,'POST','/containers/'+id+'/start',null,130000);}
+      catch(e){
+        // Docker Desktop can report a 500 after actually starting;
+        // verify state rather than assume Docker ignored the request.
+        const now=await current(ctx,id);
+        if(now.State?.Running){
+          out('ENGINE_START_ERROR_BUT_ACTUAL_RUNNING',
+            String(id).slice(0,12));
+          break;
+        }
+        const portHeld=now.Name==='/cloud-sandbox-mcp'&&
+          String(e.message||'').includes('_CLASS_ALREADY_ALLOCATED');
+        if(!portHeld||attempt>=5)throw e;
+        // A stale Docker Desktop port forward may briefly survive
+        // the old controller stop. Never kill the port owner.
+        noUnexpectedPortPublisher();
+        out('HOST_PORT_3000_ENGINE_RETRY',attempt);
+        await sleep(3500);
+        continue;
+      }
+      break;
     }
   }
   const now=await current(ctx,id);
@@ -820,10 +835,14 @@ function makeState(base,runId,nested){
   validateJournal(s);
   return s;
 }
-async function activation({fastSnapshot=false}={}){
+async function activation({fastSnapshot=false,recentDelta=false}={}){
+  if(recentDelta&&!fastSnapshot)
+    throw Error('DELTA_MODE_REQUIRES_PRIOR_COLD_SNAPSHOT');
   const base=await preflightAsync();
   noUnexpectedPortPublisher();
-  if(fastSnapshot)priorColdSnapshot(base.original);
+  const checkpoint=fastSnapshot?priorColdSnapshot(base.original):null;
+  const deltaSince=recentDelta?deltaCutoffMs(checkpoint.times.persistent,
+    checkpoint.times.controller):null;
   runtimeEnvValues=Object.values(base.original)
     .flatMap(c=>(c.Config?.Env||[])
       .map(e=>String(e).slice(String(e).indexOf('=')+1))
@@ -834,8 +853,12 @@ async function activation({fastSnapshot=false}={}){
   if(fastSnapshot){
     out('FAST_MODE_PRIOR_COLD_SNAPSHOT','VERIFIED');
     out('FAST_MODE_NO_COLD_RSYNC','TRUE');
-    out('DATA_CHANGES_SINCE_LAST_SYNC','NOT_RECONCILED');
+    out('DATA_CHANGES_SINCE_LAST_SYNC',recentDelta?
+      'RECENT_METADATA_SCAN_AND_SELECTIVE_TRANSFER':
+      'NOT_RECONCILED');
     out('SOURCE_MAC_FILES','PRESERVED_REQUIRED_FOR_LATER_RECONCILIATION');
+    if(recentDelta)
+      out('DELTA_SCAN_SINCE',new Date(deltaSince).toISOString());
   }
   // Verify access to the nested daemon BEFORE touching any workloads.
   const activeInner=nestedIds();
@@ -865,13 +888,20 @@ async function activation({fastSnapshot=false}={}){
     await awaitPort3000Release();
 
     if(fastSnapshot){
-      // No whole-tree rsync. This deliberately reuses the previous
-      // completed cold snapshot, possibly omitting later Mac writes.
-      // Both physical Mac sources and original containers are retained.
-      // No Mac data deletion is allowed from this receipt.
+      // No whole-tree rsync. Fast mode intentionally reuses the prior
+      // snapshot, with an optional bounded recent-change delta pass.
+      // Both physical original Mac roots stay unchanged and retained.
       s.phase='REUSED_PRIOR_SSD_COLD_SNAPSHOT';persist(s);
       out('FAST_SNAPSHOT_REUSED','PASS_WITH_STALENESS_RISK');
       out('FULL_TREE_RSYNC_SKIPPED','PASS');
+      if(recentDelta){
+        s.phase='RECENT_DELTA_SCAN_AND_TRANSFER';persist(s);
+        out('DELTA_MODE','BOUNDED_METADATA_SCAN_AND_FILES_FROM_TRANSFER');
+        await runRootRecentDelta(deltaSince,id);
+        s.deltaReport={scope:'BOUNDED_RECENT_METADATA_AND_SELECTED_FILES'};
+        s.phase='RECENT_DELTA_APPLIED';persist(s);
+        out('DELTA_RECENT_TRANSFER','PASS');
+      }
     }else{
       // Default mode preserves full source/SSD consistency.
       s.phase='COLD_SYNC_RUNNING';persist(s);
@@ -957,6 +987,11 @@ async function activation({fastSnapshot=false}={}){
       'docker','info','--format','{{.ServerVersion}}'],
     {maxAttempts:18,timeout:22000});
     await nestedRestore(s.nestedIds);
+    // This exact point previously failed after a lengthy full rsync.
+    // Reconfirm port ownership immediately before controller START,
+    // including after all nested services have been restored.
+    noUnexpectedPortPublisher();
+    await awaitPort3000Release();
     const controller=await current(ctx,'cloud-sandbox-mcp');
     s.phase='CONTROLLER_START_REQUESTED';persist(s);
     out('ENGINE_OPERATION','START_CONTROLLER');
@@ -991,9 +1026,11 @@ async function activation({fastSnapshot=false}={}){
     persist(s);
     atomic(ROOT+'/reports/direct-bind-cutover-receipt.json',JSON.stringify({
       schema:'sandbox-v3.ssd-direct-cutover-receipt.v1',
-      result:fastSnapshot?
-        'DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED':
-        'DIRECT_SSD_BIND_CUTOVER_PASSED',
+      result:recentDelta?
+        'DIRECT_SSD_BIND_CUTOVER_PASSED_RECENT_DELTA_REVIEW_REQUIRED':
+        fastSnapshot?
+          'DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED':
+          'DIRECT_SSD_BIND_CUTOVER_PASSED',
       ssdUuid:UUID,at:s.finishedAt,
       sourceRootPreserved:true,oldContainersPreserved:true,
       controllerDataBindOnExternalSSD:true,
@@ -1003,19 +1040,28 @@ async function activation({fastSnapshot=false}={}){
       workerSecondaryNetworkVerified:true,
       originalComposeFilesNotModified:true,
       dockerDesktopDiskImageNotMoved:true,
-      snapshotReusedWithoutFinalDataReconciliation:fastSnapshot,
-      sourceChangesSincePreviousColdSyncNotReconciled:fastSnapshot,
+      snapshotReusedWithoutFullTreeReconciliation:fastSnapshot,
+      recentChangedFilesMetadataReconciled:recentDelta,
+      recentChangeWindowStart:recentDelta?
+        new Date(deltaSince).toISOString():null,
+      recentDeltaReport:recentDelta?s.deltaReport:null,
+      sourceChangesSincePreviousColdSyncNotFullyAudited:fastSnapshot,
       metadataAclXattrParityPending:true,
       explicitDeletionPermission:false
     },null,2)+'\n');
-    out('RESULT',fastSnapshot?
-      'DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED':
-      'DIRECT_SSD_BIND_CUTOVER_PASSED');
+    out('RESULT',recentDelta?
+      'DIRECT_SSD_BIND_CUTOVER_PASSED_RECENT_DELTA_REVIEW_REQUIRED':
+      fastSnapshot?
+        'DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED':
+        'DIRECT_SSD_BIND_CUTOVER_PASSED');
     out('ORIGINAL_CONTAINERS','BACKED_UP_STOPPED');
     out('ORIGINAL_MAC_DIRECTORIES','INTACT');
     if(fastSnapshot)
       out('DELETE_SOURCE_ORIGINALS',
         'BLOCKED_UNTIL_POSTCUTOVER_RECONCILIATION_AND_VERIFICATION');
+    if(recentDelta)
+      out('DELTA_RECONCILIATION_SCOPE',
+        'RECENT_FILES_AND_DELETED_DIRECT_CHILDREN_NOT_FULL_AUDIT');
     out('DOCKER_RAW','STILL_INTERNAL_SEPARATE_GUI_STEP');
     out('COMPOSE_REDEPLOY','BLOCKED_UNTIL_OVERRIDE_PARITY_REVIEW');
     out('DELETE_MAC_DATA','NO');
@@ -1030,8 +1076,9 @@ async function activation({fastSnapshot=false}={}){
 async function main(){
   const mode=process.argv[2];
   if(process.argv.length!==3||
-    !['--inspect','--activate','--activate-fast','--rollback'].includes(mode))
-    throw Error('USAGE_INSPECT_ACTIVATE_ACTIVATE_FAST_OR_ROLLBACK');
+    !['--inspect','--activate','--activate-fast',
+      '--activate-recent','--rollback'].includes(mode))
+    throw Error('USAGE_INSPECT_ACTIVATE_ACTIVATE_FAST_OR_ACTIVATE_RECENT_OR_ROLLBACK');
   if(mode==='--rollback'){await manualRecovery();return;}
   if(mode==='--inspect'){
     const base=await preflightAsync();
@@ -1043,8 +1090,12 @@ async function main(){
     out('RESTART_POLICY','TEMPORARILY_GUARDED_DURING_ACTIVATION');
     out('DATA_OR_DOCKER_MODIFIED','NO');
     try{
-      priorColdSnapshot(base.original);
+      const checkpoint=priorColdSnapshot(base.original);
       out('FAST_SNAPSHOT_REUSE','AVAILABLE_WITH_POST_SYNC_STALENESS_RISK');
+      const cutoff=deltaCutoffMs(checkpoint.times.persistent,
+        checkpoint.times.controller);
+      out('RECENT_DELTA_SCAN','AVAILABLE_BOUNDED_FROM_'+
+        new Date(cutoff).toISOString());
     }catch(e){
       out('FAST_SNAPSHOT_REUSE',
         'UNAVAILABLE_'+String(e.message||'ERROR').slice(0,90));
@@ -1055,7 +1106,10 @@ async function main(){
   }
   // Activation repeats and re-verifies preflight immediately before
   // action. A daemon restart or spec drift between calls is rejected.
-  await activation({fastSnapshot:mode==='--activate-fast'});
+  await activation({
+    fastSnapshot:mode==='--activate-fast'||mode==='--activate-recent',
+    recentDelta:mode==='--activate-recent'
+  });
 }
 if(process.argv[1]&&fs.realpathSync(process.argv[1])===
   fileURLToPath(import.meta.url)){

@@ -442,7 +442,7 @@ test('fast mode never includes full-tree rsync and keeps deletion disabled',()=>
   assert(source.includes('HOST_PORT_3000_HELD_AFTER_OLD_CONTROLLER_STOPPED'));
   assert(source.includes('FAST_MODE_REQUIRES_VERIFIED_PREVIOUS_ROLLBACK'));
   assert(source.includes('explicitDeletionPermission:false'));
-  assert(source.includes('sourceChangesSincePreviousColdSyncNotReconciled:fastSnapshot'));
+  assert(source.includes('sourceChangesSincePreviousColdSyncNotFullyAudited:fastSnapshot'));
   assert(source.includes('DELETE_SOURCE_ORIGINALS'));
   assert(source.includes('ORIGINAL_MAC_DIRECTORIES'));
 });

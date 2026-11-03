@@ -265,3 +265,77 @@ Desktop settings GUI AFTER the new SSD runtime is verified; do not
 manually move or delete an active disk image. Full original-data
 cleanup is an independent, explicitly guarded operation after
 source reconciliation, acceptance and Mac helper retargeting.
+
+## Version 4: last-ten-minute incremental reconciliation (2026-11-03)
+
+User requested a short reconciliation of recent modifications WITHOUT
+waiting another 82 minutes of full rsync metadata work.
+
+Entry mode:
+  --activate-recent
+
+Source snapshot:
+- Reuses the preceding completed cold persistent and controller
+  synchronizations from the last rolled-back transaction.
+- Requires the same exact Docker original IDs and image digests,
+  the private ROLLBACK_COMPLETE journal and both private rsync
+  log timestamps.
+- Establishes a conservative cutoff at ten minutes BEFORE the
+  older of the two preceding log modification times. This includes
+  changes after the previous rollback; if the checkpoint is older
+  than 24 hours, the bounded mode refuses to proceed.
+
+During the existing guarded cutover:
+1. Stop/verify nested child containers, Mac Bridge, workstation
+   and controller; wait for TCP 3000 to be released.
+2. Use the pinned, signed root-only helper to traverse the original
+   source tree and controller source tree ONCE for metadata, without
+   following symlinks or crossing to other devices.
+3. Build a private null-delimited manifest of file/dir/link paths
+   whose mtime, ctime or birthtime changed since the cutoff.
+   Keep the original excluded uv cache excluded.
+4. Compare only directories whose metadata changed to identify
+   deleted entries; move SSD-only entries into an external SSD
+   private quarantine directory instead of deleting permanently.
+5. Use rsync --files-from with --from0 to transfer ONLY those
+   selected paths. Preserve Linux-source metadata with -aH and
+   controller metadata with -aEH. This is NOT a full-tree rsync.
+6. Start and verify original privileged workstation image,
+   nested Docker, previous inner applications, secondary Docker
+   network, controller healthz, SSD read/write probes and bridge.
+   Recheck host port 3000 immediately before controller START.
+   Retry transient Docker Engine host-port release errors only.
+7. Retain both original physical Mac source directories and the
+   original stopped Docker containers as a recoverable backup.
+   Preserve the full rollback logic on any failure.
+
+The scanner is bounded to 300 seconds per root, 5,000,000 directory
+entries, at most 160,000 selected paths and 12 GiB changed bytes;
+the selective rsync has a process timeout. A limit breach triggers
+rollback. It does NOT retry via full rsync automatically.
+
+Technical limitation: metadata-based incremental reconciliation
+cannot prove a byte-for-byte audit of every unchanged file or
+reconstruct arbitrary historical filesystem events. An application
+that modified and then reverted a file preserving all metadata or
+an external writer changing Mac source after quiescence could be
+missed. Hardlink topology across unselected unchanged siblings
+is not independently re-audited. The original Mac data remains
+available; cleanup is still blocked.
+
+Expected:
+    [SSD Direct Cutover] FULL_TREE_RSYNC_SKIPPED=PASS
+    [SSD Direct Cutover] DELTA_RECENT_TRANSFER=PASS
+    [SSD Direct Cutover] HOST_PORT_3000_RELEASED=PASS
+    [SSD Direct Cutover] RESULT=DIRECT_SSD_BIND_CUTOVER_PASSED_RECENT_DELTA_REVIEW_REQUIRED
+
+Operator:
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-direct-bind-cutover-v4-20261103"
+    node "$BASE/direct-bind-cutover-on-mac.mjs" --inspect
+    node "$BASE/direct-bind-cutover-on-mac.mjs" --activate-recent
+
+Do NOT use v1/v2 or older --activate. The original Mac source
+files should not be deleted until new runtime is independently
+accepted and native helper references are reconciled. Moving
+Docker.raw via Docker Desktop GUI can reclaim a separate 31GB
+after successful cutover, with no manual live disk-image copy.

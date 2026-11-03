@@ -1067,3 +1067,25 @@ be missing from SSD. Never blindly reconcile Mac -> already live
 SSD after fast cutover; use change-aware validation or archive.
 Do not automatically restart source Mac containers after success.
 Docker.raw must be migrated via Docker Desktop GUI separately.
+
+## Toshiba SSD RECENT delta cutover mode (2026-11-03)
+
+User specifically requested last ten minutes reconciliation but
+NOT another 80+ minute full rsync. Signed release staged as
+sandbox-v3-ssd-direct-bind-cutover-v4-20261103; command:
+  node direct-bind-cutover-on-mac.mjs --activate-recent
+
+It requires previous full cold sync logs, rollback COMPLETE and
+unchanged Docker source IDs; cutoff is MIN(last persistent sync
+mtime,last controller sync mtime) MINUS TEN MINUTES. Pauses all
+writers with original transactional guards, scans source metadata
+ONCE with strict 300s/root timeout, captures changed file/dir/link
+paths, quarantines target-only paths in changed directories,
+selectively transfers paths with rsync --from0 --files-from.
+No new full-tree rsync. Root helper validates the signed bundle
+and exact Toshiba UUID before touching anything. Port 3000 is
+checked at old-container stop and immediately before new controller
+START. Startup port reservation race has bounded retries.
+Automatic original rollback stays intact. Original Mac directories,
+old Docker IDs and Docker.raw remain untouched. Full content
+hash audit and source cleanup remain separate acceptance gates.
