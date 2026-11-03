@@ -11,7 +11,7 @@ import {
   allowlistedBackupName,validateJournal,
   updateControllerHostDataEnv,
   verifyRuntimeParity,verifyNewMounts,syncArgs,
-  safeEngineMessage,engineErrorClass,startDocker
+  safeEngineMessage,engineErrorClass,startDocker,fastSnapshotEvidence
 } from './direct-bind-cutover-on-mac.mjs';
 
 const SOURCE=path.join(os.homedir(),'.cloud-sandbox-mcp-data');
@@ -401,4 +401,48 @@ test('Docker Engine HTTP 500 after successful START is reconciled via real state
     server.close();
     fs.rmSync(temp,{recursive:true,force:true});
   }
+});
+
+
+test('fast snapshot only reuses verified previous cold-sync logs after rollback',()=>{
+  const uuid=UUID;
+  const start=Date.parse('2026-11-03T09:00:00Z');
+  const restore=Date.parse('2026-11-03T10:35:00Z');
+  const j={
+    phase:'ROLLBACK_COMPLETE',ssdUuid:uuid,
+    createdAt:new Date(start).toISOString(),
+    restoredAt:new Date(restore).toISOString(),
+    originals:[{name:'cloud-sandbox-mcp'},
+      {name:'cloud-sandbox-dev-main'}]
+  };
+  const logs={persistent:start+3000000,
+    controller:restore-14000};
+  assert(fastSnapshotEvidence(j,logs));
+  assert.throws(()=>fastSnapshotEvidence(
+    {...j,phase:'IN_PROGRESS'},logs),/ROLLBACK/);
+  assert.throws(()=>fastSnapshotEvidence(
+    {...j,ssdUuid:'WRONG'},logs),/ROLLBACK/);
+  assert.throws(()=>fastSnapshotEvidence(j,
+    {...logs,persistent:start-1000}),/LOG_NOT_FRESH/);
+  assert.throws(()=>fastSnapshotEvidence(j,
+    {...logs,controller:restore+30000}),/LOG_NOT_FRESH/);
+  assert.throws(()=>fastSnapshotEvidence(
+    {...j,restoredAt:undefined},logs),/TIMES_INVALID/);
+});
+
+test('fast mode never includes full-tree rsync and keeps deletion disabled',()=>{
+  const source=fs.readFileSync(new URL(
+    './direct-bind-cutover-on-mac.mjs',import.meta.url),'utf8');
+  assert(source.includes("'--activate-fast'"));
+  assert(source.includes("fastSnapshot:mode==='--activate-fast'"));
+  assert(source.includes('if(fastSnapshot){'));
+  assert(source.includes("FULL_TREE_RSYNC_SKIPPED"));
+  assert(source.includes("await awaitPort3000Release()"));
+  assert(source.includes("port3000Listener()"));
+  assert(source.includes('HOST_PORT_3000_HELD_AFTER_OLD_CONTROLLER_STOPPED'));
+  assert(source.includes('FAST_MODE_REQUIRES_VERIFIED_PREVIOUS_ROLLBACK'));
+  assert(source.includes('explicitDeletionPermission:false'));
+  assert(source.includes('sourceChangesSincePreviousColdSyncNotReconciled:fastSnapshot'));
+  assert(source.includes('DELETE_SOURCE_ORIGINALS'));
+  assert(source.includes('ORIGINAL_MAC_DIRECTORIES'));
 });

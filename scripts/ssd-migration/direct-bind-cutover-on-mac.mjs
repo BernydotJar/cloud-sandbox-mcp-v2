@@ -367,6 +367,81 @@ function preflight(){
   if(activeBridge)checkBridgePlist();
   return {live,original,activeBridge};
 }
+// The first two cold syncs already finished and the failed activation
+// rolled back. Fast mode never copies an unknown source tree: it reuses
+// only a previous journaled, completed snapshot, preserving Mac sources.
+export function fastSnapshotEvidence(journal,logTimes={}){
+  if(journal?.phase!=='ROLLBACK_COMPLETE'||
+    journal?.ssdUuid!==UUID||
+    !Array.isArray(journal?.originals)||
+    journal.originals.length!==2)
+    throw Error('FAST_MODE_REQUIRES_VERIFIED_PREVIOUS_ROLLBACK');
+  const began=Date.parse(journal.createdAt||'');
+  const restored=Date.parse(journal.restoredAt||'');
+  if(!Number.isFinite(began)||!Number.isFinite(restored)||
+    restored<=began)throw Error('FAST_MODE_PREVIOUS_RUN_TIMES_INVALID');
+  for(const key of ['persistent','controller']){
+    const mtime=logTimes[key];
+    if(!Number.isFinite(mtime)||mtime<began||mtime>restored+10000)
+      throw Error('FAST_MODE_PREVIOUS_SUCCESS_LOG_NOT_FRESH:'+key);
+  }
+  return true;
+}
+function priorColdSnapshot(originals){
+  const previous=existingState();
+  validateJournal(previous);
+  // The current Docker originals must be the EXACT containers from
+  // the completed snapshot's source run, not merely matching names.
+  for(const record of previous.originals){
+    const live=originals?.[record.name];
+    if(!live||live.Id!==record.id||live.Image!==record.imageId)
+      throw Error('FAST_MODE_ORIGINAL_CONTAINER_ID_CHANGED_SINCE_SYNC');
+  }
+  const times={};
+  for(const key of ['persistent','controller']){
+    const file=ROOT+'/reports/direct-bind-final-'+key+'.private.log';
+    const st=fs.lstatSync(file);
+    if(!st.isFile()||st.isSymbolicLink()||
+      (st.mode&0o077)!==0||st.size<=0)
+      throw Error('FAST_MODE_PRIOR_SYNC_LOG_UNTRUSTED:'+key);
+    times[key]=st.mtimeMs;
+  }
+  fastSnapshotEvidence(previous,times);
+  return previous;
+}
+function noUnexpectedPortPublisher(){
+  const text=run('docker',['ps','--format','{{.Names}}|{{.Ports}}']);
+  for(const line of text.split(/\r?\n/)){
+    const pos=line.indexOf('|');
+    if(pos<0)continue;
+    const name=line.slice(0,pos);
+    const ports=line.slice(pos+1);
+    // Published *host* port, not container's internal EXPOSED port.
+    if(/:3000->/.test(ports)&&name!=='cloud-sandbox-mcp')
+      throw Error('HOST_PORT_3000_ALREADY_PUBLISHED_BY_ANOTHER_CONTAINER');
+  }
+}
+function port3000Listener(){
+  const result=spawnSync('/usr/sbin/lsof',[
+    '-nP','-iTCP:3000','-sTCP:LISTEN'
+  ],{encoding:'utf8',timeout:12000,stdio:['ignore','pipe','pipe']});
+  if(result.error)return 'unknown';
+  if(result.status===1&&!(result.stdout||'').trim())return 'free';
+  if(result.status===0&&String(result.stdout||'').trim())return 'busy';
+  return 'unknown';
+}
+async function awaitPort3000Release(){
+  for(let n=0;n<12;n++){
+    const state=port3000Listener();
+    if(state==='free'){
+      out('HOST_PORT_3000_RELEASED','PASS');
+      return;
+    }
+    if(state==='unknown')throw Error('HOST_PORT_3000_LSOF_UNCERTAIN');
+    if(n<11)await sleep(1500);
+  }
+  throw Error('HOST_PORT_3000_HELD_AFTER_OLD_CONTROLLER_STOPPED');
+}
 async function preflightAsync(){
   const base=preflight();
   const ctx=engineContext();
@@ -745,8 +820,10 @@ function makeState(base,runId,nested){
   validateJournal(s);
   return s;
 }
-async function activation(){
+async function activation({fastSnapshot=false}={}){
   const base=await preflightAsync();
+  noUnexpectedPortPublisher();
+  if(fastSnapshot)priorColdSnapshot(base.original);
   runtimeEnvValues=Object.values(base.original)
     .flatMap(c=>(c.Config?.Env||[])
       .map(e=>String(e).slice(String(e).indexOf('=')+1))
@@ -754,6 +831,12 @@ async function activation(){
   out('PREFLIGHT','PASS');
   out('SSD_UUID','PASS');
   out('REHEARSED_DIRECT_BINDS','5');
+  if(fastSnapshot){
+    out('FAST_MODE_PRIOR_COLD_SNAPSHOT','VERIFIED');
+    out('FAST_MODE_NO_COLD_RSYNC','TRUE');
+    out('DATA_CHANGES_SINCE_LAST_SYNC','NOT_RECONCILED');
+    out('SOURCE_MAC_FILES','PRESERVED_REQUIRED_FOR_LATER_RECONCILIATION');
+  }
   // Verify access to the nested daemon BEFORE touching any workloads.
   const activeInner=nestedIds();
   const sudo=spawnSync('/usr/bin/sudo',['-v'],{
@@ -779,14 +862,23 @@ async function activation(){
     await stopDocker(ctx,base.original['cloud-sandbox-mcp'].Id);
     s.phase='MAC_DOCKER_CONTAINERS_STOPPED';persist(s);
     out('WRITERS','QUIESCED');
+    await awaitPort3000Release();
 
-    // Persisted staging was populated earlier. The final rsync
-    // reconciles only changed content and deletes stale entries on
-    // the SSD TARGET LEAVES (not on the original Mac).
-    s.phase='COLD_SYNC_RUNNING';persist(s);
-    await syncOne(SOURCE,DATA,{persistent:true});
-    await syncOne(CONTROLLER,CODE,{persistent:false});
-    s.phase='COLD_SYNC_FINISHED';persist(s);
+    if(fastSnapshot){
+      // No whole-tree rsync. This deliberately reuses the previous
+      // completed cold snapshot, possibly omitting later Mac writes.
+      // Both physical Mac sources and original containers are retained.
+      // No Mac data deletion is allowed from this receipt.
+      s.phase='REUSED_PRIOR_SSD_COLD_SNAPSHOT';persist(s);
+      out('FAST_SNAPSHOT_REUSED','PASS_WITH_STALENESS_RISK');
+      out('FULL_TREE_RSYNC_SKIPPED','PASS');
+    }else{
+      // Default mode preserves full source/SSD consistency.
+      s.phase='COLD_SYNC_RUNNING';persist(s);
+      await syncOne(SOURCE,DATA,{persistent:true});
+      await syncOne(CONTROLLER,CODE,{persistent:false});
+      s.phase='COLD_SYNC_FINISHED';persist(s);
+    }
 
     // Capture candidates from the original, previously audited inspect,
     // not from guessed Compose defaults or mutable image tags.
@@ -899,7 +991,9 @@ async function activation(){
     persist(s);
     atomic(ROOT+'/reports/direct-bind-cutover-receipt.json',JSON.stringify({
       schema:'sandbox-v3.ssd-direct-cutover-receipt.v1',
-      result:'DIRECT_SSD_BIND_CUTOVER_PASSED',
+      result:fastSnapshot?
+        'DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED':
+        'DIRECT_SSD_BIND_CUTOVER_PASSED',
       ssdUuid:UUID,at:s.finishedAt,
       sourceRootPreserved:true,oldContainersPreserved:true,
       controllerDataBindOnExternalSSD:true,
@@ -909,12 +1003,19 @@ async function activation(){
       workerSecondaryNetworkVerified:true,
       originalComposeFilesNotModified:true,
       dockerDesktopDiskImageNotMoved:true,
+      snapshotReusedWithoutFinalDataReconciliation:fastSnapshot,
+      sourceChangesSincePreviousColdSyncNotReconciled:fastSnapshot,
       metadataAclXattrParityPending:true,
       explicitDeletionPermission:false
     },null,2)+'\n');
-    out('RESULT','DIRECT_SSD_BIND_CUTOVER_PASSED');
+    out('RESULT',fastSnapshot?
+      'DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED':
+      'DIRECT_SSD_BIND_CUTOVER_PASSED');
     out('ORIGINAL_CONTAINERS','BACKED_UP_STOPPED');
     out('ORIGINAL_MAC_DIRECTORIES','INTACT');
+    if(fastSnapshot)
+      out('DELETE_SOURCE_ORIGINALS',
+        'BLOCKED_UNTIL_POSTCUTOVER_RECONCILIATION_AND_VERIFICATION');
     out('DOCKER_RAW','STILL_INTERNAL_SEPARATE_GUI_STEP');
     out('COMPOSE_REDEPLOY','BLOCKED_UNTIL_OVERRIDE_PARITY_REVIEW');
     out('DELETE_MAC_DATA','NO');
@@ -929,23 +1030,32 @@ async function activation(){
 async function main(){
   const mode=process.argv[2];
   if(process.argv.length!==3||
-    !['--inspect','--activate','--rollback'].includes(mode))
-    throw Error('USAGE_INSPECT_ACTIVATE_OR_ROLLBACK');
+    !['--inspect','--activate','--activate-fast','--rollback'].includes(mode))
+    throw Error('USAGE_INSPECT_ACTIVATE_ACTIVATE_FAST_OR_ROLLBACK');
   if(mode==='--rollback'){await manualRecovery();return;}
   if(mode==='--inspect'){
-    await preflightAsync();
+    const base=await preflightAsync();
+    noUnexpectedPortPublisher();
     out('SSD_UUID','PASS');
     out('CONTAINER_IDS','VERIFIED');
     out('DIRECT_BIND_SPECS','READY');
+    out('HOST_PORT_3000_PRECHECK','NO_OTHER_DOCKER_PUBLISHERS');
     out('RESTART_POLICY','TEMPORARILY_GUARDED_DURING_ACTIVATION');
     out('DATA_OR_DOCKER_MODIFIED','NO');
-    out('COLD_DELTA_SYNC','REQUIRED_UNTIL_COPY_CONSISTENT');
+    try{
+      priorColdSnapshot(base.original);
+      out('FAST_SNAPSHOT_REUSE','AVAILABLE_WITH_POST_SYNC_STALENESS_RISK');
+    }catch(e){
+      out('FAST_SNAPSHOT_REUSE',
+        'UNAVAILABLE_'+String(e.message||'ERROR').slice(0,90));
+    }
+    out('FULL_SYNC_MODE','AVAILABLE_DEFAULT');
     out('RESULT','DIRECT_SSD_CUTOVER_PREFLIGHT_PASS');
     return;
   }
   // Activation repeats and re-verifies preflight immediately before
   // action. A daemon restart or spec drift between calls is rejected.
-  await activation();
+  await activation({fastSnapshot:mode==='--activate-fast'});
 }
 if(process.argv[1]&&fs.realpathSync(process.argv[1])===
   fileURLToPath(import.meta.url)){

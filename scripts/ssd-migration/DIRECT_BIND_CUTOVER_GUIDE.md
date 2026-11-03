@@ -186,3 +186,82 @@ handoff paths may still refer to it. Do not delete the internal Mac
 controller worktree until its native/Compose helpers are retargeted.
 Never move a live Docker.raw manually; Docker Desktop GUI can
 move it independently after the direct bind cutover is proven.
+
+## Version 3: guarded fast cutover after two completed cold rsync runs
+
+Last real macOS cutover:
+- COLD_SYNC_ACTIVE persisted 82 minutes; BOTH final syncs PASS;
+- two SSD-backed candidates created;
+- worker START PASS, cloud-sandbox-edge CONNECT PASS;
+- nested docker info and restoration of previously running inner
+  containers succeeded, as the sequence reached controller start;
+- controller START failed because HOST PORT 3000 ALREADY ALLOCATED,
+  error class and phase explicitly verified;
+- automatic rollback restored both original running Mac containers,
+  original binds, and Mac bridge, leaving SSD copy intact.
+
+The previous copy is NOT invalid; the failure was a published host
+network port reservation for the controller, not an SSD volume fault.
+
+v3 adds --activate-fast with these constraints:
+
+1. Run full original preflight (pinned Toshiba APFS UUID, original
+   directories, CLI guard, staging receipts, original container
+   image/config and Docker Engine identity).
+2. Confirm no other running Docker container claims host port 3000.
+3. Require exact previous private rollback journal phase
+   ROLLBACK_COMPLETE, both unchanged ORIGINAL CONTAINER IDs and
+   image digests, and fresh nonempty private reports from the
+   preceding full persistent/controller cold sync, within that
+   journal's createdAt/restoredAt window.
+4. Stop all original writers with the existing guarded transaction.
+   Wait for macOS lsof to report that host TCP 3000 is free. Never
+   kill a process or a Docker container that owns the port. If
+   still busy, rollback automatically without running rsync.
+5. Reuse the existing SSD snapshot. NO full-tree rsync, no clone
+   copy, no file deletion or symlink replacement.
+6. Recreate/validate same two canonical containers, 5 direct
+   bind sources, cloud-sandbox-edge, real nested Docker, restored
+   inner workloads, controller healthz, read/write probes and
+   Mac bridge. Preserve all original Mac source files and renamed
+   stopped original container instances.
+
+Because workloads were restarted on Mac after the prior full
+sync, FAST mode does NOT reconcile any writes/deletes that took
+place AFTER the last sync. In particular, recent SQLite/Firestore
+files, code changes, nested Docker volumes, authentication changes
+and project updates may be absent from the SSD snapshot. The
+operator must validate important projects and accept this
+limitation before using the new environment for further writes.
+
+On success the output is:
+  RESULT=DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED
+  DELETE_SOURCE_ORIGINALS=BLOCKED_UNTIL_POSTCUTOVER_RECONCILIATION_AND_VERIFICATION
+
+The result is intentionally different from the fully reconciled
+cutover. A fast success does NOT authorize deleting original Mac
+workspace or shared-auth data. When SSD is subsequently changed,
+blindly copying the older Mac source onto it can overwrite newly
+created SSD data; later reconciliation needs a two-sided,
+change-aware procedure or an archival backup of the original data.
+
+Operator commands:
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-direct-bind-cutover-v3-20261103"
+    node "$BASE/direct-bind-cutover-on-mac.mjs" --inspect
+    node "$BASE/direct-bind-cutover-on-mac.mjs" --activate-fast
+
+Release is a new immutable signed package. Do NOT overwrite v1/v2
+files or run old --activate; old command still triggers full sync.
+
+Port diagnosis without mutations:
+    docker ps --format '{{.Names}} {{.Ports}}' | grep ':3000->'
+    lsof -nP -iTCP:3000 -sTCP:LISTEN
+This is expected to show original cloud-sandbox-mcp when running.
+A transient lsof owner AFTER the old controller is stopped must
+clear before the new controller starts.
+
+For fast space recovery, move Docker.raw only via the Docker
+Desktop settings GUI AFTER the new SSD runtime is verified; do not
+manually move or delete an active disk image. Full original-data
+cleanup is an independent, explicitly guarded operation after
+source reconciliation, acceptance and Mac helper retargeting.

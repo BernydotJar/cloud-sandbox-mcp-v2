@@ -1041,3 +1041,29 @@ reconciliation because Mac originals were restored and writable.
 Do NOT delete Mac source directories or Docker.raw before v2
 success, health QA, Mac native bridge dependency review and
 independent storage cleanup gates.
+
+## SSD cutover V3 FAST + host port 3000 race (2026-11-03)
+
+User's latest macOS v2 cutover finished both 82-minute cold syncs,
+created both SSD candidates, started the worker, connected
+cloud-sandbox-edge, and restored inner nested Docker workloads.
+It only failed when starting the controller due to Engine port
+3000 ALREADY_ALLOCATED, then automatically rolled back originals.
+This is NOT a storage or timeout failure.
+
+Signed v3 fast cutover lives at:
+ /shared-auth/deployment/handoff/cloud-sandbox-computer-use/
+ sandbox-v3-ssd-direct-bind-cutover-v3-20261103
+ Command: node direct-bind-cutover-on-mac.mjs --activate-fast
+
+Fast mode requires previous real cold-sync logs and exact rollback
+journal/original container IDs, checks port 3000 Docker publishers,
+stops original writers transactionally, verifies port 3000 released
+via lsof, skips FULL TREE rsync, and reuses previous SSD snapshot,
+with same health checks and rollback if anything fails. It prints
+DISTINCT success DIRECT_SSD_BIND_CUTOVER_PASSED_FAST_UNRECONCILED.
+No source deletion authorized since writes since last cold sync may
+be missing from SSD. Never blindly reconcile Mac -> already live
+SSD after fast cutover; use change-aware validation or archive.
+Do not automatically restart source Mac containers after success.
+Docker.raw must be migrated via Docker Desktop GUI separately.
