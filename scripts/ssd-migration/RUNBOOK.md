@@ -301,3 +301,35 @@ It cannot use macOS diskutil or access physical /Volumes/SSD.
 The signed Mac handoff must be run on the operator's Mac.
 STAGING COPY AND LIVE CUTOVER REMAIN PENDING until explicitly
 verified by receipts and independent runtime checks.
+
+## Pre-cutover read-only doctor after r3 staging success
+
+The operator observed these exact Mac terminal markers after 79 minutes:
+  RESULT=STAGED_COPY_ONLY_NOT_CUTOVER
+  ORIGINAL_MAC_DATA=PRESERVED
+  DOCKER_BINDINGS=UNCHANGED
+  FINAL_COLD_SYNC=REQUIRED
+
+The stage is complete and the Mac originals must be kept for rollback.
+The post-stage doctor is a READ-ONLY step to verify the live stage receipt,
+APFS external SSD UUID, Mac source owner, active .env HOST_DATA_DIR,
+original Compose controller checkout, both named running containers,
+the five known original source bind mounts, and availability of copied
+shared-auth and workstation directories.
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-cutover-readiness-20261102"
+    node "$BASE/cutover-readiness-on-mac.mjs" --inspect
+
+The doctor reports readiness for *PLANNING* only. It does not:
+  - stop Docker, move Docker.raw, change .env or retarget mounts;
+  - write files, generate a second checksum/copy or remove originals;
+  - test content consistency or complete ACL/xattr preservation;
+  - declare the destination ready for live workloads.
+
+Follow with coordinated downtime for Docker writer shutdown, final
+cold incremental sync and verification, supported Docker Desktop GUI
+disk image migration, and guarded mount reconfiguration with immediate
+rollback. Avoid an external SSD becoming silently remounted as
+"/Volumes/SSD 1", and do not remove the internal original until
+restart and service-level acceptance has passed. The main Mac Docker
+Desktop disk image has NOT been moved by stage or this doctor.

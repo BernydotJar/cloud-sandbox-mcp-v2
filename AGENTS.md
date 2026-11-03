@@ -820,3 +820,23 @@ fresh geometry per action, and independently inspect each effect.
 44. Browser origin permission does not establish corporate authorization
 for unattended VDI control, screenshot retention, credential access or
 DTI-14819 writes. Respect Toyota policies and preserve GH04/GH05 gates.
+
+## Toshiba SSD initial stage successfully completed (2026-11-02)
+
+Operator Mac output confirmed SUCCESSFUL INITIAL LIVE STAGE:
+RESULT=STAGED_COPY_ONLY_NOT_CUTOVER, ORIGINAL_MAC_DATA=PRESERVED,
+DOCKER_BINDINGS=UNCHANGED, FINAL_COLD_SYNC=REQUIRED. This followed
+the r3 AppleDouble path fix and 79 minutes of cumulative rsync
+activity. The user does not want another wholesale recopy.
+
+The immutable read-only pre-cutover doctor will be distributed at
+/shared-auth/deployment/handoff/cloud-sandbox-computer-use/
+sandbox-v3-ssd-cutover-readiness-20261102. It validates the pinned
+external APFS UUID, original Mac data, trusted staged receipts, source
+and staged directory structure, original exact Docker binds, and
+controller .env source without printing secrets. It performs no write,
+sudo, rsync, Docker Desktop changes or cutover. Next: coordinate brief
+Docker writer downtime, guarded cold incremental sync and strong
+checks, Docker.raw through Docker Desktop GUI, SSD volume presence
+guard and mount retarget, then rollback-capable acceptance. Never
+remove original Mac files before independent validation.
