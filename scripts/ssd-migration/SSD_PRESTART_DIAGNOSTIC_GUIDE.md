@@ -52,3 +52,24 @@ failure and avoid unnecessary full metadata resync. Since original
 containers resumed writing to the Mac sources after rollback,
 a final bounded consistency reconciliation is still required.
 Docker.raw migration through Docker Desktop GUI remains separate.
+
+## APFS diskutil property compatibility fix (v2, 2026-11-03)
+
+The v1 Mac operator invocation stopped BEFORE Docker with:
+  STOP=SSD_VOLUME_PIN_MISMATCH
+
+Root cause in the v1 source: it demanded APFS from the
+FileSystemPersonality property only. The Mac audit that previously
+passed validates BOTH FileSystemPersonality and FilesystemType,
+because diskutil plist may populate either key. The v2 fix
+reuses the auditor's exact FS-property/APFS detection and
+read-write/External/UUID/MountPoint constraints, without dropping
+a single identity gate. Each individual pin now prints PASS/FAIL
+without exposing the actual device UUID or any secrets:
+  SSD_APFS, SSD_WRITABLE, SSD_UUIDMATCH, SSD_EXTERNAL, SSD_MOUNT.
+A mismatch still fails closed before Docker.
+
+Use immutable v2 release directory:
+  sandbox-v3-ssd-worker-prestart-v2-20261103
+
+The original v1 bundle MUST NOT be overwritten or reused.

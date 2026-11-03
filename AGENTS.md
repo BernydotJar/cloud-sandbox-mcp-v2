@@ -978,3 +978,14 @@ nested Docker, alter the original containers, or run rsync.
 After grounded error output, patch the cutover and perform a
 source-consistent fast reconciliation; do not claim migration
 complete until runtime plus network and data verification pass.
+
+## Toshiba SSD diagnostics versioning, APFS plist fix (2026-11-03)
+
+The first signed prestart test stopped before Docker with
+SSD_VOLUME_PIN_MISMATCH. The cause in its code is narrower APFS
+detection than the previously PASS-ed SSD direct bind audit:
+FileSystemPersonality only versus FileSystemPersonality OR
+FilesystemType. Created immutable v2 at
+sandbox-v3-ssd-worker-prestart-v2-20261103 with both properties,
+strict read/write and pinned UUID checks, and distinct nonsecret
+PASS/FAIL flags. Never overwrite v1 nor weaken identity checks.

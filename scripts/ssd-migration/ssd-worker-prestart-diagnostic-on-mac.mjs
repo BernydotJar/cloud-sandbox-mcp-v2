@@ -60,15 +60,35 @@ function releaseCheck(){
       throw Error('SIGNED_DIAGNOSTIC_FILE_TAMPERED');
   }
 }
+export function diskEvidence(info={}){
+  // Match the already successful macOS direct-bind audit (2026-11-03).
+  // diskutil info -plist does NOT consistently populate
+  // FileSystemPersonality; FilesystemType may be the APFS field.
+  const fsType=String(info.FileSystemPersonality||'')+
+    ' '+String(info.FilesystemType||'');
+  const apfs=/(^|[^A-Z])APFS([^A-Z]|$)/i.test(fsType);
+  const writable=(info.Writable===true||
+    info.ReadOnlyVolume===false||info.VolumeReadOnly===false)&&
+    info.ReadOnlyVolume!==true&&info.VolumeReadOnly!==true&&
+    info.ReadOnlyMedia!==true&&info.WriteProtected!==true;
+  const uuidMatch=String(info.VolumeUUID||'').toUpperCase()===UUID;
+  const external=info.Internal===false;
+  const mount=info.MountPoint===DISK;
+  return {apfs,writable,uuidMatch,external,mount};
+}
 function externalDisk(){
+  const volume=fs.lstatSync(DISK);
+  if(!volume.isDirectory()||volume.isSymbolicLink())
+    throw Error('EXTERNAL_DISK_NOT_TRUSTED');
   const plist=run('/usr/sbin/diskutil',['info','-plist',DISK]);
   const info=JSON.parse(run('/usr/bin/plutil',
     ['-convert','json','-o','-','-'],{input:plist}));
-  if(info.Internal!==false||
-    info.MountPoint!==DISK||
-    String(info.VolumeUUID||'').toUpperCase()!==UUID||
-    !/APFS/i.test(String(info.FileSystemPersonality||'')))
+  const evidence=diskEvidence(info);
+  for(const [name,valid] of Object.entries(evidence))
+    say('SSD_'+name.toUpperCase(),valid?'PASS':'FAIL');
+  if(Object.values(evidence).some(value=>value!==true))
     throw Error('SSD_VOLUME_PIN_MISMATCH');
+  fs.accessSync(DISK,fs.constants.R_OK|fs.constants.W_OK);
   for(const suffix of ['shared-auth','workspaces/'+WID+'/repo',
     'workspaces/'+WID+'/home','workspaces/'+WID+'/docker']){
     const p=DATA+'/'+suffix;

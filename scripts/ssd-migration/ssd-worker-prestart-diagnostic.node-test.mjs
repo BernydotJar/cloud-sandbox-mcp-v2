@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import process from 'node:process';
 import {URL} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {classifyError,sanitizeError} from
+import {classifyError,sanitizeError,diskEvidence} from
   './ssd-worker-prestart-diagnostic-on-mac.mjs';
 
 test('safe engine diagnostic message classification covers startup failure families',()=>{
@@ -62,4 +62,25 @@ test('diagnostic cannot activate cutover and refuses running outside the Mac',()
     assert.equal(r.status,2);
     assert.match(r.stdout,/STOP=MACOS_ONLY/);
   }
+});
+
+test('macOS APFS physical disk guard supports FilesystemType field, keeps UUID pinned',()=>{
+  const base={VolumeUUID:'a6268296-0330-4a69-9be3-059be8e4016a',
+    Internal:false,MountPoint:'/Volumes/SSD',FilesystemType:'apfs',
+    ReadOnlyVolume:false};
+  assert.deepEqual(diskEvidence(base),{
+    apfs:true,writable:true,uuidMatch:true,external:true,mount:true
+  });
+  const personalityOnly={...base,
+    FilesystemType:undefined,FileSystemPersonality:'APFS',
+    Writable:true};
+  assert(Object.values(diskEvidence(personalityOnly)).every(Boolean));
+  assert.equal(diskEvidence({...base,VolumeUUID:'WRONG'}).uuidMatch,false);
+  assert.equal(diskEvidence({...base,MountPoint:'/Volumes/Other'}).mount,false);
+  assert.equal(diskEvidence({...base,Internal:true}).external,false);
+  assert.equal(diskEvidence({...base,
+    ReadOnlyVolume:true}).writable,false);
+  assert.equal(diskEvidence({...base,FilesystemType:'ExFAT'}).apfs,false);
+  assert.equal(diskEvidence({...base,Writable:false,
+    ReadOnlyVolume:undefined,VolumeReadOnly:undefined}).writable,false);
 });
