@@ -989,3 +989,19 @@ FilesystemType. Created immutable v2 at
 sandbox-v3-ssd-worker-prestart-v2-20261103 with both properties,
 strict read/write and pinned UUID checks, and distinct nonsecret
 PASS/FAIL flags. Never overwrite v1 nor weaken identity checks.
+
+## Toshiba APFS real workstation entrypoint preflight (2026-11-03)
+
+The user proved exact-network.START=PASS for an inert privileged
+temporary candidate using all SSD worker mounts. The actual Docker
+image declares /usr/local/bin/cloud-sandbox-workstation, which
+starts nested dockerd --storage-driver=vfs --data-root=/var/lib/docker
+before sleep infinity. An inert start does NOT test nested dockerd.
+The guarded next diagnostic script is staged on Mac handoff at
+sandbox-v3-ssd-dind-isolated-20261103. It runs the original
+entrypoint with a NEW empty temporary test directory on Toshiba
+as Docker data (NOT the copied production SSD Docker data).
+Maintains the original workstation unchanged and running.
+A future cutover retry must capture Engine POST errors, validate
+actual copied Docker data without duplicate auto-restarted nested
+apps, avoid unsafe stale data, and preserve rollback checkpoints.
