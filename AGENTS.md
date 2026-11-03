@@ -875,3 +875,32 @@ container auto-restart; startup MUST go through guarded sandbox.
 Docker Desktop's Docker.raw must separately be moved in the GUI.
 Never delete internal original backups until independent acceptance.
 Extended attribute/ACL parity is not assured for bulk Linux data.
+
+## Toshiba SSD 2026-11-03: symlink cutover deprecated, direct bind proven
+
+After failed 95-minute symlink-based cold cutover, the Mac reported
+ROLLBACK_INCOMPLETE due only to COMMAND_FAILED:docker:stop. A new
+independent read-only verification established both original Mac
+data/code physical directories, original five Docker bind mounts,
+both containers RUNNING, and original restart policies unchanged.
+The user independently ran three direct SSD tests:
+CONTROLLER_EXEC=PASS, WORKSTATION_EXEC=PASS,
+SSD_DIRECT_BIND=PASS.
+
+DO NOT run the old cold-cutover-on-mac.mjs --activate again.
+Docker Desktop established bind mounts must be recreated with explicit
+physical external SSD mount sources, not retargeted by replacing host
+dirs with symlinks.
+
+A new read-only Mac audit package is staged at
+/shared-auth/deployment/handoff/cloud-sandbox-computer-use/
+sandbox-v3-ssd-direct-bind-audit-20261103. Invoke
+direct-bind-audit-on-mac.mjs --inspect. It captures only nonsecret
+configuration for BOTH named containers and checks exact source
+mounts, volume UUID and staging receipts. Do not expose Config.Env
+values or secret command arguments. It refuses unrecognized
+containers or active mount drift and flags extra bind mounts,
+multiple networks, devices and named volumes needing reconciliation.
+Do not begin another cold sync/recreation until full grounded
+runtime parity and rollback have been worked out. Keep staged SSD
+and original Mac files intact; Docker.raw is still separate.
