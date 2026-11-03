@@ -1019,3 +1019,25 @@ running. It tries exact EndpointConfig, without IPAM and clean
 EndpointConfig to diagnose network conflicts without source writes,
 respects the exact Toshiba UUID and deletes only the temporary
 candidate. V3 result must be inspected before cutover repair.
+
+## Toshiba SSD direct-bind cutover V2 after failed real START (2026-11-03)
+
+Original cutover completed both cold rsync PASS and created both
+SSD candidates, then Docker Engine HTTP POST 500 and successful
+rollback to original running Mac binds. Subsequent prestarts:
+- exact privileged startup and six SSD mounts PASS;
+- exact cloud-sandbox-edge network attach PASS;
+- real workstation entrypoint with fresh SSD Docker root PASS.
+This does NOT prove copied nested Docker root behavior.
+
+New signed immutable bundle under
+sandbox-v3-ssd-direct-bind-cutover-v2-20261103
+updates the cutover with safe error diagnostic classes and
+FAILED_PHASE journal, reconciles Docker Engine spurious POST 500
+against actual container and network state, while preserving old
+snapshot, rollback, secret/env parity and physical SSD pins.
+Do NOT run the original v1 --activate; do NOT skip cold source
+reconciliation because Mac originals were restored and writable.
+Do NOT delete Mac source directories or Docker.raw before v2
+success, health QA, Mac native bridge dependency review and
+independent storage cleanup gates.

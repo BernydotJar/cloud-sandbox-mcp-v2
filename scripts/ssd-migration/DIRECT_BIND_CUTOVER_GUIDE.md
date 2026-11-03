@@ -129,3 +129,60 @@ simulating a misleading HTTP 500 stop after the container has
 actually stopped, container rename, restart policies, candidate
 removal, and protection against deleting a similarly named
 unrelated container. The tests do NOT substitute for Mac activation.
+
+## Second guarded activation after rollback: version 2
+
+2026-11-03, first Mac attempt completed the 2 cold syncs and created
+both temporary SSD-backed containers, but returned generic
+ENGINE_HTTP_POST_500 and rolled back successfully. The restored
+original containers were verified running with original Mac bind
+sources. A sequence of independent macOS tests then proved:
+- full worker mount set and privileged flags on SSD: PASS;
+- exact original worker host + network configuration with inert PID1:
+  START=PASS, cleanup PASS;
+- exact original cloud-sandbox-edge SECONDARY network attachment:
+  PASS, cleanup PASS;
+- real workstation entrypoint starting nested Docker with vfs on a
+  fresh empty Toshiba SSD test directory: PASS.
+
+These checks do NOT prove that the prior copied production nested
+Docker data is healthy. The original Docker Engine 500 response
+was discarded, so it is still possible to hit the error again.
+
+V2 changes the direct-bind cutover only (no installed CLI update):
+- Logs the exact currently running Engine operation and durable
+  journal phase before worker START, secondary-network CONNECT
+  and controller START. This disambiguates HTTP POST failures.
+- Classifies and redacts Docker Engine error response. Secrets from
+  both original container Env blocks are redacted in memory;
+  no raw Docker API response or full inspect is written to disk.
+- Verifies Docker Engine state if it reports an error after a
+  successful worker/container start; accepts actual RUNNING only.
+- Likewise verifies actual cloud-sandbox-edge network attachment
+  if Docker responds with an error.
+- Retains the existing SSD UUID guard, original image/config
+  parity, renamed stopped source containers, private transaction
+  journal, sudo preflight, final cold delta reconciliation,
+  health checks and fully guarded original rollback.
+
+Signed release directory:
+sandbox-v3-ssd-direct-bind-cutover-v2-20261103
+
+Commands on the operator Mac:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-direct-bind-cutover-v2-20261103"
+    node "$BASE/direct-bind-cutover-on-mac.mjs" --inspect
+    node "$BASE/direct-bind-cutover-on-mac.mjs" --activate
+
+The Mac original workloads were resumed after the prior rollback
+and may have written data since then. The final cold rsync is still
+required for consistency, and may traverse several million files
+even if few bytes change. Skipping it would be unsafe.
+On success, verify new mounts and critical application workflows
+BEFORE reclaiming old Mac storage. The success receipt explicitly
+states DELETE_MAC_DATA=NO. Do not delete
+~/.cloud-sandbox-mcp-data/shared-auth: native Mac browser bridge and
+handoff paths may still refer to it. Do not delete the internal Mac
+controller worktree until its native/Compose helpers are retargeted.
+Never move a live Docker.raw manually; Docker Desktop GUI can
+move it independently after the direct bind cutover is proven.

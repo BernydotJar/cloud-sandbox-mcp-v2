@@ -10,7 +10,8 @@ import {
   UUID,ROOT,DATA,CODE,WID,STATE,NAMES,
   allowlistedBackupName,validateJournal,
   updateControllerHostDataEnv,
-  verifyRuntimeParity,verifyNewMounts,syncArgs
+  verifyRuntimeParity,verifyNewMounts,syncArgs,
+  safeEngineMessage,engineErrorClass,startDocker
 } from './direct-bind-cutover-on-mac.mjs';
 
 const SOURCE=path.join(os.homedir(),'.cloud-sandbox-mcp-data');
@@ -351,5 +352,53 @@ test('Engine lifecycle handles false stop errors and preserves original identity
   }finally{
     await new Promise(resolve=>server.close(resolve));
     fs.rmSync(temp,{force:true,recursive:true});
+  }
+});
+
+test('masked Docker Engine HTTP failure class never echoes env or bearer',()=>{
+  const secret='SUPER_PRIVATE_DO_NOT_PRINT_12345';
+  const text='OCI runtime failed: password='+secret+
+    ' bearer '+secret+' mount '+os.homedir()+'/sensitive';
+  const safe=safeEngineMessage(text,[secret]);
+  assert(!safe.includes(secret));
+  assert(!safe.includes(os.homedir()));
+  assert.match(safe,/\[ENV_REDACTED\]|\[REDACTED\]/);
+  assert.equal(engineErrorClass(text),'OCI_OR_CONTAINERD');
+  assert.equal(engineErrorClass('permission denied'),'PERMISSION_DENIED');
+  assert.equal(engineErrorClass('address already allocated'),'ALREADY_ALLOCATED');
+  assert.equal(engineErrorClass('Docker deadline exceeded'),'ENGINE_TIMEOUT');
+  assert.equal(engineErrorClass('no space left'),'INSUFFICIENT_DISK');
+  assert.equal(engineErrorClass('file sharing blocked'),'BIND_MOUNT');
+});
+
+test('Docker Engine HTTP 500 after successful START is reconciled via real state',async()=>{
+  const http=await import('node:http');
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'ssd-docker-false-start-'));
+  const socket=path.join(temp,'docker.sock');
+  const id='a'.repeat(64);
+  const data={
+    Id:id,Name:'/cloud-sandbox-dev-main',State:{Running:false}
+  };
+  const server=http.createServer((req,res)=>{
+    if(req.method==='GET'&&req.url?.endsWith('/json')){
+      res.writeHead(200,{'Content-Type':'application/json'});
+      res.end(JSON.stringify(data));return;
+    }
+    if(req.method==='POST'&&req.url?.endsWith('/start')){
+      data.State.Running=true;
+      res.writeHead(500,{'Content-Type':'application/json'});
+      res.end('{"message":"transient start POST error"}');
+      return;
+    }
+    res.writeHead(404);res.end('{}');
+  });
+  try{
+    await new Promise(resolve=>server.listen(socket,resolve));
+    const ctx={socketPath:socket,apiVersion:'1.41'};
+    await assert.doesNotReject(startDocker(ctx,id));
+    assert(data.State.Running);
+  }finally{
+    server.close();
+    fs.rmSync(temp,{recursive:true,force:true});
   }
 });

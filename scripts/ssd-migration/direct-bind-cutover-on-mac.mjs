@@ -36,6 +36,41 @@ const BRIDGE_PLIST=path.join(os.homedir(),
   'Library/LaunchAgents/'+BRIDGE+'.plist');
 
 function out(key,value){console.log('[SSD Direct Cutover] '+key+'='+String(value));}
+// These remain in process only. Engine messages can include env values;
+// never print a raw Docker API error or an unredacted response body.
+let runtimeEnvValues=[];
+export function safeEngineMessage(raw,values=[]){
+  let msg=String(raw||'UNSPECIFIED_DOCKER_ENGINE_FAILURE');
+  for(const v of values){
+    if(typeof v==='string'&&v.length>=5)msg=msg.split(v)
+      .join('[ENV_REDACTED]');
+  }
+  msg=msg.replaceAll(os.homedir(),'[HOME]')
+    .replaceAll(ROOT,'[SSD_ROOT]')
+    .replace(/(bearer\s+)[^\s]+/gi,'$1[REDACTED]')
+    .replace(/(token|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi,
+      '$1=[REDACTED]')
+    .replace(/(sk-[A-Za-z0-9_-]{8,})/g,'[REDACTED_TOKEN]')
+    .replace(/\b[A-Za-z0-9_-]{75,}\b/g,'[REDACTED_LONG_VALUE]')
+    .replace(/\s+/g,' ').trim().slice(0,560);
+  return msg;
+}
+export function engineErrorClass(raw){
+  const t=String(raw||'').toLowerCase();
+  if(/(already in use|address already allocated|port is already allocated)/.test(t))
+    return 'ALREADY_ALLOCATED';
+  if(/(permission denied|operation not permitted|access denied)/.test(t))
+    return 'PERMISSION_DENIED';
+  if(/(oci runtime|runc|containerd|failed to create shim)/.test(t))
+    return 'OCI_OR_CONTAINERD';
+  if(/(mount|file sharing|sharing path|not shared)/.test(t))
+    return 'BIND_MOUNT';
+  if(/(timeout|deadline exceeded|timed out)/.test(t))
+    return 'ENGINE_TIMEOUT';
+  if(/(no space left|disk quota)/.test(t))
+    return 'INSUFFICIENT_DISK';
+  return 'UNCLASSIFIED_ENGINE_RESPONSE';
+}
 function sha(raw){return crypto.createHash('sha256').update(raw).digest('hex');}
 function regularFile(l){
   const s=fs.lstatSync(l);
@@ -228,15 +263,21 @@ export async function call(ctx,method,route,body=null,timeout=45000){
       const chunks=[];
       res.on('data',b=>chunks.push(b));
       res.on('end',()=>{
+        const text=Buffer.concat(chunks).toString('utf8');
         if(res.statusCode>=400){
-          // Never echo env, port, source, or plugin secrets.
-          reject(Error('ENGINE_HTTP_'+method+'_'+res.statusCode));
+          // Include the HTTP operation's exact class in the error, plus
+          // an aggressively redacted server message. Record only safe
+          // output and never persist a full Docker inspect or secrets.
+          let raw=text;
+          try{raw=String(JSON.parse(text)?.message||text);}
+          catch{/* Leave non-JSON diagnostic as-is. */}
+          const safe=safeEngineMessage(raw,runtimeEnvValues);
+          reject(Error('ENGINE_HTTP_'+method+'_'+res.statusCode+
+            '_CLASS_'+engineErrorClass(raw)+':'+safe));
           return;
         }
-        try{
-          const text=Buffer.concat(chunks).toString('utf8');
-          resolve(text?JSON.parse(text):{});
-        }catch{reject(Error('ENGINE_RESPONSE_INVALID_JSON'));}
+        try{resolve(text?JSON.parse(text):{});}
+        catch{reject(Error('ENGINE_RESPONSE_INVALID_JSON'));}
       });
     });
     req.on('timeout',()=>req.destroy(Error('ENGINE_TIMEOUT_'+method)));
@@ -348,7 +389,15 @@ export async function stopDocker(ctx,id){
 export async function startDocker(ctx,id){
   const was=await current(ctx,id);
   if(!was.State?.Running){
-    await call(ctx,'POST','/containers/'+id+'/start',null,130000);
+    try{await call(ctx,'POST','/containers/'+id+'/start',null,130000);}
+    catch(e){
+      // Docker Desktop may report a POST 500 after it actually started
+      // a container. Verify the Engine state before deciding to rollback.
+      // This matches the already tested false-error STOP strategy.
+      const now=await current(ctx,id);
+      if(!now.State?.Running)throw e;
+      out('ENGINE_START_ERROR_BUT_ACTUAL_RUNNING',String(id).slice(0,12));
+    }
   }
   const now=await current(ctx,id);
   if(!now.State?.Running)throw Error('CONTAINER_NOT_RUNNING_AFTER_START');
@@ -698,6 +747,10 @@ function makeState(base,runId,nested){
 }
 async function activation(){
   const base=await preflightAsync();
+  runtimeEnvValues=Object.values(base.original)
+    .flatMap(c=>(c.Config?.Env||[])
+      .map(e=>String(e).slice(String(e).indexOf('=')+1))
+      .filter(v=>v.length>=5));
   out('PREFLIGHT','PASS');
   out('SSD_UUID','PASS');
   out('REHEARSED_DIRECT_BINDS','5');
@@ -779,7 +832,11 @@ async function activation(){
     }
 
     const worker=await current(ctx,'cloud-sandbox-dev-main');
+    s.phase='WORKER_START_REQUESTED';persist(s);
+    out('ENGINE_OPERATION','START_WORKER');
     await startDocker(ctx,worker.Id);
+    s.phase='WORKER_STARTED';persist(s);
+    out('ENGINE_OPERATION','WORKER_STARTED');
     // Older Docker Engine may not allow an extra network on a stopped
     // container. Connect only AFTER the worker has started.
     const workerPlan=items.find(x=>
@@ -787,10 +844,21 @@ async function activation(){
     for(const secondary of workerPlan.secondary){
       if(secondary.network!=='cloud-sandbox-edge')
         throw Error('UNEXPECTED_SECONDARY_NETWORK_NAME');
-      await call(ctx,'POST','/networks/'+
-        encodeURIComponent(secondary.network)+'/connect',{
-        Container:worker.Id,EndpointConfig:secondary.endpoint
-      },80000);
+      s.phase='WORKER_SECONDARY_NETWORK_REQUESTED';persist(s);
+      out('ENGINE_OPERATION','CONNECT_WORKER_CLOUD_SANDBOX_EDGE');
+      try{
+        await call(ctx,'POST','/networks/'+
+          encodeURIComponent(secondary.network)+'/connect',{
+          Container:worker.Id,EndpointConfig:secondary.endpoint
+        },80000);
+      }catch(e){
+        // A spurious POST error is not a failure if the network
+        // attachment is independently proven in Docker inspect.
+        const status=await current(ctx,worker.Id);
+        if(!status.NetworkSettings?.Networks?.[secondary.network])
+          throw e;
+        out('ENGINE_CONNECT_ERROR_BUT_NETWORK_ATTACHED','PASS');
+      }
     }
     s.phase='WORKER_RUNNING_DUAL_NETWORK';persist(s);
     await retryExec('docker',['exec','cloud-sandbox-dev-main',
@@ -798,8 +866,11 @@ async function activation(){
     {maxAttempts:18,timeout:22000});
     await nestedRestore(s.nestedIds);
     const controller=await current(ctx,'cloud-sandbox-mcp');
+    s.phase='CONTROLLER_START_REQUESTED';persist(s);
+    out('ENGINE_OPERATION','START_CONTROLLER');
     await startDocker(ctx,controller.Id);
     s.phase='NEW_CONTAINERS_RUNNING';persist(s);
+    out('ENGINE_OPERATION','CONTROLLER_STARTED');
 
     const live=[];
     for(const name of NAMES)live.push(await current(ctx,name));
@@ -848,7 +919,8 @@ async function activation(){
     out('COMPOSE_REDEPLOY','BLOCKED_UNTIL_OVERRIDE_PARITY_REVIEW');
     out('DELETE_MAC_DATA','NO');
   }catch(e){
-    out('STOP',String(e.message||'UNKNOWN').slice(0,150));
+    out('FAILED_PHASE',s.phase);
+    out('STOP',String(e.message||'UNKNOWN').slice(0,680));
     const recovered=await restore(s,ctx);
     if(!recovered)throw Error('CUTOVER_AND_ROLLBACK_FAILED');
     throw Error('CUTOVER_FAILED_ROLLBACK_PASS_NO_SOURCE_DELETION');
