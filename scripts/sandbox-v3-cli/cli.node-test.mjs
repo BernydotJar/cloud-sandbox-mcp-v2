@@ -6,7 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import process from 'node:process';
 import os from 'node:os';
-import {parseContainerStatus,DEFAULT_CONTROLLER,DEFAULT_WORKSTATION} from './cli.mjs';
+import {parseContainerStatus,DEFAULT_CONTROLLER,DEFAULT_WORKSTATION,
+  externalSSDClass,EXPECTED_EXTERNAL_SSD_UUID} from './cli.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const code=fs.readFileSync(path.join(dir,'cli.mjs'),'utf8');
@@ -95,4 +96,26 @@ test('Cloudflare uses only the existing system launchd service, never starts ngr
   assert.match(code,/CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS'/);
   assert.doesNotMatch(code,/cloudflared.*tunnel.*create/);
   assert.doesNotMatch(code,/launchctl.*-k/);
+});
+
+test('external SSD guard accepts verified APFS diskutil variants',()=>{
+  const base={FileSystemPersonality:'APFS (Case-insensitive)',
+    MountPoint:'/Volumes/SSD',Internal:false,
+    VolumeUUID:EXPECTED_EXTERNAL_SSD_UUID,ReadOnlyVolume:false};
+  assert.equal(externalSSDClass(base).valid,true);
+  assert.equal(externalSSDClass({...base,Writable:true}).valid,true);
+  assert.equal(externalSSDClass({...base,ReadOnlyVolume:true}).valid,false);
+  assert.equal(externalSSDClass({...base,Internal:true}).valid,false);
+  assert.equal(externalSSDClass({...base,VolumeUUID:'WRONG'}).valid,false);
+  assert.equal(externalSSDClass({...base,MountPoint:'/Volumes/SSD 1'}).valid,false);
+  assert.equal(externalSSDClass({...base,FileSystemPersonality:'exFAT'}).valid,false);
+});
+test('sandbox checks SSD before Docker Desktop or existing containers start',()=>{
+  const idx=code.indexOf('const rootStatus=guardExternalPersistentStorage()');
+  const docker=code.indexOf('await ensureDocker();');
+  const containers=code.indexOf('await ensureExisting(DEFAULT_CONTROLLER);');
+  assert(idx>0&&docker>idx&&containers>docker);
+  assert(code.includes('SSD_VOLUME_UUID_OR_APFS_RW_MISMATCH'));
+  assert(code.includes('SSD_VOLUME_MOUNT_MISSING'));
+  assert(!code.includes('mkdirSync(root'));
 });

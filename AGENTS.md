@@ -853,3 +853,25 @@ Docker writer downtime, guarded cold incremental sync and strong
 checks, Docker.raw through Docker Desktop GUI, SSD volume presence
 guard and mount retarget, then rollback-capable acceptance. Never
 remove original Mac files before independent validation.
+
+## Toshiba SSD cold-cutover release, gated (2026-11-02)
+
+The r3 40GB live stage and cutover-readiness-r2 doctor both passed
+on the user's Mac. New offline Mac signed release:
+  /shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-cold-cutover-20261102
+It upgrades the canonical installed sandbox CLI with a pinned external
+APFS UUID presence check before Docker Desktop starts (only when the
+data root becomes the expected SSD symlink). One-shot Mac
+cold-cutover-on-mac.mjs --activate requires explicit operator
+execution and performs no macOS actions from the Linux workstation.
+It cold-stops nested Docker, dev-main, controller and existing Mac
+Bridge LaunchAgent, incrementally syncs to SSD (including target-only
+deletions for stale WAL), preserves original Mac root and controller
+checkout as timestamped backups, uses tested symlink aliases to avoid
+container recreation, and verifies physical SSD container reads/writes.
+All errors trigger best-effort automatic rollback; a local internal
+recovery state supports explicit retry. After success disable Docker
+container auto-restart; startup MUST go through guarded sandbox.
+Docker Desktop's Docker.raw must separately be moved in the GUI.
+Never delete internal original backups until independent acceptance.
+Extended attribute/ACL parity is not assured for bulk Linux data.

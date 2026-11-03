@@ -13,6 +13,8 @@ import {spawnSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {banner,readTheme,saveTheme,normalizeTheme} from './art.mjs';
 import {ensureCloudflare,inspectCloudflare} from './cloudflare.mjs';
 import {ensureMacBridge,inspectBridgeLaunchd} from './bridge-launchd.mjs';
@@ -21,6 +23,61 @@ import {probePublicEndpoints,probeBrowserBridge,
 
 export const DEFAULT_CONTROLLER='cloud-sandbox-mcp';
 export const DEFAULT_WORKSTATION='cloud-sandbox-dev-main';
+export const EXPECTED_EXTERNAL_SSD_UUID='A6268296-0330-4A69-9BE3-059BE8E4016A';
+export const EXPECTED_EXTERNAL_DATA='/Volumes/SSD/Sandbox/persistent/cloud-sandbox-mcp-data';
+
+export function externalSSDClass(info={}){
+  const apfs=/(^|[^A-Z])APFS([^A-Z]|$)/i.test(
+    String(info.FileSystemPersonality||'')+' '+String(info.FilesystemType||''));
+  const writable=(info.Writable===true||info.ReadOnlyVolume===false||
+    info.VolumeReadOnly===false)&&info.ReadOnlyVolume!==true&&
+    info.VolumeReadOnly!==true&&info.WriteProtected!==true&&
+    info.ReadOnlyMedia!==true;
+  const external=info.Internal===false&&info.MountPoint==='/Volumes/SSD'&&
+    String(info.VolumeUUID||'').toUpperCase()===EXPECTED_EXTERNAL_SSD_UUID;
+  return {valid:apfs&&writable&&external};
+}
+export function guardExternalPersistentStorage(){
+  // BEFORE Docker Desktop starts (and BEFORE docker start). When the
+  // original data root is moved to a pinned SSD via symlink, a missing
+  // removable volume must fail closed; never generate an empty root.
+  const root=path.join(os.homedir(),'.cloud-sandbox-mcp-data');
+  let st;
+  try{st=fs.lstatSync(root);}
+  catch(error){throw Error('SANDBOX_DATA_ROOT_NOT_AVAILABLE:'+error.code);}
+  if(st.isDirectory()&&!st.isSymbolicLink())return 'MAC_ORIGINAL_DATA';
+  if(!st.isSymbolicLink()||fs.readlinkSync(root)!==EXPECTED_EXTERNAL_DATA)
+    throw Error('SANDBOX_DATA_ROOT_UNTRUSTED_SYMLINK');
+  const mount=fs.lstatSync('/Volumes/SSD');
+  if(!mount.isDirectory()||mount.isSymbolicLink())
+    throw Error('SSD_VOLUME_MOUNT_MISSING');
+  const disk=spawnSync('/usr/sbin/diskutil',
+    ['info','-plist','/Volumes/SSD'],{encoding:'utf8',timeout:10000});
+  if(disk.status!==0||disk.error)
+    throw Error('SSD_VOLUME_IDENTITY_CHECK_FAILED');
+  const decoded=spawnSync('/usr/bin/plutil',
+    ['-convert','json','-o','-','-'],{
+      encoding:'utf8',input:disk.stdout,timeout:10000
+    });
+  if(decoded.status!==0||decoded.error)
+    throw Error('SSD_VOLUME_PROPERTIES_UNREADABLE');
+  let volume;
+  try{volume=JSON.parse(decoded.stdout);}
+  catch{throw Error('SSD_VOLUME_PROPERTIES_CORRUPT');}
+  if(!externalSSDClass(volume).valid)
+    throw Error('SSD_VOLUME_UUID_OR_APFS_RW_MISMATCH');
+  if(fs.realpathSync(root)!==EXPECTED_EXTERNAL_DATA||
+    !fs.statSync(root).isDirectory())
+    throw Error('SSD_DATA_ROOT_TARGET_NOT_AVAILABLE');
+  const marker=JSON.parse(fs.readFileSync(
+    '/Volumes/SSD/Sandbox/.sandbox-v3-stage.json','utf8'));
+  if(marker.targetRoot!=='/Volumes/SSD/Sandbox'||
+    marker.volumeUuid!==EXPECTED_EXTERNAL_SSD_UUID||
+    marker.dataSource!==root)
+    throw Error('SSD_STAGE_IDENTITY_MARKER_UNTRUSTED');
+  fs.accessSync(root,fs.constants.R_OK|fs.constants.W_OK);
+  return 'VERIFIED_EXTERNAL_SSD';
+}
 
 export function parseContainerStatus(text,name){
   const match=String(text).trim().match(/^(\/[A-Za-z0-9_.-]+)\|(true|false)\|([A-Za-z_-]+)$/);
@@ -248,6 +305,8 @@ async function main(){
     if(outcomeCode(rows))process.exitCode=1;
     return;
   }
+  const rootStatus=guardExternalPersistentStorage();
+  out('STORAGE_GUARD',rootStatus);
   await ensureDocker();
   // A new runtime / workspace is NEVER created: both container names
   // must exist before any start operation is attempted.
