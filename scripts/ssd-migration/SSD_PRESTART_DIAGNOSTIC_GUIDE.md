@@ -73,3 +73,29 @@ Use immutable v2 release directory:
   sandbox-v3-ssd-worker-prestart-v2-20261103
 
 The original v1 bundle MUST NOT be overwritten or reused.
+
+## Secondary Docker network post-START diagnosis (v3, 2026-11-03)
+
+Mac SSD V2 prestart passed exact-network.START=PASS and
+CLEANUP=PASS. Mac real workstation entrypoint DIND smoke
+also passed SSD_VFS_NESTED_DOCKER_READY=PASS with empty SSD data.
+
+Original direct bind cutover returned ENGINE_HTTP_POST_500 after both
+candidates were created, but the old error did not identify WHICH
+POST failed. The next two POST calls were worker /start and the
+secondary /networks/cloud-sandbox-edge/connect. Thus an error on
+network connect is a distinct plausible explanation.
+
+The v3 isolated test now connects its inert and already started
+worker to exact secondary network cloud-sandbox-edge:
+- original EndpointConfig, including nonempty aliases/IPAM if any
+- then without IPAM, while preserving aliases and driver options
+- then clean secondary EndpointConfig (if previous attempts failed).
+Each failed Docker Engine response is sanitized and classified
+before retrying; the original worker and its networks are never
+altered. The uniquely named test container is removed afterward.
+
+This still does not run production cutover or touch persistent
+Docker state. Do NOT retry the original cutover script before
+identifying the exact failing POST. Release directory:
+  sandbox-v3-ssd-worker-prestart-v3-20261103

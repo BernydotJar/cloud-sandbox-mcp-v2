@@ -253,7 +253,52 @@ async function attempt(ctx,original,mode){
     if(!inspect?.State?.Running)
       throw Error('TEMP_INERT_WORKER_DID_NOT_RUN');
     say(mode+'.START','PASS');
-    return true;
+    // Exactly the cutover's next Docker Engine POST is a SECONDARY
+    // network connect; both calls previously collapsed to POST_500.
+    // Use only the original allowlisted secondary network.
+    if(spec.secondary.length!==1||
+      spec.secondary[0].network!=='cloud-sandbox-edge')
+      throw Error('WORKER_SECONDARY_NETWORK_IDENTITY_DRIFT');
+    const secondary=spec.secondary[0];
+    const desired=copy(secondary.endpoint);
+    const connect=async(endpoint,label)=>{
+      const r=await query(ctx,'POST',
+        '/networks/cloud-sandbox-edge/connect',{
+          Container:createdId,EndpointConfig:endpoint
+        });
+      if(r.status>=400){
+        const msg=sanitizeError(r.payload?.message,secretEnv);
+        say(mode+'.'+label+'.HTTP',r.status);
+        say(mode+'.'+label+'.REASON',classifyError(msg));
+        say(mode+'.'+label+'.DETAIL',msg);
+        return false;
+      }
+      const attached=await checked(ctx,'GET',
+        '/containers/'+createdId+'/json');
+      if(!attached.NetworkSettings?.Networks?.['cloud-sandbox-edge'])
+        throw Error('TEMP_SECONDARY_NETWORK_NOT_VERIFIED');
+      say(mode+'.'+label,'PASS');
+      return true;
+    };
+    const matching=await connect(desired,'SECONDARY_EXACT');
+    if(matching)return true;
+    const noReservation={
+      Aliases:desired.Aliases,
+      DriverOpts:desired.DriverOpts
+    };
+    const withoutIP=await connect(noReservation,'SECONDARY_WITHOUT_IPAM');
+    if(withoutIP){
+      say(mode+'.NETWORK_CAUSE',
+        'ORIGINAL_ENDPOINT_IPAM_OR_RESERVED_ADDRESS');
+      return true;
+    }
+    const clean=await connect({},'SECONDARY_CLEAN');
+    if(clean){
+      say(mode+'.NETWORK_CAUSE',
+        'ORIGINAL_ENDPOINT_ALIASES_DRIVEROPT_OR_IPAM');
+      return true;
+    }
+    throw Error('ALL_TEMP_SECONDARY_NETWORK_ATTACH_MODES_FAILED');
   }finally{
     if(attemptedCreate){
       let temp=createdId;
@@ -320,9 +365,9 @@ async function main(){
     throw Error('ORIGINAL_WORKER_CHANGED_ABORT');
   say('ORIGINAL_WORKER','UNCHANGED_RUNNING');
   say('SECRET_ENV_VALUES_PRINTED','NO');
-  if(exact) say('RESULT','FULL_RUNTIME_START_COMPATIBLE');
-  else if(clean) say('RESULT','ORIGINAL_ENDPOINT_CONFIG_SUSPECT');
-  else say('RESULT','FULL_RUNTIME_START_FAILURE_CAUSE_CAPTURED');
+  if(exact) say('RESULT','FULL_RUNTIME_AND_SECONDARY_NETWORK_COMPATIBLE');
+  else if(clean) say('RESULT','PRIMARY_ENDPOINT_CONFIG_SUSPECT');
+  else say('RESULT','ENGINE_START_OR_SECONDARY_NETWORK_FAILURE_CAPTURED');
 }
 if(process.argv[1]&&fs.realpathSync(process.argv[1])===
   fileURLToPath(import.meta.url))main().catch(e=>{

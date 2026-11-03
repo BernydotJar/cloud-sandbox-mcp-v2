@@ -1005,3 +1005,17 @@ Maintains the original workstation unchanged and running.
 A future cutover retry must capture Engine POST errors, validate
 actual copied Docker data without duplicate auto-restarted nested
 apps, avoid unsafe stale data, and preserve rollback checkpoints.
+
+## Direct SSD secondary-network HTTP POST 500 isolation (2026-11-03)
+
+Mac operator success exact-network.START=PASS and isolated
+SSD_VFS_NESTED_DOCKER_READY=PASS. Previous
+ENGINE_HTTP_POST_500 can be either worker START or secondary
+cloud-sandbox-edge network CONNECT since both are POST.
+A v3 diagnostic is prepared under
+sandbox-v3-ssd-worker-prestart-v3-20261103, adding secondary
+network attach to the inert candidate while the original stays
+running. It tries exact EndpointConfig, without IPAM and clean
+EndpointConfig to diagnose network conflicts without source writes,
+respects the exact Toshiba UUID and deletes only the temporary
+candidate. V3 result must be inspected before cutover repair.

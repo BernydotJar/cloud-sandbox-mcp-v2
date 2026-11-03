@@ -84,3 +84,17 @@ test('macOS APFS physical disk guard supports FilesystemType field, keeps UUID p
   assert.equal(diskEvidence({...base,Writable:false,
     ReadOnlyVolume:undefined,VolumeReadOnly:undefined}).writable,false);
 });
+
+test('reproduces network attach stage without altering original container',()=>{
+  const file=new URL('./ssd-worker-prestart-diagnostic-on-mac.mjs',
+    import.meta.url);
+  const source=fs.readFileSync(file,'utf8');
+  assert(source.includes('/networks/cloud-sandbox-edge/connect'));
+  assert(source.includes("spec.secondary.length!==1"));
+  assert(source.includes('SECONDARY_EXACT'));
+  assert(source.includes('SECONDARY_WITHOUT_IPAM'));
+  assert(source.includes('SECONDARY_CLEAN'));
+  assert(source.includes('ALL_TEMP_SECONDARY_NETWORK_ATTACH_MODES_FAILED'));
+  assert(source.includes('FULL_RUNTIME_AND_SECONDARY_NETWORK_COMPATIBLE'));
+  assert(source.includes("body.Cmd=['exec sleep infinity']"));
+});
