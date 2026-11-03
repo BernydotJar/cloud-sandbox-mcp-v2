@@ -904,3 +904,27 @@ multiple networks, devices and named volumes needing reconciliation.
 Do not begin another cold sync/recreation until full grounded
 runtime parity and rollback have been worked out. Keep staged SSD
 and original Mac files intact; Docker.raw is still separate.
+
+## Toshiba SSD direct-bind CREATE rehearsal (2026-11-03)
+
+User audit confirms exact real Docker specs including cloud-sandbox
+MCP custom image + controller /app/dist RO overlay and docker.sock,
+workstation two networks (bridge, cloud-sandbox-edge) and worker
+extra /shared/development and /shared/github-repos-local binds.
+Previous old symlink cutover must NEVER be rerun.
+
+New signed Mac package planned at:
+ /shared-auth/deployment/handoff/cloud-sandbox-computer-use/
+ sandbox-v3-ssd-direct-bind-rehearsal-20261103
+command: node direct-bind-rehearsal-on-mac.mjs --inspect
+or --rehearse. Rehearsal uses Docker Engine API through pinned
+local Unix socket, original full Docker inspect configs including
+secret ENV values only in memory, replaces only five known persistent
+host bind sources with Toshiba direct paths, pins both image IDs,
+and compares created STOPPED candidate metadata. Candidates are
+cleaned up; originals MUST remain live and unchanged. No rsync,
+Docker.raw relocation, daemon stop or cutover. Secondary network
+cloud-sandbox-edge attach must wait until later real candidate
+startup; Docker Engine may not attach to a stopped container.
+Do not report full deployment readiness until this rehearsal PASS
+and a separate effective rollout/rollback design passes testing.
