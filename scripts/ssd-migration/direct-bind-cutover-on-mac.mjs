@@ -53,7 +53,13 @@ function verifyPackage(){
   if(b.length>32000||sha(b)!==fs.readFileSync(digestPath,'utf8').trim())
     throw Error('CUTOVER_PACKAGE_MANIFEST_TAMPERED');
   const m=JSON.parse(b);
-  if(m.schema!=='sandbox-v3.ssd-direct-cutover.v1'||
+  // One immutable release services BOTH the existing guarded CLI
+  // upgrader and the direct bind cutover. The installer requires
+  // sandbox-v3.primary-cli.v1, while the SSD operation is gated by
+  // its own explicit identity flag and pinned APFS UUID.
+  if(m.schema!=='sandbox-v3.primary-cli.v1'||
+    m.ssd_direct_cutover_bundle!==true||
+    m.primary_plugin!=='Sandbox_V3'||
     m.pinned_volume_uuid!==UUID||
     !m.files_sha256?.['direct-bind-cutover-on-mac.mjs'])
     throw Error('CUTOVER_PACKAGE_IDENTITY_WRONG');
