@@ -16,6 +16,25 @@ export const MAC_VOLUME='/Volumes/SSD';
 export const MAC_UUID='A6268296-0330-4A69-9BE3-059BE8E4016A';
 export const TARGET='/Volumes/SSD/Sandbox';
 export const REL_WORKSPACE='workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86';
+export function classifyMacSsd(info={}){
+  // Same APFS/readonly key semantics as the successful stage preflight.
+  // Apple's diskutil -plist omits Writable on some systems while
+  // providing false for ReadOnlyVolume or VolumeReadOnly.
+  const apfs=/(^|[^A-Z])APFS([^A-Z]|$)/i.test(
+    String(info.FileSystemPersonality||'')+' '+String(info.FilesystemType||''));
+  const writable=(info.Writable===true||
+    info.ReadOnlyVolume===false||info.VolumeReadOnly===false) &&
+    info.ReadOnlyVolume!==true&&info.VolumeReadOnly!==true&&
+    info.WriteProtected!==true&&info.ReadOnlyMedia!==true;
+  const uuid=String(info.VolumeUUID||'').toUpperCase();
+  const valid=apfs&&info.MountPoint===MAC_VOLUME&&
+    info.Internal===false&&uuid===MAC_UUID&&writable;
+  return {valid,reason:!apfs?'NOT_APFS':
+    info.MountPoint!==MAC_VOLUME?'UNEXPECTED_MOUNT':
+      info.Internal!==false?'NOT_EXTERNAL':
+        uuid!==MAC_UUID?'SSD_UUID_CHANGED':
+          !writable?'SSD_NOT_CONFIRMED_WRITABLE':'PASS'};
+}
 const HOME=os.homedir();
 const SOURCE=path.join(HOME,'.cloud-sandbox-mcp-data');
 const CODE=path.join(HOME,'Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation');
@@ -119,13 +138,14 @@ function main(){
     throw Error('READ_ONLY_INSPECT_FLAG_REQUIRED');
   if(process.platform!=='darwin')
     throw Error('MACOS_HOST_REQUIRED');
+  const volume=fs.lstatSync(MAC_VOLUME);
+  if(!volume.isDirectory()||volume.isSymbolicLink())
+    throw Error('EXTERNAL_SSD_MOUNT_NOT_REAL_DIRECTORY');
   const disk=diskInfo();
-  if(disk.VolumeUUID!==MAC_UUID||
-    disk.MountPoint!==MAC_VOLUME||
-    disk.Internal!==false||
-    disk.FileSystemPersonality!=='APFS'||
-    disk.Writable!==true)
-    throw Error('SSD_IDENTITY_OR_RW_MISMATCH');
+  const classification=classifyMacSsd(disk);
+  if(!classification.valid)
+    throw Error('SSD_PREFLIGHT_'+classification.reason);
+  fs.accessSync(MAC_VOLUME,fs.constants.W_OK);
   safeDir(TARGET,{ownerOnly:true});
   safeDir(TARGET+'/source',{ownerOnly:true});
   safeDir(TARGET+'/persistent',{ownerOnly:true});

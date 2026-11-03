@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {
-  checkedStage,checkOldMounts,MAC_UUID,MAC_VOLUME,TARGET,REL_WORKSPACE
+  checkedStage,checkOldMounts,classifyMacSsd,
+  MAC_UUID,MAC_VOLUME,TARGET,REL_WORKSPACE
 } from './cutover-readiness-on-mac.mjs';
 
 const source=path.join(os.homedir(),'.cloud-sandbox-mcp-data');
@@ -82,4 +83,32 @@ test('readiness inspector never executes Mac mutations or writes',()=>{
     assert.equal(run.status,2);
     assert.match(run.stderr,/MACOS_HOST_REQUIRED/);
   }
+});
+
+test('Mac APFS UUID guard accepts positive writable variations used by stage',()=>{
+  const base={FileSystemPersonality:'APFS (Case-insensitive)',
+    MountPoint:MAC_VOLUME,Internal:false,VolumeUUID:MAC_UUID};
+  assert.deepEqual(classifyMacSsd({...base,VolumeReadOnly:false}),
+    {valid:true,reason:'PASS'});
+  assert.equal(classifyMacSsd({...base,ReadOnlyVolume:false}).valid,true);
+  assert.equal(classifyMacSsd({...base,Writable:true}).valid,true);
+  assert.equal(classifyMacSsd({...base,FilesystemType:'APFS'}).valid,false);
+  assert.equal(classifyMacSsd({
+    ...base,FileSystemPersonality:'',FilesystemType:'apfs',
+    ReadOnlyVolume:false,VolumeUUID:MAC_UUID.toLowerCase()
+  }).valid,true);
+});
+test('Mac SSD guard remains fail-closed against wrong device and readonly media',()=>{
+  const good={FilesystemType:'APFS',MountPoint:MAC_VOLUME,
+    VolumeUUID:MAC_UUID,Internal:false,ReadOnlyVolume:false};
+  for(const patch of [
+    {MountPoint:'/Volumes/SSD 1'}, {VolumeUUID:'WRONG'},
+    {Internal:true},{FileSystemPersonality:'exFAT',FilesystemType:'exFAT'},
+    {ReadOnlyVolume:true},{VolumeReadOnly:true},{WriteProtected:true},
+    {ReadOnlyMedia:true}
+  ]){
+    assert.equal(classifyMacSsd({...good,...patch}).valid,false);
+  }
+  assert.equal(classifyMacSsd({...good,ReadOnlyVolume:undefined}).valid,false);
+  assert.equal(classifyMacSsd(good).valid,true);
 });

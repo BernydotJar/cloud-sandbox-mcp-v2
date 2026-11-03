@@ -1,3 +1,16 @@
+## Toshiba SSD pre-cutover readonly doctor r2 (2026-11-02)
+
+The user ran the original readiness doctor and got
+SSD_IDENTITY_OR_RW_MISMATCH. Root cause was a code divergence
+from the working stage: the doctor demanded FileSystemPersonality
+exactly "APFS" and Writable explicitly true, while the real macOS
+diskutil plist permits APFS variants and alternate explicit
+read-only=false flags. Fix: reuse the successful stage semantics
+while retaining pinned UUID/external mount and FS W_OK checks.
+The immutable r2 handoff is sandbox-v3-ssd-cutover-readiness-r2-20261102.
+This is READ ONLY, not a cold sync, Docker.raw migration, cutover,
+or permission to delete Mac originals.
+
 ## SSD stage r3 (AppleDouble long-filepath recovery, 2026-11-02)
 
 The Mac recovery-r2 stage copied 39.4 GB then returned rsync rc23

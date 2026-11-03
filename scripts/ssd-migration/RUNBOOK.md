@@ -302,6 +302,31 @@ The signed Mac handoff must be run on the operator's Mac.
 STAGING COPY AND LIVE CUTOVER REMAIN PENDING until explicitly
 verified by receipts and independent runtime checks.
 
+## Readiness doctor SSD identity mismatch repair (2026-11-02)
+
+The first real Mac doctor stopped with SSD_IDENTITY_OR_RW_MISMATCH.
+It used an overly strict diskutil plist check:
+FileSystemPersonality === "APFS" and Writable === true. The
+successful staging script accepts APFS variants and either
+explicit writable=true or one of the macOS read-only flag values
+being false, while rejecting explicit read-only flags.
+
+The read-only doctor release r2 (separate immutable handoff directory)
+now uses the same APFS identity and writable semantics as stage,
+while still requiring the EXACT external SSD UUID, mount point,
+external device, explicit writable evidence, actual filesystem W_OK,
+and non-symlink root. It returns a specific fail-closed reason
+for a REAL mismatch instead of a vague identity error.
+
+The released Mac command is:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-cutover-readiness-r2-20261102"
+    node "$BASE/cutover-readiness-on-mac.mjs" --inspect
+
+This doctor does NOT copy or modify files, move Docker.raw, change
+Docker mounts, or allow source deletion. Only a Mac run can establish
+a real pre-cutover PASS; Linux unit tests do not impersonate that Mac.
+
 ## Pre-cutover read-only doctor after r3 staging success
 
 The operator observed these exact Mac terminal markers after 79 minutes:
