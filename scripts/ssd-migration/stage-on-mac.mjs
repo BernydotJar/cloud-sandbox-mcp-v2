@@ -229,11 +229,21 @@ export function rsyncArgs(source,destination){
      ![DATA_DEST,CODE_DEST].includes(destination)||
      (source===dataSource)!==(destination===DATA_DEST))
     throw Error('SOURCE_OR_TARGET_NOT_ALLOWLISTED');
-  const args=['-aEH','--stats'];
+  const persistent=source===dataSource;
+  // macOS /usr/bin/rsync -E synthesizes ._AppleDouble metadata pseudo-files
+  // for each source file. For the deep Linux/container archive, copyfile()
+  // raises ENAMETOOLONG when it tries to open those synthetic names, and
+  // these pseudo-files are always sent again on retry.
+  // In initial LIVE staging only, copy real persistent data with -aH.
+  // This preserves owner, group, mode, times, links, and hardlinks while
+  // intentionally DEFERING macOS xattr/resource-fork parity to cold final
+  // verification. Do NOT pretend this is a full metadata-preserving cutover.
+  // Keep -E for the independent small macOS controller checkout.
+  const args=[persistent?'-aH':'-aEH','--stats'];
   // The uv archive is a disposable, actively regenerated cache; its
-  // ._ sidecars vanish during Mac rsync, causing rc=1 on every retry.
-  // Exclude the EXACT observed cache path, never all .cache or .git.
-  if(source===dataSource)args.push('--exclude='+EPHEMERAL_UV_CACHE_RELATIVE);
+  // sidecars vanished during the first live rsync. Do not exclude any
+  // real Git files or all dotfiles. Never delete anything during staging.
+  if(persistent)args.push('--exclude='+EPHEMERAL_UV_CACHE_RELATIVE);
   return [...args,'--',source+'/',destination+'/'];
 }
 async function runRsync(name,src,dest){
@@ -250,7 +260,10 @@ async function runRsync(name,src,dest){
     if(auth.status!==0||auth.error)
       throw Error('SUDO_AUTH_FAILED_NO_DATA_SOURCE_MODIFIED');
   }
-  const log=path.join(ROOT,'reports','rsync-'+name+'.private.log');
+  // Keep old rc=1 and rc=23 evidence; r3 diagnostics use a fresh log.
+  const log=path.join(ROOT,'reports',
+    persistent?'rsync-persistent-no-appledouble.private.log':
+      'rsync-controller.private.log');
   const existingLog=lstat(log);
   if(existingLog&&(!existingLog.isFile()||existingLog.isSymbolicLink()||
      existingLog.uid!==process.getuid()||
@@ -336,6 +349,8 @@ async function main(){
   const code=await runRsync('controller',controllerSource,CODE_DEST);
   console.log('[SSD Stage] PHASE=PERSISTENT_DATA_STAGING_COPY');
   console.log('[SSD Stage] EPHEMERAL_UV_CACHE=EXCLUDED_SOURCE_UNCHANGED');
+  console.log('[SSD Stage] APPLEDOUBLE_METADATA_EMULATION=OFF_FOR_LINUX_DATA');
+  console.log('[SSD Stage] XATTR_PARITY=DEFERRED_TO_COLD_FINAL_VERIFICATION');
   console.log('[SSD Stage] PROTECTED_GIT_ARCHIVE=INCLUDED_VIA_SUDO');
   const data=await runRsync('persistent',dataSource,DATA_DEST);
   const receipt={
@@ -346,6 +361,9 @@ async function main(){
     activeDataMayHaveChangedDuringCopy:true,
     excludedRegenerableUvCache:true,
     privilegedRsyncReadForInaccessibleArchivedGitIndex:true,
+    persistentFileContentMode:'rsync_-aH_without_AppleDouble_metadata',
+    initialPersistentCopyXattrsFullyPreserved:false,
+    xattrAndAclParityVerificationPending:true,
     requireColdFinalSync:true,requireStrongVerification:true,
     dockerDesktopDiskImageMoved:false,
     dockerBindMountsRetargeted:false,

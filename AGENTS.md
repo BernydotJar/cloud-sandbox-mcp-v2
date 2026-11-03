@@ -1,3 +1,21 @@
+## SSD stage r3 (AppleDouble long-filepath recovery, 2026-11-02)
+
+The Mac recovery-r2 stage copied 39.4 GB then returned rsync rc23
+for Apple -E xattr synthetic ._* pathnames in the very deep
+legacy-barehands llama.cpp archive. Source data remains intact,
+not cut over. r3 keeps the existing UUID-gated staging markers,
+macOS sudo read for protected archived Git, and uv-cache-only
+exclusion; it resumes the bulk Linux/container persistent data
+with rsync -aH (no macOS -E AppleDouble emulation), while
+the native controller checkout retains -aEH. No generic ._*
+exclusion or Git exclusion, no --ignore-existing, no removal
+or source permission changes. Correct result remains staging only;
+xattr/ACL parity NOT assured and MUST be audited during cold
+final sync before swapping Docker mounts or deleting the Mac source.
+The r3 private log uses a new filename to avoid false alarms from
+past rsync failures. New signed release:
+shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-stage-resume-r3-20261102.
+
 ## SSD resume stage root permissions correction (2026-11-02)
 
 A successful rsync -a controller stage applied source permissions,

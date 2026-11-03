@@ -5,6 +5,56 @@ The runtime stays on the same Mac, the same Docker Desktop engine,
 the same two named Sandbox V3 containers, existing Cloudflare,
 Browser Bridge and authenticated browser sessions.
 
+## Recovery for macOS AppleDouble copyfile ENAMETOOLONG on deep archived paths
+
+The Mac recovery-r2 initial live staging proceeded for 162 minutes,
+transferring 39,425,572,496 bytes across 1,074,480 files. It then
+returned rsync exit 23, with these failures in its private log:
+
+    rsync(...): error: copyfile: File name too long
+    .../archive/container-root/legacy-barehands/.cache/llama.cpp-src/
+         tools/ui/.../._ChatAttachmentsListItem...svelte
+
+This is Apple-specific rsync -E converting extended attributes
+and Finder metadata into ._* pseudo-files. The synthetic AppleDouble
+paths can exceed copyfile() limits in deeply nested Linux-origin
+archives. The previous root-only sudo read and uv cache exclusion
+still apply; the prior Git pack Permission denied was not the
+reported cause of the latest failure.
+
+Recovery r3 uses rsync -aH for ONLY the PERSISTENT Linux/container
+data in the existing pinned SSD staging directory, while retaining
+-aEH for the smaller native macOS controller source. This disables
+the troublesome ._* xattr emulation during the bulk resume.
+-aH still copies regular content and normal POSIX metadata
+including uid/gid, mode, timestamps, symlinks and hardlinks. It
+DOES NOT guarantee native macOS extended attributes or ACL parity.
+This is allowed for NON-AUTHORITATIVE LIVE STAGING ONLY. Cold final
+sync and independent xattr/ACL audit are required BEFORE retarget
+or deletion of source, and may need a native metadata-aware pass for
+host-sensitive files and scripts. The staging receipt explicitly
+records initialPersistentCopyXattrsFullyPreserved:false and
+xattrAndAclParityVerificationPending:true.
+
+The fix does NOT exclude real ._ files indiscriminately. It
+excludes only the existing exact disposable uv cache path, and
+still includes all Git and project files. It does not use overwrite-
+skipping or --ignore-existing, because doing so could overlook
+incomplete or stale files. The quick-check rsync resumes into
+the existing data destination without a checksum recopy. Old
+rc1/rc23 private logs are preserved; new errors go to
+rsync-persistent-no-appledouble.private.log.
+
+Run on the Mac only after checking the SSD is mounted:
+
+    BASE="$HOME/.cloud-sandbox-mcp-data/shared-auth/deployment/handoff/cloud-sandbox-computer-use/sandbox-v3-ssd-stage-resume-r3-20261102"
+    node "$BASE/stage-on-mac.mjs" --stage
+
+This is STILL NOT a Docker cutover and the original Mac data must
+remain in place until all acceptance gates pass. The expected
+RESULT=STAGED_COPY_ONLY_NOT_CUTOVER does not override the
+required future metadata verification.
+
 ## Recovery for stage directory permissions after successful controller copy
 
 After the first resumed attempt, the preflight passed but the guarded

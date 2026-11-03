@@ -83,11 +83,11 @@ test('staging marker never asserts consistency or authorizes deleting originals'
   assert.throws(()=>validateStageMarker({...marker,volumeUuid:'different'}),
     /STAGE_FOLDER_UNRECOGNIZED_OR_CHANGED/);
 });
-test('rsync command preserves attributes and forbids deletion or overwriting old SSD checkout',()=>{
+test('rsync command preserves file metadata except deferred xattrs for persistent Linux data',()=>{
   const testHome=process.env.HOME||os.homedir();
   const root=path.join(testHome,'.cloud-sandbox-mcp-data');
   const args=rsyncArgs(root,DATA_DEST);
-  assert.deepEqual(args,['-aEH','--stats',
+  assert.deepEqual(args,['-aH','--stats',
     '--exclude='+EPHEMERAL_UV_CACHE_RELATIVE,
     '--',root+'/',DATA_DEST+'/']);
   assert(!args.includes('--delete'));
@@ -153,4 +153,25 @@ test('only CODE and DATA destination leaves may inherit source permissions',()=>
   assert(src.includes('guardedMkdir(ROOT);'));
   assert(!src.includes('chmodSync('));
   assert(!src.includes('chownSync('));
+});
+
+test('rc23 AppleDouble ENAMETOOLONG safe resume does not synthesize sidecars',()=>{
+  const home=path.join(process.env.HOME||os.homedir(),'.cloud-sandbox-mcp-data');
+  const persistent=rsyncArgs(home,DATA_DEST);
+  assert.equal(persistent[0],'-aH');
+  assert(!persistent.some(x=>x==='-E'||x.includes('aEH')));
+  assert(!persistent.some(x=>x.includes('exclude=._')||
+    x.includes('exclude=**/.git')));
+  assert(!persistent.includes('--delete'));
+  const controller=rsyncArgs(
+    path.join(process.env.HOME||os.homedir(),
+      'Development/Workspaces/cloud-sandbox-mcp-v0.2.0-workstation'),
+    CODE_DEST);
+  assert.equal(controller[0],'-aEH');
+  const script=fs.readFileSync(new URL('./stage-on-mac.mjs',import.meta.url),'utf8');
+  assert(script.includes('rsync-persistent-no-appledouble.private.log'));
+  assert(script.includes('initialPersistentCopyXattrsFullyPreserved:false'));
+  assert(script.includes('xattrAndAclParityVerificationPending:true'));
+  assert(script.includes('XATTR_PARITY=DEFERRED_TO_COLD_FINAL_VERIFICATION'));
+  assert(script.includes('SUDO_AUTH_FAILED_NO_DATA_SOURCE_MODIFIED'));
 });
