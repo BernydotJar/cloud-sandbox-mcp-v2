@@ -956,3 +956,25 @@ symlink-based cold-cutover-on-mac.mjs --activate. Do not claim native
 Mac shared-auth helper paths or Compose config fully migrated until
 their own separate verification. A full-tree cold metadata scan can
 still be lengthy. No source deletion or Docker pruning allowed.
+
+## Toshiba SSD startup HTTP 500 diagnostic after rollback (2026-11-03)
+
+User reported exact original macOS START error ENGINE_HTTP_POST_500
+after FINAL_RSYNC_PERSISTENT=PASS, FINAL_RSYNC_CONTROLLER=PASS,
+NEW_CONTAINER_CREATED for both, then automatic rollback successful.
+Separate user command proved SSD_COMBINED_RUNTIME=PASS, including all
+six worker mounts and --privileged --security-opt label=disable.
+The old cutover --activate MUST NOT be repeated: it would re-run
+the expensive metadata reconciliation. The next step is the signed
+Mac prestart diagnostic at:
+ /shared-auth/deployment/handoff/cloud-sandbox-computer-use/
+ sandbox-v3-ssd-worker-prestart-20261103
+ command: node ssd-worker-prestart-diagnostic-on-mac.mjs --test.
+It tests a privileged TEMPORARY candidate with the exact original
+HostConfig and physical SSD binds but overrides PID1 with inert
+sleep. Collects sanitized Engine HTTP errors and then tries a
+clean primary network configuration if needed. Does not start
+nested Docker, alter the original containers, or run rsync.
+After grounded error output, patch the cutover and perform a
+source-consistent fast reconciliation; do not claim migration
+complete until runtime plus network and data verification pass.
