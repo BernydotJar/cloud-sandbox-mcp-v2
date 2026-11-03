@@ -79,6 +79,91 @@ export function guardExternalPersistentStorage(){
   return 'VERIFIED_EXTERNAL_SSD';
 }
 
+export const SSD_DIRECT_STATE_FILE=
+  path.join(os.homedir(),'.local/share/sandbox-v3/ssd-direct-cutover-state.json');
+
+export function classifyDirectSSDState(state){
+  if(state===null)return 'NO_DIRECT_SSD_CUTOVER_STATE';
+  if(state?.schema!=='sandbox-v3.ssd-direct-cutover.v1'||
+    state.ssdUuid!==EXPECTED_EXTERNAL_SSD_UUID)
+    throw Error('DIRECT_SSD_CUTOVER_RECORD_UNTRUSTED');
+  if(state.phase==='ROLLBACK_COMPLETE')return 'MAC_ORIGINAL_DATA';
+  if(state.phase!=='SUCCEEDED')
+    throw Error('SSD_DIRECT_CUTOVER_INCOMPLETE_FAIL_CLOSED');
+  return 'DIRECT_SSD_REQUIRED';
+}
+function validateDirectSSDPhysicalMount(){
+  const disk=spawnSync('/usr/sbin/diskutil',
+    ['info','-plist','/Volumes/SSD'],{encoding:'utf8',timeout:10000});
+  if(disk.status!==0||disk.error)
+    throw Error('DIRECT_SSD_VOLUME_IDENTITY_CHECK_FAILED');
+  const decoded=spawnSync('/usr/bin/plutil',
+    ['-convert','json','-o','-','-'],{
+      encoding:'utf8',input:disk.stdout,timeout:10000
+    });
+  if(decoded.status!==0||decoded.error)
+    throw Error('DIRECT_SSD_VOLUME_PROPERTIES_UNREADABLE');
+  let info;
+  try{info=JSON.parse(decoded.stdout);}
+  catch{throw Error('DIRECT_SSD_VOLUME_PROPERTIES_CORRUPT');}
+  if(!externalSSDClass(info).valid)
+    throw Error('DIRECT_SSD_UUID_OR_RW_MISMATCH');
+  const target=fs.lstatSync(EXPECTED_EXTERNAL_DATA);
+  if(!target.isDirectory()||target.isSymbolicLink())
+    throw Error('DIRECT_SSD_DATA_ROOT_INVALID');
+  fs.accessSync(EXPECTED_EXTERNAL_DATA,fs.constants.R_OK);
+}
+export function directSSDPreStartupGuard(){
+  let info=null;
+  try{
+    const st=fs.lstatSync(SSD_DIRECT_STATE_FILE);
+    if(!st.isFile()||st.isSymbolicLink()||
+      st.uid!==process.getuid()||(st.mode&0o077)!==0||
+      st.size>16000)
+      throw Error('DIRECT_SSD_CUTOVER_RECORD_UNTRUSTED');
+    info=JSON.parse(fs.readFileSync(SSD_DIRECT_STATE_FILE,'utf8'));
+  }catch(error){
+    if(error.code!=='ENOENT')throw error;
+  }
+  const mode=classifyDirectSSDState(info);
+  if(mode==='DIRECT_SSD_REQUIRED')validateDirectSSDPhysicalMount();
+  return mode;
+}
+export function directSSDBindMatch(containers){
+  if(!Array.isArray(containers)||containers.length!==2)
+    throw Error('DIRECT_SSD_RUNNING_CONTAINERS_MISSING');
+  const source=EXPECTED_EXTERNAL_DATA;
+  const mounts={
+    'cloud-sandbox-mcp':{'/data':source},
+    'cloud-sandbox-dev-main':{
+      '/workspace':source+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/repo',
+      '/home/agent':source+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/home',
+      '/shared-auth':source+'/shared-auth',
+      '/var/lib/docker':source+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/docker'
+    }
+  };
+  for(const [name,expected] of Object.entries(mounts)){
+    const container=containers.find(c=>c.Name==='/'+name);
+    if(!container)throw Error('DIRECT_SSD_CONTAINER_NOT_FOUND:'+name);
+    for(const [destination,target] of Object.entries(expected)){
+      const mount=(container.Mounts||[]).find(
+        m=>m.Destination===destination);
+      if(!mount||mount.Type!=='bind'||mount.Source!==target)
+        throw Error('DIRECT_SSD_CONTAINER_BIND_DRIFT:'+name+':'+destination);
+    }
+  }
+  return true;
+}
+function verifyDirectDockerMounts(){
+  const r=exec('docker',['inspect',
+    DEFAULT_CONTROLLER,DEFAULT_WORKSTATION],20000);
+  if(!r.ok)throw Error('DIRECT_SSD_DOCKER_INSPECT_FAILED');
+  let containers;
+  try{containers=JSON.parse(r.stdout);}
+  catch{throw Error('DIRECT_SSD_DOCKER_INSPECT_UNREADABLE');}
+  directSSDBindMatch(containers);
+}
+
 export function parseContainerStatus(text,name){
   const match=String(text).trim().match(/^(\/[A-Za-z0-9_.-]+)\|(true|false)\|([A-Za-z_-]+)$/);
   if(!match||match[1]!=='/'+name)throw Error('UNEXPECTED_CONTAINER_IDENTITY:'+name);
@@ -305,9 +390,14 @@ async function main(){
     if(outcomeCode(rows))process.exitCode=1;
     return;
   }
+  // A physical direct bind leaves the original ~/ data directory
+  // untouched. The older symlink-only guard is not enough.
+  const directStatus=directSSDPreStartupGuard();
   const rootStatus=guardExternalPersistentStorage();
-  out('STORAGE_GUARD',rootStatus);
+  out('STORAGE_GUARD',directStatus==='DIRECT_SSD_REQUIRED'?
+    directStatus:rootStatus);
   await ensureDocker();
+  if(directStatus==='DIRECT_SSD_REQUIRED')verifyDirectDockerMounts();
   // A new runtime / workspace is NEVER created: both container names
   // must exist before any start operation is attempted.
   state(DEFAULT_CONTROLLER);

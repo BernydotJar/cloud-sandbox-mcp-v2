@@ -928,3 +928,31 @@ cloud-sandbox-edge attach must wait until later real candidate
 startup; Docker Engine may not attach to a stopped container.
 Do not report full deployment readiness until this rehearsal PASS
 and a separate effective rollout/rollback design passes testing.
+
+## Toshiba SSD direct-bind cutover after CREATE parity PASS (2026-11-03)
+
+Operator Mac results confirmed cloud-sandbox-mcp.CREATE_PARITY=PASS,
+cloud-sandbox-dev-main.CREATE_PARITY=PASS,
+SECONDARY_NETWORKS_DEFERRED=cloud-sandbox-edge,
+CLEANUP=PASS, ORIGINAL_CONTAINERS=UNCHANGED_RUNNING and
+DIRECT_SSD_CREATE_PARITY_PASS_NO_CUTOVER. Signed Mac release staged at
+/shared-auth/deployment/handoff/cloud-sandbox-computer-use/
+sandbox-v3-ssd-direct-bind-cutover-20261103. User must first run
+install-on-mac.mjs --upgrade to install the new direct SSD guard
+into canonical sandbox CLI, then direct-bind-cutover-on-mac.mjs
+--inspect and finally --activate during a planned downtime.
+
+The direct cutover NEVER renames or deletes original Mac folders.
+It uses full original Engine Config/HostConfig, changes exactly five
+persistent binds to physical SSD, changes exactly controller
+HOST_DATA_DIR to physical SSD for NEW workspace creation, keeps
+other Env secrets unchanged, and preserves customized overlay,
+worker extra binds, secondary network and Docker metadata.
+Original containers are stopped, renamed and retained for rollback.
+A private INTERNAL Mac journal and verified Engine recovery ensure
+fail-closed behavior; original restart policies restored after
+rollback. Docker.raw remains GUI-only. Don't run obsolete
+symlink-based cold-cutover-on-mac.mjs --activate. Do not claim native
+Mac shared-auth helper paths or Compose config fully migrated until
+their own separate verification. A full-tree cold metadata scan can
+still be lengthy. No source deletion or Docker pruning allowed.

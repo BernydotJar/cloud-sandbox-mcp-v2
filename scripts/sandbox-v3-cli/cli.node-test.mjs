@@ -7,7 +7,8 @@ import {spawnSync} from 'node:child_process';
 import process from 'node:process';
 import os from 'node:os';
 import {parseContainerStatus,DEFAULT_CONTROLLER,DEFAULT_WORKSTATION,
-  externalSSDClass,EXPECTED_EXTERNAL_SSD_UUID} from './cli.mjs';
+  externalSSDClass,EXPECTED_EXTERNAL_SSD_UUID,
+  classifyDirectSSDState,directSSDBindMatch,EXPECTED_EXTERNAL_DATA} from './cli.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const code=fs.readFileSync(path.join(dir,'cli.mjs'),'utf8');
@@ -118,4 +119,52 @@ test('sandbox checks SSD before Docker Desktop or existing containers start',()=
   assert(code.includes('SSD_VOLUME_UUID_OR_APFS_RW_MISMATCH'));
   assert(code.includes('SSD_VOLUME_MOUNT_MISSING'));
   assert(!code.includes('mkdirSync(root'));
+});
+
+test('direct SSD startup guard treats incomplete cutover as fail closed',()=>{
+  assert.equal(classifyDirectSSDState(null),
+    'NO_DIRECT_SSD_CUTOVER_STATE');
+  const base={schema:'sandbox-v3.ssd-direct-cutover.v1',
+    ssdUuid:EXPECTED_EXTERNAL_SSD_UUID};
+  for(const phase of ['PREPARED','STOPPING','COLD_SYNC',
+    'RENAMING','CREATING','VALIDATING','ROLLBACK_INCOMPLETE']){
+    assert.throws(()=>classifyDirectSSDState({...base,phase}),
+      /INCOMPLETE_FAIL_CLOSED/);
+  }
+  assert.equal(classifyDirectSSDState({...base,phase:'ROLLBACK_COMPLETE'}),
+    'MAC_ORIGINAL_DATA');
+  assert.equal(classifyDirectSSDState({...base,phase:'SUCCEEDED'}),
+    'DIRECT_SSD_REQUIRED');
+  assert.throws(()=>classifyDirectSSDState({...base,ssdUuid:'WRONG',
+    phase:'SUCCEEDED'}),/UNTRUSTED/);
+});
+test('direct SSD mount guard checks physical paths for both existing containers',()=>{
+  const data=EXPECTED_EXTERNAL_DATA;
+  const workspace=data+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86';
+  const c=[{
+    Name:'/cloud-sandbox-mcp',
+    Mounts:[{Destination:'/data',Type:'bind',Source:data}]
+  },{
+    Name:'/cloud-sandbox-dev-main',
+    Mounts:[
+      {Destination:'/workspace',Type:'bind',Source:workspace+'/repo'},
+      {Destination:'/home/agent',Type:'bind',Source:workspace+'/home'},
+      {Destination:'/shared-auth',Type:'bind',Source:data+'/shared-auth'},
+      {Destination:'/var/lib/docker',Type:'bind',Source:workspace+'/docker'}
+    ]
+  }];
+  assert(directSSDBindMatch(c));
+  const wrong=JSON.parse(JSON.stringify(c));
+  wrong[1].Mounts[2].Source='/Users/mac/.cloud-sandbox-mcp-data/shared-auth';
+  assert.throws(()=>directSSDBindMatch(wrong),
+    /DIRECT_SSD_CONTAINER_BIND_DRIFT/);
+  assert.throws(()=>directSSDBindMatch(c.slice(0,1)),
+    /RUNNING_CONTAINERS_MISSING/);
+});
+test('direct SSD guard runs before opening Docker and verifies binds before start',()=>{
+  const first=code.indexOf('const directStatus=directSSDPreStartupGuard()');
+  const opening=code.indexOf('await ensureDocker()');
+  const verify=code.indexOf("if(directStatus==='DIRECT_SSD_REQUIRED')verifyDirectDockerMounts()");
+  const existing=code.indexOf('await ensureExisting(DEFAULT_CONTROLLER)');
+  assert(first>=0&&opening>first&&verify>opening&&existing>verify);
 });
