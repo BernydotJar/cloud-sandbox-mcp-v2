@@ -7,6 +7,10 @@ Read scripts/sandbox-v3-cli/README.md for output and upgrade details.
 
 # Sandbox V3 — preferred runtime
 
+For an **independent Gemini CLI MCP client on the operator Mac**, see
+[scripts/gemini-mcp/README.md](scripts/gemini-mcp/README.md). This reuses the
+existing controller and persistent dev-main, without creating new runtime data.
+
 The canonical Mac command now offers 1980s retro ASCII Cosmic Cats\nor Jupiter artwork on startup. If an older V3 launcher returns\nsilently from ~/.local/bin/sandbox, use the in-place --upgrade\ninstructions in scripts/sandbox-v3-cli/README.md.\n\nFor day-to-day ChatGPT work, use the **Sandbox V3** connector (not the
 legacy Cloud Sandbox MCP V2 plugin). On the operator Mac, the canonical
 Terminal entrypoint is \`sandbox\`; see
