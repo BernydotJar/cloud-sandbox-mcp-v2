@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import process from 'node:process';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,URL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
@@ -74,7 +74,7 @@ async function main(){
  const config=read(path.join(inspect.Config.Labels['com.docker.compose.project.working_dir'],'.env')).toString();
  const env=Object.fromEntries(config.split(/\r?\n/).map(l=>l.match(/^([A-Z_0-9]+)=(.*)$/)).filter(Boolean).map(m=>[m[1],m[2].trim().replace(/^["']|["']$/g,'')]));
  if(env.COMPUTER_USE_TRUSTED_SESSION_NOTICE!=='true')throw Error('OPERATOR_TRUSTED_OPT_IN_REQUIRED');
- const port=Number(env.COMPUTER_USE_BRIDGE_PORT),token=env.COMPUTER_USE_BRIDGE_TOKEN;
+ const port=Number(env.COMPUTER_USE_BRIDGE_PORT || new URL(env.COMPUTER_USE_BRIDGE_URL || 'http://127.0.0.1:9764').port || 9764),token=env.COMPUTER_USE_BRIDGE_TOKEN;
  if(!Number.isInteger(port)||port<1024||port>65535||!token||token.length<32)throw Error('BRIDGE_CONFIG_INVALID');
  const post=async route=>{
   const r=await fetch('http://127.0.0.1:'+port+route,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:'{}',redirect:'error',signal:AbortSignal.timeout(3500)});
