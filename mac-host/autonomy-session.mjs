@@ -8,6 +8,19 @@ function validRange(value, min, max) {
   return Number.isInteger(value) && value >= min && value <= max;
 }
 
+export function validateTaskScope({task_id, origins}, required = false) {
+  if (!required && task_id === undefined && origins === undefined) return;
+  if (typeof task_id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,79}$/.test(task_id) ||
+      !Array.isArray(origins) || origins.length < 1 || origins.length > 20 ||
+      new Set(origins).size !== origins.length || origins.some(origin => {
+        try {
+          const u = new URL(origin);
+          return u.protocol !== 'https:' || u.origin !== origin || u.username ||
+            u.password || u.port || u.hostname.includes('*');
+        } catch { return true; }
+      })) throw new Error('INVALID_TASK_SCOPE');
+}
+
 /**
  * A single memory-only, expiring Computer Use delegation.
  * This is a capability grant: only the caller holding its random session_id
@@ -26,11 +39,13 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
       active:true,
       scope:s.scope,
       expires_at:new Date(s.expires_at_ms).toISOString(),
-      remaining_actions:s.remaining_actions,unlimited_actions:s.unlimited_actions
+      remaining_actions:s.remaining_actions,unlimited_actions:s.unlimited_actions,
+      ...(s.task_ref ? {task_ref:s.task_ref,origins:[...s.origins]} : {})
     } : {active:false};
   }
   function begin({scope, duration_minutes = 20, max_actions = 120, purpose,
-                   unlimited_actions = false}) {
+                   unlimited_actions = false, task_id, origins}) {
+    validateTaskScope({task_id,origins});
     if (current()) throw new Error('SESSION_ALREADY_ACTIVE');
     if (!scopes.has(scope) || !validRange(duration_minutes,1,MAX_SESSION_MINUTES) ||
         !validRange(max_actions,1,MAX_SESSION_ACTIONS) ||
@@ -43,16 +58,18 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
     active={
       id,scope,remaining_actions:max_actions,unlimited_actions:false,
       expires_at_ms:now()+duration_minutes*60_000,
-      purpose
+      purpose, origins:origins ? [...origins] : null,
+      task_ref:task_id ? crypto.createHash('sha256').update(task_id).digest('hex') : null
     };
     return {
       session_id:id,
       scope,
       expires_at:new Date(active.expires_at_ms).toISOString(),
-      remaining_actions:active.remaining_actions,unlimited_actions:active.unlimited_actions
+      remaining_actions:active.remaining_actions,unlimited_actions:active.unlimited_actions,
+      ...(active.task_ref ? {task_ref:active.task_ref,origins:[...active.origins]} : {})
     };
   }
-  function authorize(sessionId,browser,{consume=false}={}) {
+  function authorize(sessionId,browser,{consume=false,origin}={}) {
     if (typeof sessionId !== 'string' || !/^[a-f0-9]{32,128}$/.test(sessionId)) {
       throw new Error('SESSION_NOT_ACTIVE');
     }
@@ -64,10 +81,13 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
       throw new Error('SESSION_NOT_ACTIVE');
     }
     if (s.scope!=='both' && s.scope!==browser) throw new Error('SESSION_SCOPE_MISMATCH');
+    if (s.origins && (consume || origin !== undefined) && !s.origins.includes(origin))
+      throw new Error('SESSION_ORIGIN_MISMATCH');
     if(consume) s.remaining_actions--;
     return {
       scope:s.scope,
       remaining_actions:s.remaining_actions,unlimited_actions:s.unlimited_actions,
+      ...(s.task_ref ? {task_ref:s.task_ref} : {}),
       expires_at:new Date(s.expires_at_ms).toISOString()
     };
   }
@@ -75,8 +95,9 @@ export function createSessionStore({now = () => Date.now(), randomId = () => cry
     if (!active) return {revoked:false};
     // No token means the authenticated local owner is revoking all sessions.
     if (sessionId !== undefined && active.id!==sessionId) throw new Error('SESSION_NOT_ACTIVE');
+    const task_ref=active.task_ref;
     active=null;
-    return {revoked:true};
+    return {revoked:true,...(task_ref ? {task_ref} : {})};
   }
   return {begin,authorize,end,status:publicStatus};
 }

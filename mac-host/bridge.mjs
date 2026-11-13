@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {setTimeout as timeoutCallback,clearTimeout as clearCallback} from 'node:timers';
-import { createSessionStore } from './autonomy-session.mjs';
+import { createSessionStore, validateTaskScope } from './autonomy-session.mjs';
 import { BrowserRuntime, providersFromEnvironment } from './browser-runtime/runtime.mjs';
 import { AuditLedger } from './browser-runtime/audit-ledger.mjs';
 import { RuntimeFault } from './browser-runtime/contracts.mjs';
@@ -447,7 +447,8 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           mutation_policy:restrictBrowserWrites?'allowlist_only':'session_scoped',
           native_display_behavior:'foreground_only',
           background_native_actions_supported:false,
-          approval_modes:['per_action','delegated_session'],
+          task_delegation_version:1,
+          approval_modes:trustedSessionNoticeEnabled?['delegated_session']:['per_action','delegated_session'],
           trusted_delegation_notice:{
             enabled:trustedSessionNoticeEnabled,seconds:20,closable:true,
             max_minutes:30,max_actions:200,unlimited_actions:false,scope:'single_browser'
@@ -462,7 +463,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
         const result=sessionStore.end(input.session_id);
         screenshotReferences.revokeAll();
         axReferences.revokeAll();
-        try {await auditHandler({action:'session_end',outcome:'revoked'});}catch{ /* Revocation must not depend on audit availability. */ }
+        try {await auditHandler({action:'session_end',outcome:result.revoked?'revoked':'inactive',...(result.task_ref?{task_ref:result.task_ref}:{})});}catch{ /* Revocation must not depend on audit availability. */ }
         reply(res,200,{ok:true,data:result}); return;
       }
       if (req.url === '/v1/session/begin') {
@@ -475,6 +476,9 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             input.max_actions > 200 ||
             typeof input.purpose !== 'string' || input.purpose.length < 10 ||
             input.purpose.length > 300) throw new Error('INVALID_SESSION_REQUEST');
+        validateTaskScope(input,trustedSessionNoticeEnabled);
+        if(input.origins?.some(origin=>!isAllowlistedTabUrl(origin+'/',allowedOrigins)))
+          throw new Error('MUTATION_ORIGIN_DENIED');
         busy=true;
         try {
           const request = input.scope === 'both' ? 'Chrome AND Edge' : input.scope;
@@ -504,7 +508,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
           const session=sessionStore.begin(input);
           let auditSaved=true;
           try {await auditHandler({action:'session_begin',scope:input.scope,
-            outcome:'approved',duration_minutes:input.duration_minutes,
+            outcome:'approved',...(session.task_ref?{task_ref:session.task_ref,expires_at:session.expires_at,origin_refs:session.origins.map(v=>crypto.createHash('sha256').update(v).digest('hex')),origin_count:session.origins.length}:{}),duration_minutes:input.duration_minutes,
             max_actions:input.max_actions,
             unlimited_actions:false});}catch{auditSaved=false;}
           if(trusted && !auditSaved) {
@@ -613,8 +617,10 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
               typeof input.reason !== 'string' || input.reason.length < 10 ||
               input.reason.length > 300) throw new Error('INVALID_ACTION');
           const usesSession=input.session_id!==undefined;
+          if(trustedSessionNoticeEnabled && !usesSession) throw new Error('TASK_SESSION_REQUIRED');
           // Validate scope/ownership before evaluating screen geometry or AX.
-          if(usesSession) sessionStore.authorize(input.session_id,input.browser);
+          const authority=usesSession ? sessionStore.authorize(input.session_id,input.browser,
+            {origin:new URL(input.expected_url).origin}) : null;
           let eventArguments;
           if (input.action === 'click') {
             if(![input.x,input.y].every(Number.isInteger))
@@ -660,7 +666,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
             input.reason + '\n\n' +
             'This can submit forms or change accounts. Confirm the intended effect before approving.';
           const audit = {browser:input.browser,origin:new URL(input.expected_url).origin,
-            action:input.action};
+            action:input.action,...(authority?.task_ref?{task_ref:authority.task_ref}:{})};
           if (!usesSession) {
             if (!await approvalHandler(prompt)) {
               await auditHandler({...audit,outcome:'denied'});
@@ -686,7 +692,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
               latest,input.action);
           }
           const delegated=usesSession ?
-            sessionStore.authorize(input.session_id,input.browser,{consume:true}) : null;
+            sessionStore.authorize(input.session_id,input.browser,{consume:true,origin:new URL(input.expected_url).origin}) : null;
           // Native JXA or AX helper independently verifies the frontmost
           // browser and target before dispatch. AX nodes are one-shot.
           let result;
@@ -722,7 +728,7 @@ export function createBridgeServer({token, allowedOrigins, dynamicTabs = false,
       reply(res,404,{ok:false,error:'UNKNOWN_METHOD'});
     } catch (error) {
       // Never return OS diagnostics, personal URLs with query strings, tokens, or typed text.
-      const allowedErrors = new Set(['INVALID_TARGET','INVALID_ACTION','INVALID_TEXT','INVALID_KEY',
+      const allowedErrors = new Set(['TASK_SESSION_REQUIRED','INVALID_TASK_SCOPE','SESSION_ORIGIN_MISMATCH','INVALID_TARGET','INVALID_ACTION','INVALID_TEXT','INVALID_KEY',
         'INVALID_COORDINATES','COORDINATES_OUTSIDE_TARGET','INVALID_SCREENSHOT_COORDINATES',
         'INVALID_COORDINATE_SPACE','SCREENSHOT_GEOMETRY_UNAVAILABLE','SCREENSHOT_SCALE_UNSUPPORTED',
         'STALE_SCREENSHOT_REF','SCREENSHOT_TARGET_MISMATCH','STALE_SCREENSHOT_GEOMETRY','INVALID_BOUNDS',

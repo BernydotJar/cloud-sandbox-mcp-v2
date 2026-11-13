@@ -105,16 +105,16 @@ test('toast is emitted once after persistent Chrome discovery and never blocks a
 test('Akira splash is a 5-second click-through nonmodal overlay at upper right',()=>{
   const swift=fs.readFileSync(path.join(here,'bridge-toast.swift'),'utf8');
   assert.match(swift,/static let connectionLifetime: TimeInterval = 5\.0/);
-  assert.match(swift,/area\.maxX - AkiraSplash\.width - AkiraSplash\.margin/);
-  assert.match(swift,/area\.maxY - noticeHeight - AkiraSplash\.margin/);
+  assert.match(swift,/area\.maxX - PortalSplash\.width - PortalSplash\.margin/);
+  assert.match(swift,/area\.maxY - height - PortalSplash\.margin/);
   assert.match(swift,/\.nonactivatingPanel/);
   assert.match(swift,/panel\.ignoresMouseEvents = !\(delegated \|\| alerted\)/);
   assert.match(swift,/\.accessory/);
   assert.match(swift,/accessibilityDisplayShouldReduceMotion/);
-  assert.match(swift,/asyncAfter\(deadline: \.now\(\) \+ noticeLifetime\)/);
+  assert.match(swift,/asyncAfter\(deadline: \.now\(\) \+ lifetime\)/);
   assert.match(swift,/application\.terminate\(nil\)/);
-  assert.match(swift,/Bridge listo/);
-  assert.match(swift,/private final class AkiraMascot/);
+  assert.match(swift,/Portal conectado/);
+  assert.match(swift,/private final class PortalView/);
   assert.doesNotMatch(swift,/NSAlert|NSCriticalAlertStyle|UIAlertController/);
   const installer=fs.readFileSync(path.join(here,'install-on-mac.mjs'),'utf8');
   assert.match(installer,/log\('AUTO_DISMISS_MS',5000\)/);
@@ -163,10 +163,10 @@ test('delegated Edu notification is 20 seconds and dismissible without ending se
   const swift=fs.readFileSync(path.join(here,'bridge-toast.swift'),'utf8');
   assert.match(swift,/static let connectionLifetime: TimeInterval = 5\.0/);
   assert.match(swift,/static let delegatedLifetime: TimeInterval = 20\.0/);
-  assert.match(swift,/actionsLabel/);
-  assert.match(swift,/acciones sin límite/);
+  assert.match(swift,/min\(200, Int/);
+  assert.doesNotMatch(swift,/acciones sin límite/);
   assert.match(swift,/--session-notice/);
-  assert.match(swift,/let brand = NSTextField/);
+  assert.match(swift,/let brand = label/);
   assert.match(swift,/Edu!.*SANDBOX V3/);
   assert.match(swift,/Sesión delegada activa/);
   assert.match(swift,/class NoticeDismissal/);

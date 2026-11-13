@@ -48,9 +48,10 @@ export class DOMBrowserTabs {
   const promise=this.dispatch(t,input);this.receipts.set(key,{fingerprint,promise});return promise;
  }
  async dispatch(t,input){
-  const event={action:'dom_'+input.action,browser:'edge',origin:scope,request_id:hash(input.request_id)};
+  const authority=this.sessions.authorize(input.session_id,'edge',{origin:scope});
+  const event={...(authority?.task_ref?{task_ref:authority.task_ref}:{}),action:'dom_'+input.action,browser:'edge',origin:scope,request_id:hash(input.request_id)};
   const tabs=await this.broker.request('tabs');const live=tabs.tabs?.find(x=>x.id===t.id);if(!live||live.url!==t.url||live.url_digest!==t.last.urlDigest)throw Error('DOM_NAVIGATION_CHANGED');
-  await this.audit({...event,outcome:'session_authorized'});if(t.generation!==this.broker.generation||!this.broker.ready)throw Error('DOM_CONNECTION_CHANGED');this.sessions.authorize(input.session_id,'edge',{consume:true});
+  await this.audit({...event,outcome:'session_authorized'});if(t.generation!==this.broker.generation||!this.broker.ready)throw Error('DOM_CONNECTION_CHANGED');this.sessions.authorize(input.session_id,'edge',{consume:true,origin:scope});
   const snapshot=t.last.snapshot;t.last=null;t.revision++;
   try{
    const result=await this.broker.request('action',{tab_id:t.id,url:t.url,snapshot_revision:snapshot,action:input.action,locator:input.locator,...(input.value!==undefined?{value:input.value}:{})});
@@ -65,7 +66,7 @@ export class DOMBrowserTabs {
   const t=this.get(input);this.sessions.authorize(input.session_id,'edge');if(!allowsWebOrigin(t.url,this.origins))throw Error('MUTATION_ORIGIN_DENIED');
   if(typeof input.request_id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{15,79}$/.test(input.request_id))throw Error('DOM_ACTION_INVALID');
   const key=hash(input.session_id+'|'+input.request_id);if(this.receipts.has(key))throw Error('DOM_REPLAY_BLOCKED');this.receipts.set(key,{fingerprint:'reload',promise:Promise.resolve({dispatched:true,requires_readback:true})});
-  await this.audit({action:'dom_reload',browser:'edge',origin:scope,outcome:'session_authorized'});this.sessions.authorize(input.session_id,'edge',{consume:true});t.last=null;t.revision++;
+  await this.audit({action:'dom_reload',browser:'edge',origin:scope,outcome:'session_authorized'});this.sessions.authorize(input.session_id,'edge',{consume:true,origin:scope});t.last=null;t.revision++;
   const result=await this.broker.request('reload',{tab_id:t.id,url:t.url});return {...result,provider:'extension_dom',requires_readback:true};
  }
 }

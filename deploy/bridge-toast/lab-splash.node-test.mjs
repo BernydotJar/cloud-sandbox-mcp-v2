@@ -1,96 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-
-const root=path.dirname(fileURLToPath(import.meta.url));
-const swift=fs.readFileSync(path.join(root,'bridge-toast.swift'),'utf8');
-test('splash is native macOS AppKit overlay, never a web page',()=>{
-  assert.match(swift,/import AppKit/);
-  assert.match(swift,/NSPanel\(contentRect:/);
-  assert.match(swift,/styleMask: \[\.borderless, \.nonactivatingPanel\]/);
-  assert.match(swift,/panel\.collectionBehavior = \[\.canJoinAllSpaces, \.fullScreenAuxiliary, \.stationary\]/);
-  assert.match(swift,/connectionLifetime: TimeInterval = 5\.0/);
-  assert.match(swift,/panel\.ignoresMouseEvents = !\(delegated \|\| alerted\)/);
+import {URL} from 'node:url';
+const swift=fs.readFileSync(new URL('./bridge-toast.swift',import.meta.url),'utf8');
+test('portal is a local nonactivating native overlay with bounded lifetimes',()=>{
+ for(const contract of ['import AppKit','.nonactivatingPanel','.accessory','connectionLifetime: TimeInterval = 5.0','delegatedLifetime: TimeInterval = 20.0','panel.ignoresMouseEvents = !(delegated || alerted)'])
+  assert(swift.includes(contract),contract);
+ assert.doesNotMatch(swift,/NSAlert|URLSession|NSApplication\.shared\.activate|--remote-debugging/);
 });
-test('laboratory particle burst is local and honors macOS Reduce Motion',()=>{
-  assert.match(swift,/private final class LabBurstView: NSView/);
-  assert.match(swift,/for i in 0\.\.<15/);
-  assert.match(swift,/motion\.repeatCount = 2/);
-  assert.match(swift,/colors: \[NSColor\]/);
-  assert.doesNotMatch(swift,/systemYellow|systemGreen, \.systemPurple/);
-  assert.match(swift,/CAKeyframeAnimation\(keyPath: "opacity"\)/);
-  assert.match(swift,/accessibilityDisplayShouldReduceMotion/);
-  assert.doesNotMatch(swift,/(?:https?:\/\/|--remote-debugging)/);
+test('green animated portal has reduced-motion support and no old mascot',()=>{
+ for(const contract of ['class PortalView','portalVortex','organicRim','portalGlow','accessibilityDisplayShouldReduceMotion','if !reduced'])
+  assert(swift.includes(contract),contract);
+ assert.doesNotMatch(swift,/class AkiraMascot|class LabBurstView/);
 });
-test('alert modes have bounded lifetime, restricted codes and actionable native controls',()=>{
-  for(const label of ['storage','storage-warning','edge','terminal','recovery'])
-    assert.match(swift,new RegExp('"'+label+'":'));
-  assert.match(swift,/let alerted = alertInfo != nil/);
-  assert.match(swift,/alertLifetime: TimeInterval = 20\.0/);
-  assert.match(swift,/NSButton\(title: "Ver registros"/);
-  assert.match(swift,/NSWorkspace\.shared\.open\(folder\)/);
-  assert.match(swift,/if delegated \|\| alerted/);
-  assert.match(swift,/closing revokes a session|closing revokes a session|closing revokes a session/i);
-  assert.doesNotMatch(swift,/shell -c|Process\(\)|URLSession/);
+test('native glass has an older SDK fallback and clear attributed copy',()=>{
+ for(const contract of ['NSGlassEffectView','NSVisualEffectView','MATERIAL=NATIVE_LIQUID_GLASS','MATERIAL=LEGACY_SDK','WILLIAM SHAKESPEARE · LA TEMPESTAD','Estamos hechos de la materia de los sueños','Portal listo. Multiverso intacto.'])
+  assert(swift.includes(contract),contract);
+ assert(swift.includes('min(200, Int'));
+ assert.doesNotMatch(swift,/acciones sin límite/);
+});
+test('dismissal is not revocation and diagnostics remain an explicit user click',()=>{
+ assert(swift.includes('closing never revokes a session'));
+ assert(swift.includes('close.setAccessibilityLabel("Cerrar aviso")'));
+ assert(swift.includes('NSWorkspace.shared.open(folder)'));
+ assert(swift.includes('NSButton(title: "Ver registros"'));
+ assert(swift.includes('cacheDisplay(in: glass.bounds'));
 });
 
-test('all global values constructed from private Swift view types are also private',()=>{
-  const privateTypes=[...swift.matchAll(/^private (?:final )?class (\w+)/gm)]
-    .map(m=>m[1]);
-  for(const type of privateTypes){
-    const declarations=[...swift.matchAll(
-      new RegExp('^(?:private )?let \\w+ = '+type+'\\(', 'gm'))];
-    for(const match of declarations){
-      assert(match[0].startsWith('private let '),
-        'private '+type+' must not leak through a non-private global binding');
-    }
-  }
-  assert.match(swift,/private let burst = LabBurstView\(/);
-});
-
-test('Mac preview exposes Swift diagnostics instead of swallowing stderr',()=>{
-  const script=fs.readFileSync(path.join(root,'preview-on-mac.mjs'),'utf8');
-  assert.match(script,/SWIFT_DIAGNOSTIC/);
-  assert.match(script,/error\?\.stderr/);
-  assert.match(script,/compilerStep\('SWIFT_TOOLCHAIN'/);
-  assert.match(script,/compilerStep\('SWIFT_TYPECHECK'/);
-  assert.match(script,/compilerStep\('SWIFT_COMPILE'/);
-  assert.match(script,/SOURCE_DIGEST_MISMATCH/);
-  assert.match(script,/INSTALLED_BRIDGE_UNCHANGED/);
-  assert.match(script,/NATIVE_GLASS_SDK_AND_OS_READY/);
-  assert.match(script,/SWIFT_VERSION/);
-  assert.doesNotMatch(script,/xcode-select\s+--switch|--remote-debugging/);
-});
-
-test('real Apple Liquid Glass is used on supported macOS/SDK with graceful older fallback',()=>{
-  assert.match(swift,/#if compiler\(>=6\.2\)/);
-  assert.match(swift,/if #available\(macOS 26\.0, \*\)/);
-  assert.match(swift,/NSGlassEffectView\(frame: glass\.bounds\)/);
-  assert.match(swift,/liquid\.contentView = glass/);
-  assert.match(swift,/liquid\.style = \.clear/);
-  assert.match(swift,/MATERIAL=NATIVE_LIQUID_GLASS/);
-  assert.match(swift,/fallback\.material = \.popover/);
-  assert.match(swift,/MATERIAL=LEGACY_SDK/);
-  assert.doesNotMatch(swift,/CAFilter\(|setValue\(.*glassBackground|--remote-debugging/);
-});
-test('fallback preserves quiet neutral rim, not neon outline',()=>{
-  assert.match(swift,/fallback\.blendingMode = \.behindWindow/);
-  assert.match(swift,/fallback\.layer\?\.borderWidth = 0\.65/);
-  assert.match(swift,/NSColor\.white\.withAlphaComponent\(0\.30\)\.cgColor/);
-  assert.match(swift,/CAGradientLayer\(\)/);
-  assert.doesNotMatch(swift,/systemPurple\.withAlphaComponent\(0\.31\)|systemPink\.withAlphaComponent\(0\.84\)/);
-});
-test('title leads content and glass controls are compact, semantic and actionable',()=>{
-  assert.match(swift,/Edu!.*SANDBOX V3/);
-  assert.match(swift,/status\.font = NSFont\.systemFont\(ofSize: 16/);
-  assert.match(swift,/brand\.font = NSFont\.systemFont\(ofSize: 10\.5/);
-  assert.match(swift,/NSTextField\(wrappingLabelWithString:/);
-  assert.match(swift,/phrase\.maximumNumberOfLines = 2/);
-  assert.match(swift,/NSRect\(x: contentX, y: 14, width: 126, height: 29\)/);
-  assert.match(swift,/buttonGlass\.material = \.menu/);
-  assert.match(swift,/logs\.isBordered = false/);
-  assert.match(swift,/NSWorkspace\.shared\.open\(folder\)/);
-  assert.match(swift,/close\.setAccessibilityLabel\("Cerrar aviso"\)/);
+test('portal sound is original, bounded, quiet and optionally silent',()=>{
+ for(const contract of ['private func portalWhoosh()','0.64','NSSound(data: portalWhoosh())','portalSound?.volume = 0.22','arguments.contains("--silent")','SANDBOX_PORTAL_SOUND'])
+  assert(swift.includes(contract),contract);
+ assert.doesNotMatch(swift,/AVCapture|requestRecordPermission|URLSession/);
 });

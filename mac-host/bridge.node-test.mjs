@@ -470,7 +470,7 @@ test('trusted Edge delegation emits an optional 20-second notice without approva
     {enabled:true,seconds:20,closable:true,max_minutes:30,max_actions:200,
       unlimited_actions:false,scope:'single_browser'});
   const requested={scope:'edge',duration_minutes:5,max_actions:4,
-    purpose:'Reload only the Meridian Edge tab for verified QA'};
+    task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Reload only the Meridian Edge tab for verified QA'};
   const granted=await post('/v1/session/begin',requested);
   assert.equal(granted.status,200);
   assert.equal(granted.data.approval_mode,'configured_trust');
@@ -510,7 +510,7 @@ test('a failed postgrant audit revokes unlimited trusted delegation before showi
   });
   const grant=await post('/v1/session/begin',{
     scope:'edge',duration_minutes:30,max_actions:1,
-    purpose:'Attempt an operator trusted session while audit persistence is broken'
+    task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Attempt an operator trusted session while audit persistence is broken'
   });
   assert.equal(grant.status,400);
   assert.equal(grant.error,'AUDIT_UNAVAILABLE');
@@ -522,7 +522,7 @@ test('trusted delegated mode is off by default and rejects unrestricted auto-app
   const {post}=await ready({restrictBrowserWrites:true});
   const response=await post('/v1/session/begin',{
     scope:'edge',duration_minutes:5,max_actions:4,
-    purpose:'Inspect the Edge tab in an explicitly scoped QA session'});
+    task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Inspect the Edge tab in an explicitly scoped QA session'});
   assert.equal(response.error,'USER_DENIED_SESSION');
   assert.throws(()=>createBridgeServer({
     token,allowedOrigins,platform:'darwin',
@@ -537,7 +537,7 @@ test('trusted grants fail closed for both browsers and oversized requests',async
     approvalHandler:async()=>{throw Error('MODAL_SHOULD_NOT_BE_CALLED');}
   });
   const baseline={scope:'edge',duration_minutes:5,max_actions:4,
-    purpose:'Verify a scoped tab without additional dialog'};
+    task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Verify a scoped tab without additional dialog'};
   const both=await post('/v1/session/begin',{...baseline,scope:'both'});
   assert.equal(both.status,400);
   assert.equal(both.error,'TRUSTED_SESSION_LIMITS_EXCEEDED');
@@ -555,7 +555,7 @@ test('trusted 30-minute grant uses a finite action budget',async()=>{
   });
   const started=await post('/v1/session/begin',{
     scope:'edge',duration_minutes:30,max_actions:200,
-    purpose:'Use an allowlisted single Edge browser for authorized application QA'});
+    task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Use an allowlisted single Edge browser for authorized application QA'});
   assert.equal(started.status,200);
   assert.equal(started.data.unlimited_actions,false);
   assert.equal(started.data.remaining_actions,200);
@@ -580,7 +580,7 @@ test('trusted grant never skips its pre-grant audit',async()=>{
   });
   const result=await post('/v1/session/begin',{
     scope:'edge',duration_minutes:5,max_actions:4,
-    purpose:'Attempt an audited session with unavailable audit storage'});
+    task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Attempt an audited session with unavailable audit storage'});
   assert.equal(result.error,'AUDIT_UNAVAILABLE');
   assert.equal((await post('/v1/session/status')).data.active,false);
   assert.equal(modalCalls,0);
@@ -598,7 +598,7 @@ test('operator-added exact LinkedIn origin permits scoped Chrome actions but not
   });
   const grant=await post('/v1/session/begin',{
     scope:'chrome',duration_minutes:5,max_actions:1,
-    purpose:'Verify delegated LinkedIn navigation within the exact permitted origin'
+    task_id:'test-task-123',origins:['https://www.linkedin.com'],purpose:'Verify delegated LinkedIn navigation within the exact permitted origin'
   });
   assert.equal(grant.status,200);
   assert.equal(grant.data.unlimited_actions,false);
@@ -646,7 +646,7 @@ test('LCH wildcard supports both native Chrome and Edge delegated browser sessio
     assert.equal(status.data.allowlisted_origins,8);
     const grant=await post('/v1/session/begin',{
       scope:browser,duration_minutes:10,max_actions:15,
-      purpose:'Verify test-only wildcard origin policy for both supported browsers'
+      task_id:'test-task-123',origins:['https://lch-app.cloud','https://luma.lch-app.cloud','https://meridian.lch-app.cloud','https://future.service.lch-app.cloud','https://www.linkedin.com','https://business.linkedin.com','https://cloud.uipath.com','https://org.cloud.uipath.com','https://atlassian.net','https://customer.atlassian.net'],purpose:'Verify test-only wildcard origin policy for both supported browsers'
     });
     assert.equal(grant.status,200);
     assert.equal(grant.data.unlimited_actions,false);
@@ -835,7 +835,7 @@ test('screenshot ref revoked when delegated task session ends',async()=>{
     },
     captureHandler:async()=>retinaFakePng(1200,800)
   });
-  const ss=await post('/v1/session/begin',{scope:'edge',duration_minutes:10,max_actions:10,purpose:'Test delegated screenshot reference expiration'});
+  const ss=await post('/v1/session/begin',{scope:'edge',duration_minutes:10,max_actions:10,task_id:'test-task-123',origins:['https://admin.microsoft.com'],purpose:'Test delegated screenshot reference expiration'});
   assert.equal(ss.status,200);
   const s=await post('/v1/screenshot',{...target,expected_title:'Microsoft 365'});
   await post('/v1/session/end',{session_id:ss.data.session_id});

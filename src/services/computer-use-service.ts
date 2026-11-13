@@ -160,12 +160,14 @@ export class ComputerUseService {
     return this.request('/v1/action', input);
   }
 
-  /** A scoped task grant; trusted Mac configuration may bypass the modal and action quota, never the expiry or allowlist. */
+  /** A scoped task grant; trusted Mac configuration avoids the modal, never the action budget, expiry or allowlist. */
   async beginSession(input: {
     scope: 'chrome' | 'edge' | 'both';
     duration_minutes: number;
     max_actions: number;
     purpose: string;
+    task_id?: string;
+    origins?: string[];
   }) {
     return this.request('/v1/session/begin', input);
   }

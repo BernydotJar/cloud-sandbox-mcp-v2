@@ -150,10 +150,10 @@ export class BrowserRuntime {
     this.metrics.screenshots_ok++;
     return { mime_type: 'image/png', base64: png.toString('base64'), revision: r.revision, tab_ref: r.ref };
   }
-  authorize(input, consume = false) {
-    try { return this.sessions.authorize(input.session_id, input.browser, { consume }); }
+  authorize(input, consume = false, origin) {
+    try { return this.sessions.authorize(input.session_id, input.browser, { consume, origin }); }
     catch (error) {
-      if (['SESSION_NOT_ACTIVE', 'SESSION_SCOPE_MISMATCH'].includes(error?.message)) fail(error.message);
+      if (['SESSION_NOT_ACTIVE', 'SESSION_SCOPE_MISMATCH', 'SESSION_ORIGIN_MISMATCH'].includes(error?.message)) fail(error.message);
       fail('SESSION_AUTHORIZATION_FAILED');
     }
   }
@@ -200,6 +200,8 @@ export class BrowserRuntime {
       const r = await this.resolve(input);
       if (r.revision !== input.expected_revision) fail('STALE_PAGE_REVISION');
       if (!this.mutationAllowed(r.rawUrl)) fail('MUTATION_ORIGIN_DENIED');
+      const authority=this.authorize(input,false,new URL(r.rawUrl).origin);
+      if(authority.task_ref) event.task_ref=authority.task_ref;
       const spec = input.locator;
       const locator = spec.by === 'role' ? r.page.getByRole(spec.role, { name: spec.name, exact: true })
         : spec.by === 'label' ? r.page.getByLabel(spec.name, { exact: true }) : r.page.getByTestId(spec.name);
@@ -222,7 +224,7 @@ export class BrowserRuntime {
       this.tabs.refresh(r);
       if (r.revision !== input.expected_revision || !this.allowed(r.rawUrl) || r.page.isClosed()) fail('STALE_PAGE_REVISION');
       if (!this.mutationAllowed(r.rawUrl)) fail('MUTATION_ORIGIN_DENIED');
-      const delegation = this.authorize(input, true);
+      const delegation = this.authorize(input, true, new URL(r.rawUrl).origin);
       dispatched = true;
       if (cdpDriver) await cdpDriver.dispatch({value:input.value,key:input.key});
       else if (input.action === 'click') await locator.click({ timeout: TIMEOUT });

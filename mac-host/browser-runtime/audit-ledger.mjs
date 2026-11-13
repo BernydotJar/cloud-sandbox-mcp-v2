@@ -30,7 +30,7 @@ export class AuditLedger {
       if (this.closed) fail('AUDIT_CLOSED');
       if (this.poisoned) fail('AUDIT_POISONED');
       await this.initialize();
-      const allowed = ['event', 'request_id', 'browser', 'tab_ref', 'revision', 'outcome', 'duration_ms'];
+      const allowed = ['task_ref', 'event', 'request_id', 'browser', 'tab_ref', 'revision', 'outcome', 'duration_ms'];
       const fields = Object.fromEntries(allowed.filter(k => event[k] !== undefined).map(k => [k, event[k]]));
       const entry = { seq: this.sequence + 1, at: new Date().toISOString(), previous: this.previous, ...fields };
       const hash = crypto.createHash('sha256').update(JSON.stringify(entry)).digest('hex');

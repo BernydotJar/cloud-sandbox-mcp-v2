@@ -54,9 +54,10 @@ export async function backgroundBrowserRequest(route,input,{validate,sessionStor
  validate(input,mutate);
  if(typeof input.window_title!=='string'||input.window_title.length>120||
     !(input.window_title===input.expected_title||input.window_title.startsWith(input.expected_title+' - ')))throw Error('BACKGROUND_WINDOW_IDENTITY_REQUIRED');
+ let authority;
  if(mutate) {
   if(typeof input.session_id!=='string')throw Error('BACKGROUND_TASK_SESSION_REQUIRED');
-  sessionStore.authorize(input.session_id,input.browser);
+  authority=sessionStore.authorize(input.session_id,input.browser,{origin:new URL(input.expected_url).origin});
   if(!['press','set_value'].includes(input.action)||!['node_ref','expected_revision','request_id'].every(k=>/^[a-f0-9]{64}$/.test(input[k]||''))||
     typeof input.reason!=='string'||input.reason.length<10||input.reason.length>300||
     (input.action==='set_value'&&(typeof input.value!=='string'||input.value.length>2000))||
@@ -70,10 +71,11 @@ export async function backgroundBrowserRequest(route,input,{validate,sessionStor
  };
  await verifyIdentity();
  if(!mutate)return request('snapshot',target);
- const event={action:'background_'+input.action,browser:input.browser,origin:new URL(input.expected_url).origin};
+ const event={action:'background_'+input.action,browser:input.browser,origin:new URL(input.expected_url).origin,
+  ...(authority?.task_ref?{task_ref:authority.task_ref}:{})};
  await audit({...event,outcome:'session_authorized'});
  await verifyIdentity();
- sessionStore.authorize(input.session_id,input.browser,{consume:true});
+ sessionStore.authorize(input.session_id,input.browser,{consume:true,origin:new URL(input.expected_url).origin});
  try {
   const result=await request('action',{...target,action:input.action,node_ref:input.node_ref,expected_revision:input.expected_revision,request_id:input.request_id,...(input.action==='set_value'?{value:input.value,focus_element:input.focus_element===true,...(['selected_text','process_unicode'].includes(input.text_method)?{text_method:input.text_method}:{})}:{})});
   try {await audit({...event,outcome:'dispatched'});}catch {/* Never replay a completed dispatch. */}

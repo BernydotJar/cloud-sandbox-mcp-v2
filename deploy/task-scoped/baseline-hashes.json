@@ -1,0 +1,10 @@
+{
+  "bridge.mjs": "76c4982df8e9af30328ddfbe59f910c4e5beb29718b85993a8f3552e171a1d27",
+  "autonomy-session.mjs": "6dadbef9b987d044b56968e249c400b098e07e5b22dff82cd7ce93e2d3b0a1ef",
+  "browser-runtime/runtime.mjs": "c861b2d280856d20ecfdb5f96f645d5fdb8c502cffcc124a1d0f6cd0056f7ec9",
+  "browser-runtime/audit-ledger.mjs": "0b08e0cae4eec2422a5c2ca8f9520439daf004965fa3337c6d6dcbe2ced91677",
+  "background-browser.mjs": "d668b5d1e9459ca379cdf0a761e2102355988274fa19f5a0175686ff478e604d",
+  "browser-dom/tabs.mjs": "72974b58dad9162c8c0ef380e6c548bfd4ff6f94a02b56bcb80d5fae2e2bdcc4",
+  "controller/mcp/server.js": "69096fa88632de2fc18393538fa1c3cee892eb65d7c0d7fab9fbf53f0d227b09",
+  "controller/mcp/browser-runtime-tools.js": "894487ae18c950a417f314af3ef9cf584b61b5715c4bd83a9bb0078527f4d885"
+}

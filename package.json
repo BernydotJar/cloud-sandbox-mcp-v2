@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "verify": "npm run validate:lock && npm run lint && npm run typecheck && npm test && npm run test:mac && npm run test:browser:policy && npm run test:browser:reinforcement && npm run test:ops:storage && npm run test:ops:ssd-migration && npm run test:mac:isolated && npm run test:mac:same-background && npm run test:cli:v3 && npm run test:gemini:mcp && npm run build",
+    "verify": "npm run validate:lock && npm run lint && npm run typecheck && npm test && npm run test:mac && npm run test:task-scoped && npm run test:browser:policy && npm run test:browser:reinforcement && npm run test:ops:storage && npm run test:ops:ssd-migration && npm run test:mac:isolated && npm run test:mac:same-background && npm run test:cli:v3 && npm run test:gemini:mcp && npm run build",
     "validate:lock": "node scripts/validate-lockfile.mjs",
     "test:mac": "node --test mac-host/*.node-test.mjs mac-host/browser-runtime/*.node-test.mjs deploy/browser-channel-providers/*.node-test.mjs deploy/dedicated-chrome/*.node-test.mjs deploy/bridge-toast/*.node-test.mjs scripts/terminal-sandbox/*.node-test.mjs deploy/allowed-origins/*.node-test.mjs deploy/session-budget/patch.node-test.mjs deploy/background-ax/*.node-test.mjs mac-host/browser-dom/*.node-test.mjs deploy/browser-dom/*.node-test.mjs",
     "test:browser:e2e": "CUA_BROWSER_E2E=1 node mac-host/browser-runtime/browser-e2e.mjs",
@@ -37,13 +37,14 @@
     "test:cli:v3": "node --test scripts/sandbox-v3-cli/*.node-test.mjs",
     "test:gemini:mcp": "node --test scripts/gemini-mcp/*.node-test.mjs",
     "test:browser:dom": "CUA_DOM_E2E=1 node mac-host/browser-dom/extension-e2e.mjs",
-    "test:browser:dom:ckeditor": "CUA_DOM_E2E=1 CUA_CKEDITOR_E2E=1 node mac-host/browser-dom/extension-e2e.mjs"
+    "test:browser:dom:ckeditor": "CUA_DOM_E2E=1 CUA_CKEDITOR_E2E=1 node mac-host/browser-dom/extension-e2e.mjs",
+    "test:task-scoped": "node --test mac-host/task-delegation.node-test.mjs deploy/task-scoped/*.node-test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
     "express": "5.3.0",
     "playwright-core": "1.64.0",
-    "zod": "4.1.12"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
