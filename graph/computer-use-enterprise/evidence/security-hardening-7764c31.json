@@ -1,0 +1,24 @@
+{
+  "schema": "cloud-sandbox.enterprise-evidence.v1",
+  "recorded_date": "2026-10-12",
+  "source_commit": "7764c31e8fa8adc823d96a0cca05c8214115d27c",
+  "scope": "Source-only security controls under opt-in enterprise host configuration",
+  "control": "COMPUTER_USE_BROWSER_ACTION_ALLOWLIST_ONLY=true",
+  "verified_tests": [
+    "persistent semantic writes on origins outside allowlist are denied before audit and budget consumption",
+    "native Mac action on dynamically discovered origin outside allowlist is denied before user prompt",
+    "pre-dispatch origin/navigation change denied",
+    "strict write policy with empty allowlist refused",
+    "unknown runtime errors transformed to typed non-private connection/inspection/screenshot codes",
+    "replay/session-scope tests remain passing"
+  ],
+  "result": "PASS in isolated source tests",
+  "configuration_deployed_on_mac": false,
+  "known_limits": [
+    "Identity federation and tenant RBAC not implemented",
+    "Per-origin policy is opt-in; live Mac not changed",
+    "Browser actions within an allowed origin can still have business effects",
+    "No independent external red-team review",
+    "No full DLP for page content/screenshots"
+  ]
+}

@@ -1,0 +1,175 @@
+# Sandbox V3 primary CLI & connector — rollout evidence
+
+Date: 2026-10-27
+
+## Operator intent
+
+The Mac shell command must be sandbox, with no version suffix.
+It must target the currently deployed Sandbox V3 connector/runtime.
+Sandbox V3 ChatGPT plugin must be preferred over legacy Cloud
+Sandbox MCP V2. Preserve single workstation, root, Docker,
+shared storage, Browser Bridge and user sessions.
+
+## Live connector evidence
+
+- Sandbox V3 workspace_list: PASS. Reported existing running
+  cloud-sandbox-dev-main runtime, shared runtime workspace ID
+  6544ba3e-e124-4ca5-adc7-62c6dd47ba86 and current projects.
+- Legacy Cloud Sandbox MCP V2 computer_use_status: HTTP 403,
+  transport probe failed from its ngrok-free.dev endpoint.
+  This does not establish the legacy endpoint is permanently
+  unavailable; it is not the default connector.
+- Historical root start-all.sh: old ngrok URL and three
+  UUID-named workstation containers. It is preserved, but
+  deliberately not called from the new launcher.
+- The actual macOS ~/.local/bin/sandbox file is NOT mounted in Linux.
+  Its runtime replacement cannot be claimed until the Mac-side
+  release installer executes.
+
+## Implemented
+
+- scripts/sandbox-v3-cli/cli.mjs:
+  sandbox defaults to start, status and doctor are read-only.
+  Starts only existing cloud-sandbox-mcp and cloud-sandbox-dev-main;
+  requires both to exist, checks container identity, health and
+  existing MCP /healthz. May open installed Docker Desktop if stopped.
+  Does not run ngrok, compose up, create or prune anything, restart
+  browsers or redefine the Cloudflare tunnel.
+- scripts/sandbox-v3-cli/install-on-mac.mjs:
+  SHA-verified release, guarded single-path migration, keeps exact
+  original shell script or symlink as timestamped backup in its
+  original ~/.local/bin directory, idempotency and rollback.
+- scripts/sandbox-v3-cli/README.md:
+  activation, status, verification and rollback.
+- Repo AGENTS.md and shared /workspace/AGENTS.md:
+  prefer tools.mcp__Sandbox_V3__* over legacy V2 by default.
+  The repo name cloud-sandbox-mcp-v2 remains historical.
+- README and Terminal Sandbox contract updated with current policy.
+
+## Validated in Linux runtime
+
+- npm run verify: PASS
+- Vitest: 8/8 suites
+- Mac/Bridge: 236 pass, 1 skipped Mac-only
+- Browser policy: 49 pass
+- Isolated worker historical tests: 19 pass
+- Same-Mac AX tests: 22 pass
+- New V3 CLI: 10 pass
+- TypeScript, ESLint and build: PASS
+- git diff --check: PASS
+
+## Pending macOS acceptance
+
+1. Run the Mac release --inspect to identify existing CLI type
+   without invoking its old script.
+2. Run --activate once. Verify the exact link and retained backup.
+3. Run whence -v sandbox; confirm it is the new file, not a
+   shell alias/function.
+4. Run sandbox status, then sandbox; confirm controller,
+   dev-main and /healthz are green without any new workspace.
+5. Independently confirm Sandbox V3 ChatGPT tool connection.
+6. Optional rollback is --rollback; legacy ChatGPT plugin remains
+   installed unless the operator explicitly chooses removal.
+
+The CLI only manages the existing local Docker controller/workstation.
+It does not change ChatGPT's plugin preference settings and does not
+guarantee the external V3 endpoint if the pre-existing tunnel is down.
+No Mac CLI modification has been performed by this Linux-only session.
+
+
+## 2026-10-27 retro ASCII and silent-launch corrective release
+
+The operator reported that type sandbox resolved to the installed
+~/.local/bin/sandbox but sandbox returned with no output. We
+reproduced the bug using Node on a symbolic link. The previous
+entrypoint guard compared the link path to the canonical module
+path and never called main(). The corrected guard resolves both
+paths. Unit tests now assert actual stdout from a symlink invocation.
+
+New startup visuals: Cosmic Cats default and optional Jupiter,
+neon ANSI palette when interactive; non-TTY/NO_COLOR compatible.
+Commands include sandbox art cats, sandbox art jupiter,
+sandbox theme cats, sandbox theme jupiter, and sandbox --no-art.
+
+An in-place --upgrade backs up the previous V3 executable,
+preserves the legacy launcher backup, updates the installed V3
+code plus artwork, and updates SHA-256 records. The on-Mac
+upgrade has not yet executed at the time of this report.
+
+
+## Cloudflare launchd integration (2026-10-27)
+
+Operator requested that `sandbox` also start Cloudflare. Earlier
+releases did NOT launch cloudflared; that limitation was confirmed
+before implementation. Current release adds a supervisor for the
+pre-existing `cloud-sandbox-mac` tunnel. Grounded in the 2026-10-09
+lch-app activation evidence, canonical service:
+`system/com.cloud-sandbox.cloudflared`, with a known historical
+alternative `system/com.cloudflare.cloudflared`.
+
+The CLI reads launchd state; running processes are not restarted.
+When stopped, `launchctl kickstart` without force-kill is applied
+to an exact known label, with macOS admin privilege if required. If
+not loaded, bootstrap is permitted only for its pre-existing root-owned
+verified LaunchDaemon plist. Do not create tunnels, alter DNS, Caddy,
+Cloudflare credentials or browser profiles, and never use legacy ngrok.
+
+Health reporting is intentionally conservative: launchd running only;
+remote Cloudflare network health and public HTTPS remain unverified
+without additional live probes. Native Mac start/stop behavior needs
+on-device validation after CLI upgrade.
+
+
+## 2026-10-27: retro health dashboard and independent public checks
+
+Requested user experience: every operational category has a visible
+icon, preferably a cool face with sunglasses when healthy and a
+different retro character when it fails.
+
+Implemented in \`scripts/sandbox-v3-cli/health.mjs\` and CLI:
+
+- 😎 healthy; 👾 failure; 🥸 warning; 🕵️ external verification
+- Check Docker, controller container, persistent workstation, internal
+  MCP /healthz, Cloudflare LaunchDaemon, lch-app.cloud/health HTTPS,
+  ido.lch-app.cloud/health HTTPS and local Mac Bridge listener.
+- Public endpoints must return HTTP 200, have valid TLS, and do not
+  follow redirects. Both requests are concurrent, read-only, timeout
+  bounded, and do not use credentials.
+- A Cloudflare service marked RUNNING does not mask a failed public
+  endpoint. A local Bridge HTTP 401/403 validates only its protected
+  listener, not actual authenticated browser action.
+- A terminal cannot validate its own ChatGPT V3 connector registration;
+  the row is explicitly UNKNOWN and requires a V3 tool call.
+- Compact \`sandbox status\` dashboard, \`--plain\` diagnostic and
+  \`--json\` structured modes, in addition to the startup retro art.
+- Status symbols respect terminal color and NO_EMOJI/NO_COLOR,
+  without breaking programmatic consumers.
+
+The existing Mac installation must use the guarded
+\`node install-on-mac.mjs --upgrade\` from the shared handoff to
+receive new SHA-verified \`health.mjs\`. Tests are source-level until
+this action is executed and the Mac displays its results.
+
+
+## 2026-10-28 Chrome Bridge launchd supervisor
+
+The Mac operator reported that running \`sandbox\` did not bring up
+the Chrome Bridge. Live Sandbox V3 tools could see the separate
+native Mac Bridge connected and Chrome persistent CDP attached with
+16 tabs. The original CLI simply did not manage the Mac user
+LaunchAgent, so a future cold start could leave Computer Use
+unavailable despite Docker/Cloudflare being healthy.
+
+A read-only /v1/status 401 or 403 only proves the loopback port is
+protected, never that the Chrome CDP provider is connected.
+The newly implemented \`scripts/sandbox-v3-cli/bridge-launchd.mjs\`
+adds strict user launchd status, reuse of running jobs,
+non-force startup of stopped existing jobs, and bootstrap only of a
+verified installed plist. No service reload or browser restart is
+performed for already-running Bridge processes; no new profiles,
+debugging ports or credentials are provisioned.
+
+The CLI dashboard distinguishes MAC_BRIDGE_LAUNCHD,
+MAC_BRIDGE listener auth gate and CHROME_CDP=UNKNOWN pending live
+Sandbox V3 browser tool verification. On-device Mac launchd recovery
+remains to be accepted after the next guarded --upgrade.

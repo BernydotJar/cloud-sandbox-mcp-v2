@@ -1,0 +1,183 @@
+import { RuntimeFault, fail, browserName } from './contracts.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// Playwright 1.64+ can resolve a running Chromium channel through that
+// profile's DevToolsActivePort file after the operator explicitly enables
+// chrome://inspect/#remote-debugging. Unlike numeric CDP URLs, the runtime
+// never needs to discover, allocate, or publish a debugging port.
+const LOCAL_CHANNEL = Object.freeze({ chrome: 'chrome', edge: 'msedge' });
+
+// Read-only Mac channel preflight. No port scanning, no profile modifications,
+// browser relaunch, debugger URL disclosure or unexpected Chrome/Edge changes.
+export function channelMarkerState(browser, {
+  home=os.homedir(), readFile=(file)=>fs.readFileSync(file,'utf8')
+}={}) {
+  browserName(browser);
+  const location=browser==='edge'
+    ? 'Library/Application Support/Microsoft Edge/DevToolsActivePort'
+    : 'Library/Application Support/Google/Chrome/DevToolsActivePort';
+  try {
+    const value=readFile(path.join(home,location));
+    const text=Buffer.isBuffer(value)?value.toString('utf8'):String(value);
+    const first=text.split(/\r?\n/,1)[0];
+    return /^\d{4,5}$/.test(first) && Number(first)>=1024 &&
+      Number(first)<=65535 ? 'valid' : 'invalid';
+  }catch(e){return e?.code==='ENOENT'?'missing':'unavailable';}
+}
+export function channelRemediation({connected,attachFailure,marker}={}) {
+  if(connected)return 'NONE';
+  if(!attachFailure)return 'NOT_TESTED';
+  if(marker==='missing')return 'OPERATOR_ENABLE_REMOTE_DEBUGGING_NO_BROWSER_RESTART_AUTOMATION';
+  if(marker==='invalid')return 'INVALID_DEBUG_MARKER_DO_NOT_GUESS_PORT';
+  return 'READ_ONLY_MAC_CHANNEL_DIAGNOSTIC_REQUIRED';
+}
+
+export function validateEndpoint(value, protocol = 'cdp', browser) {
+  if (value === 'chrome' || value === 'msedge') {
+    if (protocol !== 'cdp' || (browser !== undefined && LOCAL_CHANNEL[browser] !== value)) {
+      fail('BROWSER_CHANNEL_MISMATCH');
+    }
+    return { channel: value, href: value };
+  }
+  let u;
+  try { u = new URL(value); } catch { fail('INVALID_BROWSER_ENDPOINT'); }
+  if (!['cdp', 'playwright'].includes(protocol) ||
+      !['127.0.0.1', '[::1]'].includes(u.hostname) ||
+      u.username || u.password || u.search || u.hash || !u.port ||
+      Number(u.port) < 1024 || Number(u.port) > 65535) fail('UNSAFE_BROWSER_ENDPOINT');
+  if (protocol === 'playwright' && u.protocol !== 'ws:') fail('INVALID_BROWSER_ENDPOINT');
+  if (protocol === 'cdp' && !['http:', 'ws:'].includes(u.protocol)) fail('INVALID_BROWSER_ENDPOINT');
+  if (u.protocol === 'http:' && u.pathname !== '/') fail('INVALID_BROWSER_ENDPOINT');
+  if (protocol === 'cdp' && u.protocol === 'ws:' && !/^\/devtools\/browser\/[a-zA-Z0-9_-]+$/.test(u.pathname)) fail('INVALID_BROWSER_ENDPOINT');
+  return u;
+}
+
+export async function resolveEndpoint(endpoint, protocol, fetcher = fetch) {
+  const original = validateEndpoint(endpoint, protocol);
+  if (original.channel) return original.channel;
+  if (original.protocol === 'ws:') return original.href;
+  const response = await fetcher(new URL('/json/version', original), {
+    signal: AbortSignal.timeout(5000), redirect: 'error', headers: { accept: 'application/json' }
+  });
+  if (!response.ok || !response.body) fail('BROWSER_ENDPOINT_UNAVAILABLE');
+  const reader = response.body.getReader();
+  let bytes = 0;
+  const chunks = [];
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.length;
+      if (bytes > 65536) fail('BROWSER_METADATA_TOO_LARGE');
+      chunks.push(Buffer.from(part.value));
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  let metadata;
+  try { metadata = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { fail('INVALID_BROWSER_METADATA'); }
+  const ws = validateEndpoint(metadata.webSocketDebuggerUrl, 'cdp');
+  // Do not follow a DevTools response to another host/port (SSRF / cross-profile attach).
+  if (ws.hostname !== original.hostname || ws.port !== original.port) fail('BROWSER_ENDPOINT_REDIRECT_DENIED');
+  return ws.href;
+}
+
+async function playwrightConnector(config) {
+  let chromium;
+  try { ({ chromium } = await import('playwright-core')); }
+  catch { fail('PLAYWRIGHT_DEPENDENCY_UNAVAILABLE'); }
+  const endpoint = await resolveEndpoint(config.endpoint, config.protocol);
+  try {
+    return config.protocol === 'playwright'
+      ? await chromium.connect(endpoint, { timeout: 8000 })
+      : await chromium.connectOverCDP(endpoint, { timeout: 8000, noDefaults: true });
+  } catch { fail('BROWSER_ATTACH_FAILED'); }
+}
+
+/** Lazy single-flight connections, no process launch, no profile access, no port scan. */
+export class ConnectionPool {
+  constructor({ providers = {}, connect = playwrightConnector, now = () => Date.now(), onInvalidated = () => {} } = {}) {
+    this.providers = new Map();
+    this.slots = new Map();
+    this.connect = connect;
+    this.now = now;
+    this.onInvalidated = onInvalidated;
+    this.closed = false;
+    this.metrics = { connections: 0, reuses: 0, failures: 0, disconnects: 0 };
+    for (const [name, config] of Object.entries(providers)) {
+      browserName(name);
+      if (!config || Object.keys(config).some(k => !['endpoint', 'protocol'].includes(k))) fail('INVALID_PROVIDER_CONFIG');
+      const protocol = config.protocol || 'cdp';
+      validateEndpoint(config.endpoint, protocol, name);
+      this.providers.set(name, { endpoint: config.endpoint, protocol });
+      this.slots.set(name, { epoch: 0, connection: null, pending: null, retryAt: 0,
+        lastFailureCode: null, failedAttempts: 0 });
+    }
+  }
+  async get(name) {
+    browserName(name);
+    if (this.closed) fail('RUNTIME_STOPPED');
+    const config = this.providers.get(name);
+    if (!config) fail('BROWSER_PROVIDER_NOT_CONFIGURED');
+    const slot = this.slots.get(name);
+    if (slot.connection?.isConnected()) {
+      this.metrics.reuses++;
+      return { connection: slot.connection, epoch: slot.epoch };
+    }
+    if (slot.pending) return slot.pending;
+    if (this.now() < slot.retryAt) fail('BROWSER_ATTACH_COOLDOWN');
+    slot.pending = (async () => {
+      try {
+        const connection = await Promise.resolve().then(() => this.connect(config, name));
+        if (!connection?.isConnected()) fail('BROWSER_ATTACH_FAILED');
+        if (this.closed) { await connection.close(); fail('RUNTIME_STOPPED'); }
+        slot.epoch++;
+        slot.connection = connection;
+        slot.retryAt = 0;
+        slot.lastFailureCode = null;
+        this.metrics.connections++;
+        connection.once('disconnected', () => {
+          if (slot.connection !== connection) return;
+          slot.connection = null;
+          this.metrics.disconnects++;
+          slot.lastFailureCode = 'BROWSER_DISCONNECTED';
+          this.onInvalidated(name, slot.epoch);
+        });
+        return { connection, epoch: slot.epoch };
+      } catch (error) {
+        this.metrics.failures++;
+        slot.lastFailureCode = error instanceof RuntimeFault ? error.message : 'BROWSER_ATTACH_FAILED';
+        slot.failedAttempts++;
+        slot.retryAt = this.now() + 1500;
+        throw error instanceof RuntimeFault ? error : new RuntimeFault('BROWSER_ATTACH_FAILED');
+      } finally { slot.pending = null; }
+    })();
+    return slot.pending;
+  }
+  status() {
+    return { providers: [...this.providers].map(([name, config]) => {
+      const slot = this.slots.get(name);
+      return { browser: name, protocol: config.protocol, configured: true,
+        connected: Boolean(slot.connection?.isConnected()), epoch: slot.epoch,
+        attach_failure_code: slot.lastFailureCode,
+        channel_marker: config.endpoint === LOCAL_CHANNEL[name] && process.platform==='darwin'
+          ? channelMarkerState(name) : 'not_applicable',
+        remediation: channelRemediation({connected:Boolean(slot.connection?.isConnected()),
+          attachFailure:slot.lastFailureCode,
+          marker:config.endpoint === LOCAL_CHANNEL[name] && process.platform==='darwin'
+            ? channelMarkerState(name) : 'not_applicable'}),
+        failed_attach_attempts: slot.failedAttempts,
+        retry_after_ms: Math.max(0, slot.retryAt - this.now()) };
+    }), metrics: { ...this.metrics } };
+  }
+  async close() {
+    this.closed = true;
+    // For attached browsers, Playwright disconnects and does not close existing tabs.
+    // This runtime never creates browser contexts, so there are none to dispose.
+    await Promise.all([...this.slots.values()].map(async slot => {
+      if (slot.pending) await slot.pending.catch(() => {});
+      if (slot.connection) await slot.connection.close().catch(() => {});
+    }));
+  }
+}

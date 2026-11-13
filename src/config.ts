@@ -27,7 +27,18 @@ const envSchema = z.object({
   ENABLE_RUNTIME_RECREATE: z.string().default('true').transform(value => value === 'true'),
   GIT_AUTHOR_NAME: z.string().default('ChatGPT Sandbox Agent'),
   GIT_AUTHOR_EMAIL: z.string().email().default('chatgpt-sandbox@example.invalid'),
-  GITHUB_TOKEN: z.string().optional()
+  GITHUB_TOKEN: z.string().optional(),
+  COMPUTER_USE_ENABLED: booleanString,
+  COMPUTER_USE_BRIDGE_URL: z.string().default('http://host.docker.internal:9764'),
+  COMPUTER_USE_BRIDGE_TOKEN: z.string().optional(),
+  MAC_BACKGROUND_CUA_ENABLED: booleanString,
+  MAC_BACKGROUND_CUA_URL: z.string().default('http://host.docker.internal:9777'),
+  MAC_BACKGROUND_CUA_TOKEN: z.string().optional(),
+  MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST: z.string().optional(),
+  SAME_MAC_AX_ENABLED: booleanString,
+  SAME_MAC_AX_URL: z.string().default('http://host.docker.internal:9779'),
+  SAME_MAC_AX_TOKEN: z.string().optional(),
+  SAME_MAC_AX_MACHINE_DIGEST: z.string().optional()
 });
 
 const parsed = envSchema.parse(process.env);
@@ -35,6 +46,38 @@ const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
 const insecureSecrets = new Set(['development-secret-change-me', 'replace-with-a-long-random-value']);
 if (!loopbackHosts.has(parsed.BIND_HOST) && insecureSecrets.has(parsed.MCP_PATH_SECRET)) {
   throw new Error('MCP_PATH_SECRET is still a placeholder. Run ./scripts/bootstrap.sh, then recreate the service with ./scripts/setup.sh.');
+}
+if (parsed.COMPUTER_USE_ENABLED) {
+  if (!parsed.COMPUTER_USE_BRIDGE_TOKEN || parsed.COMPUTER_USE_BRIDGE_TOKEN.length < 32) {
+    throw new Error('COMPUTER_USE_ENABLED requires a separate COMPUTER_USE_BRIDGE_TOKEN (32+ chars).');
+  }
+  const bridge = new URL(parsed.COMPUTER_USE_BRIDGE_URL);
+  if (bridge.protocol !== 'http:' || bridge.username || bridge.password || bridge.pathname !== '/' || bridge.search || bridge.hash || !['host.docker.internal', '127.0.0.1', 'localhost'].includes(bridge.hostname)) {
+    throw new Error('COMPUTER_USE_BRIDGE_URL must use an approved local Docker host endpoint.');
+  }
+}
+if(parsed.MAC_BACKGROUND_CUA_ENABLED){
+  const guest=new URL(parsed.MAC_BACKGROUND_CUA_URL);
+  if(guest.protocol!=='http:'||
+     !['host.docker.internal','127.0.0.1','localhost'].includes(guest.hostname)||
+     guest.port!=='9777'||guest.pathname!=='/'||
+     guest.search||guest.hash||guest.username||guest.password)
+    throw Error('MAC_BACKGROUND_CUA_URL_LOCAL_ONLY');
+  if(!parsed.MAC_BACKGROUND_CUA_TOKEN||
+     parsed.MAC_BACKGROUND_CUA_TOKEN.length<32||
+     !/^[a-f0-9]{64}$/.test(parsed.MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST||''))
+    throw Error('MAC_BACKGROUND_CUA_CREDENTIALS_REQUIRED');
+}
+if(parsed.SAME_MAC_AX_ENABLED){
+  const address=new URL(parsed.SAME_MAC_AX_URL);
+  if(address.protocol!=='http:'||
+     !['host.docker.internal','127.0.0.1','localhost'].includes(address.hostname)||
+     address.port!=='9779'||address.pathname!=='/'||
+     address.username||address.password||address.search||address.hash)
+    throw Error('SAME_MAC_AX_LOCAL_ENDPOINT_REQUIRED');
+  if(!parsed.SAME_MAC_AX_TOKEN||parsed.SAME_MAC_AX_TOKEN.length<32||
+     !/^[a-f0-9]{64}$/.test(parsed.SAME_MAC_AX_MACHINE_DIGEST||''))
+    throw Error('SAME_MAC_AX_CREDENTIALS_REQUIRED');
 }
 const dataDir = path.resolve(parsed.MCP_DATA_DIR);
 const hostDataDir = path.resolve(parsed.HOST_DATA_DIR ?? parsed.MCP_DATA_DIR);

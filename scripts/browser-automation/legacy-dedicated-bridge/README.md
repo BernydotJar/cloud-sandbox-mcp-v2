@@ -1,0 +1,6 @@
+# Dedicated CDP Chrome: opt-in macOS login bridge
+Run `start.sh` from a macOS terminal. It opens a new Chrome instance with isolated persistent profile under `~/.ido-chrome-bridge/profile` and CDP bound to macOS loopback port 9223. Perform one-time website login in that **dedicated instance** (not the personal Chrome); sign-in sessions persist as long as the website permits. Verify with `check.sh`. Never kill other Chrome processes as a recovery strategy.
+
+IMPORTANT: `127.0.0.1` in the Linux workstation is NOT macOS loopback. A successful Mac-side CDP probe does NOT establish a remotely reachable Playwright endpoint. The existing macOS-host bridge may attach locally via CDP, subject to a scoped browser grant, but exposing the raw debugging port on the Docker network would hand broad control of the logged-in browser to any reachable process. This project deliberately does not proxy the raw port, copy cookies, or assume host.docker.internal can reach a loopback listener. Existing authenticated Mac Chrome is a different browser profile.
+
+Normal Chessy-style E2E tests continue to use isolated headless Chromium in dev-main. Browser Runtime tools must separately pass attach, inspect and approved action acceptance gates to claim agent control of the dedicated session.

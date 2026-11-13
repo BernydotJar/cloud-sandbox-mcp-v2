@@ -1,0 +1,51 @@
+{
+  "schema": "cloud-sandbox.enterprise-evidence.v1",
+  "recorded_date": "2026-10-12",
+  "source_commit": "7764c31e8fa8adc823d96a0cca05c8214115d27c",
+  "environment": "shared dev-main Linux workstation; Mac host not modified",
+  "checks": {
+    "source_verify_v2": {
+      "command": "npm run verify:v2",
+      "result": "PASS",
+      "node_mac_tests": 101,
+      "chromium_bridge_checks": 13,
+      "lint_typecheck_vitest_build": "PASS"
+    },
+    "graph_runtime": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v",
+      "pin": "f8bb28ec0933f54df5ff2e0d2c06a731471ec47e",
+      "passed": 27
+    },
+    "offscreen_gestures": {
+      "command": "CUA_OFFSCREEN_QA=1 node scripts/offscreen-qa/smoke.mjs",
+      "result": "PASS",
+      "browser_version": "151.0.7922.71",
+      "iterations": 25,
+      "desktop_mouse_drag": 13,
+      "mobile_cdp_touch_drag": 12,
+      "keyboard": 25,
+      "aria_names": 25,
+      "isolated_contexts": 25,
+      "mac_browser_touched": false,
+      "scope": "browser automation mechanics fixture; not Chessy or LUMA product E2E"
+    },
+    "production_dependency_audit": {
+      "command": "npm audit --omit=dev --audit-level=moderate",
+      "result": "PASS",
+      "vulnerabilities_reported": 0
+    },
+    "sbom": {
+      "command": "npm sbom --sbom-format=cyclonedx",
+      "result": "PASS",
+      "bom_format": "CycloneDX",
+      "spec_version": "1.5",
+      "components": 277,
+      "sha256": "0bb0dfbe213faf6534d82839b34492beb47bca0a9b4fe0693f19a510c5130ddf"
+    }
+  },
+  "caveats": [
+    "No production CI execution. GitHub source branch not pushed.",
+    "No Mac host update, browser profile change, or authenticated mutation.",
+    "Unsigned release candidate and single-owner authorization are not multi-tenant enterprise certification."
+  ]
+}

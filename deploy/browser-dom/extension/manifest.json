@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Sandbox V3 Toyota Teams DOM",
+  "version": "0.1.1",
+  "description": "Typed DOM access to Teams in this browser profile for authorized Sandbox V3 sessions.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuAfus7Jo2aBsPMv7EgEQzAVBxD4hv8K1BPVhtICQPYXFNeFn+60zj5Kys/N2lRuVGFStBLHfdMGx7Lr2M8OPFTxFPzPNBzrOKtfAj61CFxK1qvXdUjXoyJdjozd7Oc65S7xDrkzhJ3wHTAYdXb14t+cw43Bc9cI8M7XYB8iAQmZT+gLTod9nVq/yI/DuDjJ/l8xnS/KKxMj/fZoh7hrE7tiu3SwAE2J1aVHX2l1dQU0XosKi39Yd5Vd6weQQ4UEIImMNYeaT0pb6fnUHI6+wIdQU5DM4BCl9gI33IG5ZuOz1Z9TMNICL+KtjfnfwvOSbWeZny1XlxbG+oR6G6a6a5wIDAQAB",
+  "permissions": [
+    "nativeMessaging",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://teams.cloud.microsoft/*"
+  ],
+  "background": {
+    "service_worker": "worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://teams.cloud.microsoft/*"
+      ],
+      "js": [
+        "editor-main.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://teams.cloud.microsoft/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "Sandbox V3 Teams DOM"
+  }
+}

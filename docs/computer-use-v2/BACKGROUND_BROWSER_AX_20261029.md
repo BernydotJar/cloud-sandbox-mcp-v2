@@ -1,0 +1,159 @@
+# Background browser interaction on the current Mac
+
+The Toyota self-chat test now has live Sandbox V3 evidence, rather than a
+foreground screenshot or a source-only claim. Existing browser tools can select
+an explicit `background_ax` reference. DOM/ARIA remains unavailable on that
+native reference; real AX roles, names, opaque nodes and value fingerprints are
+available instead.
+
+## Agent path
+
+1. Honor the current user scope. The three accepted pilot drafts are out of
+   scope; no edits, restores, sends or Jira writes.
+2. `browser_tabs(edge, title=...)` is read-only and can return
+   `tabs[].background_ax.tab_ref`. Use this explicit optional reference for
+   background work. Do not call native focus, screenshot or coordinate actions.
+3. `browser_inspect(browser, tab_ref)` returns `inspection_mode=native_ax`,
+   `ax_semantic_available=true`, `semantic_available=false`, a numeric revision,
+   nodes and `frontmost_unchanged`. A missing background reference is not
+   permission to use the foreground driver.
+4. Create your OWN existing `computer_use_session_begin` grant, scoped to Edge.
+   Do not read or reuse another agent's token. The existing host origin policy,
+   duration, audit and session controls still apply.
+5. Inspect immediately before an action. Use `browser_action` with the exact
+   observed role/label, current revision, your grant and a unique request ID.
+   AX `click` uses AXPress. AX `fill` uses direct AXSetValue on normal inputs.
+   A certified `AXTextArea` advertises `fill_backend=process_unicode`: its
+   independent helper verifies exact PID, window, control and content digest,
+   settles AX focus inside the inactive app, and posts Unicode only to Edge's
+   PID. It never posts to a session/HID tap, moves a pointer or activates Edge.
+6. This text backend supports an empty composer and a fingerprint-bound clear.
+   Replacing a nonempty body is rejected. A clear requires readback of the full
+   AX selection before ONE process-targeted Backspace. Do not infer empty from
+   an arbitrary nonempty value: the observed empty Teams placeholder is the
+   exact `Type a message` plus newline fingerprint, separately verified in the
+   pilot evidence.
+7. Independently inspect the effect. Dispatch success is insufficient. Changes
+   such as Chat -> Calendar change title identity; rediscover the background
+   reference and verify the selected AX checkbox/title. A browser tab can itself
+   be selected with the observed AX radio/tab control inside a background window.
+8. Close your own grant. On uncertainty, inspect and never replay a mutation.
+   Repeated request IDs remain blocked across newly discovered references in
+   the same grant. Refs expire; reacquire read state before acting.
+
+The engine router supports `same_mac_background_ax` only for explicit existing-
+Mac, focus-preserving tasks with observed live verification and fresh AX refs.
+The agent preflight still requires exact sanitized target, own authorization,
+origin policy and verified AX control. A DOM requirement remains blocked.
+This provider is not an independent desktop and cannot guarantee compatibility
+with every app or control. If the target app becomes foreground, the native
+background helper refuses dispatch rather than sending input to the operator.
+
+## Evidence and installation
+
+Live smoke through Sandbox V3: self-chat selection and title readback; Search
+empty -> z fingerprint -> empty; Chat -> Calendar selected -> Chat selected;
+44-character composer marker fingerprint -> empty-placeholder fingerprint.
+Foreground unchanged at each operation, zero global event posts, zero pointer
+events, zero sends, zero changes to the three accepted drafts, grant revoked.
+The initial direct AX composer assignments had no effect. A process-specific
+Unicode probe established the working backend. A burst of Backspaces removed
+only a prefix; cleanup was independently verified after replacing that approach
+with full AX selection verification and one targeted Backspace.
+
+The localhost AX service and stable native helpers are installed under
+`~/Library/Application Support/LCH/SameMacBackgroundAX`. It still listens ONLY
+on 127.0.0.1:9779. Authenticated bridge proxy routes reuse the existing protected
+9764 listener; no new public listener or credential export was introduced.
+The customized controller retains its original 29 tools and adds four optional
+background tools (33 total), while the existing browser tools work immediately
+for clients with the older catalog. No browser restart, profile change or CDP
+provisioning is needed. Installed customized bridge code is patched additively
+with `deploy/background-ax/patch-bridge.mjs`; the canonical bounded-session
+baseline and its exact regression remain unchanged.
+
+The existing helper deployment was backed up privately. The source installer
+now packages BackgroundProcessText, keeps that capability disabled by default,
+and supports explicit `--certify-process-text com.microsoft.edgemac` after a
+real app compatibility test. Source, installed hashes, live smoke and fixture
+acceptance are separate evidence. The live pilot result is in the shared
+Toyota evidence directory as `background-interaction-result.json`.
+
+## Runtime repair after Homebrew Node upgrade (2026-10-29)
+
+A live incident exposed two separate failures: launchd still ran deleted
+`Cellar/node/26.5.0/bin/node` processes after an upgrade, and the AX service
+reported the startup permission value even after native helper calls returned
+permission denied. Reusing a connected listener did not establish usable Edge
+access. Reloading the two existing services against the verified current Node
+restored native Edge discovery. The new executable's AX consent remains an OS
+boundary, and must be checked separately from Apple Events discovery.
+
+Installers and the AX repair command now select the existing Homebrew `opt`
+link only when it resolves to the exact executing Node. They never select a
+different runtime, upgrade Node or transfer macOS permissions. Future upgrades
+may still require macOS consent for the updated executable. No TCC database
+writes, reset, browser restart, profile migration or cookie transfer is allowed.
+
+The installed AX service must probe the compiled helpers on each status/read/
+action instead of caching permission at startup. AX permission and certified
+process-text permission are measured independently; denied/failed probes clear
+the advertised readiness and block dispatch. Restored permission is recognized
+without restarting the service. Native tab discovery now exposes an explicit
+`background_ax_error` when AX is unavailable, rather than silently presenting
+foreground guidance as the remaining background path.
+
+Regression coverage: a removed Cellar target with stable launchd link; mismatched
+runtime rejection; permission loss/restoration while the service stays alive;
+process text unavailable while ordinary AX stays ready; explicit background
+readiness errors. Synthetic passes do not establish live browser interaction
+or message delivery. Validate through the actual Sandbox V3 tool path, using
+an own scoped grant and a disposable self-chat marker that is read back and
+removed, with no sends or changes to existing drafts.
+
+## Backend resident AX worker
+
+The repaired backend uses a native process supervised by the existing same-Mac
+Node LaunchAgent. Private user-only Unix IPC carries bounded requests. It retains
+real AX window references for up to 15 minutes, renews leases when used, and
+invalidates a browser's references when its PID changes. The native worker exits
+when its owning Node parent disappears. No public listener, VM, browser restart,
+profile transfer, global input or focus activation is introduced.
+
+Full Chromium accessibility is requested through AXEnhancedUserInterface, with
+actual readback after Chromium's debounce. An attributeUnsupported return can
+still accompany a successful transition; real control actions and readback remain
+required. Live status probes the resident process, AX consent and the certified
+per-process text backend. Process text uses the resident worker's same verified
+window/control objects, rather than a second process rediscovering by title.
+
+AX identity reads the selected document's safe URL before snapshot/dispatch.
+It does not depend on legacy JXA inspect. If Apple Events discovery fails, the
+same existing browser_tabs tool can return AX-discovered explicit refs, with
+`discovery_backend=same_mac_background_ax` and no fabricated native indices.
+These targets support browser_inspect/browser_action only. Origin, own grant,
+revision, protected controls, anti-replay and independent readback still apply.
+A newly started worker must first acquire a window actually exposed by macOS AX;
+retention cannot invent access to a window never observed by that native process.
+
+These backend changes require Mac compilation, installation and real connector
+verification. Source tests alone do not demonstrate Teams draft persistence or
+message delivery. Consult the current shared runtime repair receipt for those
+separate outcomes, including failed attempts and any marker cleanup.
+
+The resident worker never relies on a cached NSWorkspace foreground object.
+It reads live system AX focus for every guard, using a bounded, fixed self-process
+AppKit probe when that system AX attribute is unavailable. The probe does not
+launch/activate apps, issue Apple Events or input; unknown identity blocks dispatch.
+The short error BACKGROUND_TARGET_FRONTMOST survives the existing MCP diagnostic
+length boundary. Uncertain actions retain a content-free native cause in the
+private audit, and still require readback before any further intended action.
+
+Live qualification update: native full-mode AXSetValue and AXSelectedText both
+returned dispatched but left the Teams composer at its empty-placeholder digest.
+Neither is certified as a working Teams fill backend. The advertised Teams
+backend remains process_unicode, which requires the target application behind
+another application. A per-tab DOM bridge is being prepared for the requirement
+that the operator can continue using Edge; it is not installed or live-qualified.
+The test markers from the rejected direct-setter probes were not present on
+independent readback, and no messages were sent.

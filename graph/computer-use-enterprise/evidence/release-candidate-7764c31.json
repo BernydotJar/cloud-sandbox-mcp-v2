@@ -1,0 +1,31 @@
+{
+  "schema": "cloud-sandbox.enterprise-evidence.v1",
+  "recorded_date": "2026-10-12",
+  "source_commit": "7764c31e8fa8adc823d96a0cca05c8214115d27c",
+  "artifact_kind": "unsigned_local_release_candidate",
+  "staged_path": "/tmp/cu-enterprise-7764c31-candidate",
+  "actual_mac_deployment": false,
+  "source_clean": true,
+  "files_verified": 126,
+  "files_bytes": 13695691,
+  "manifest_sha256": "c77ef161dc7b5a20022292fe565ad5d3ee364103669600ab5b21b4e66ccbea79",
+  "expected_registry_tools": 29,
+  "prior_custom_tool_contracts_preserved": 23,
+  "browser_tools_added": 6,
+  "pinned_playwright": "1.64.0",
+  "expected_controller_dependencies": 8,
+  "verifier": {
+    "command": "node scripts/verify-browser-runtime-release.mjs /tmp/cu-enterprise-7764c31-candidate",
+    "result": "PASS"
+  },
+  "legacy_installer_warning": "The old original 23-tool Mac baseline fingerprints differ from the active browser-auto 29-tool Mac overlay; requires authorized baseline rebase and maintenance acceptance. Do not run old V2 installer on active Mac.",
+  "not_satisfied": [
+    "publisher signature",
+    "CI remote attestation",
+    "actual Mac baseline rebase",
+    "controller image parity",
+    "rollback drill",
+    "production deployment",
+    "post-release Mac acceptance"
+  ]
+}

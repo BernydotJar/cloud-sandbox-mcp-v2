@@ -4,12 +4,28 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { config } from './config.js';
 import { createMcpServer } from './mcp/server.js';
 import { DockerRuntime } from './runtime/docker.js';
+import { ComputerUseService } from './services/computer-use-service.js';
+import { BackgroundMacService } from './services/background-mac-service.js';
+import { SameMacAXService } from './services/same-mac-ax-service.js';
 import { WorkspaceService } from './services/workspace-service.js';
 import { WorkspaceStore } from './store/workspace-store.js';
 
 const store = new WorkspaceStore(config.dataDir, config.hostDataDir);
 const docker = new DockerRuntime(config);
 const service = new WorkspaceService(config, store, docker);
+const computer = new ComputerUseService(config);
+const backgroundMac = config.MAC_BACKGROUND_CUA_ENABLED ?
+  new BackgroundMacService({
+    enabled:true,url:config.MAC_BACKGROUND_CUA_URL,
+    token:config.MAC_BACKGROUND_CUA_TOKEN??'',
+    operatorMachineDigest:config.MAC_BACKGROUND_CUA_OPERATOR_MACHINE_DIGEST??''
+  }) : undefined;
+const sameMacAX=new SameMacAXService({
+  enabled:config.SAME_MAC_AX_ENABLED,
+  url:config.SAME_MAC_AX_URL,
+  token:config.SAME_MAC_AX_TOKEN??'',
+  machineDigest:config.SAME_MAC_AX_MACHINE_DIGEST??''
+});
 await service.initialize();
 
 const app = createMcpExpressApp({ host: config.BIND_HOST, allowedHosts: config.allowedHosts });
@@ -18,7 +34,7 @@ app.get('/healthz', (_req: Request, res: Response) => {
 });
 
 app.post(config.mcpPath, async (req: Request, res: Response) => {
-  const server = createMcpServer(service);
+  const server = createMcpServer(service, computer, backgroundMac, sameMacAX);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on('close', () => {
     void transport.close();

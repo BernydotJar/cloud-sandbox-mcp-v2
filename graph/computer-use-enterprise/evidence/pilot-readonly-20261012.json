@@ -1,0 +1,32 @@
+{
+  "schema": "cloud-sandbox.computer-use-pilot.v1",
+  "date": "2026-10-12",
+  "mode": "supervised_pilot",
+  "source_commit": "7ee3d91a62a8bea321bc69f7451093ae21bd05f8",
+  "mac_bridge": {
+    "enabled": true,
+    "connected": true,
+    "session_active": false
+  },
+  "chrome": {
+    "persistent_tab_discovery": "PASS",
+    "screenshot": "PASS image/png",
+    "semantic_inspection": "NATIVE_UNAVAILABLE"
+  },
+  "edge": {
+    "persistent_tab_discovery": "PASS",
+    "semantic_inspection": "PASS read-only"
+  },
+  "known_test_evidence": {
+    "node_mac_tests": 101,
+    "isolated_chromium_bridge_checks": 13,
+    "isolated_browser_gestures": 25
+  },
+  "host_actions_dispatched": 0,
+  "release_installed": false,
+  "warnings": [
+    "Browser screenshot contents not retained.",
+    "Edge tab was for a LUMA-related GitHub PR, not proof of LUMA user experience.",
+    "This is not a live authorized-mutation test nor enterprise certification."
+  ]
+}

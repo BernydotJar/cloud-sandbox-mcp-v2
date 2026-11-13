@@ -1,0 +1,11 @@
+{
+  "purpose": "Known deployed customized 23-tool controller and native host; code only, no credentials",
+  "source": "Validated task-sessions release supplied from existing shared handoff",
+  "files": {
+    "autonomy-session.mjs": "cb5b525d679e76d87e7254e0b665c7aa37157bbc964bed900884bebd8e416326",
+    "bridge.mjs": "776011f0bd79ac40fe3b0856653687e1621a326c154906fd0ae94582cb00e5e2",
+    "computer-use-service.js": "f8b26dd27ff0b476fe8333bccbd88e2d2fdb1980d278c47ccd3057de40515ffc",
+    "native.jxa": "147330664005f6bf5479a9134390b68b1d4fb726aa8fb3d48d791182ae4fa38e",
+    "server.js": "bfed26158f09d3c373e013e80553d78483b6184767fbb83d1fd2aa9aef9574fc"
+  }
+}

@@ -1,0 +1,446 @@
+#!/usr/bin/env node
+/**
+ * One-command entrypoint: sandbox -> the EXISTING Sandbox V3
+ * controller + single persistent dev-main workstation.
+ *
+ * Never invokes legacy V2/ngrok start-all.sh, creates a new container,
+ * destroys Docker state, starts CDP or touches macOS browser profiles.
+ * A CLI cannot change ChatGPT plugin installation or connector routing.
+ */
+import console from 'node:console';
+import process from 'node:process';
+import {spawnSync} from 'node:child_process';
+import {setTimeout as delay} from 'node:timers/promises';
+import {fileURLToPath} from 'node:url';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {banner,readTheme,saveTheme,normalizeTheme} from './art.mjs';
+import {ensureCloudflare,inspectCloudflare} from './cloudflare.mjs';
+import {ensureMacBridge,inspectBridgeLaunchd} from './bridge-launchd.mjs';
+import {probePublicEndpoints,probeBrowserBridge,
+  formatDashboard,healthRow,outcomeCode} from './health.mjs';
+
+export const DEFAULT_CONTROLLER='cloud-sandbox-mcp';
+export const DEFAULT_WORKSTATION='cloud-sandbox-dev-main';
+export const EXPECTED_EXTERNAL_SSD_UUID='A6268296-0330-4A69-9BE3-059BE8E4016A';
+export const EXPECTED_EXTERNAL_DATA='/Volumes/SSD/Sandbox/persistent/cloud-sandbox-mcp-data';
+
+export function externalSSDClass(info={}){
+  const apfs=/(^|[^A-Z])APFS([^A-Z]|$)/i.test(
+    String(info.FileSystemPersonality||'')+' '+String(info.FilesystemType||''));
+  const writable=(info.Writable===true||info.ReadOnlyVolume===false||
+    info.VolumeReadOnly===false)&&info.ReadOnlyVolume!==true&&
+    info.VolumeReadOnly!==true&&info.WriteProtected!==true&&
+    info.ReadOnlyMedia!==true;
+  const external=info.Internal===false&&info.MountPoint==='/Volumes/SSD'&&
+    String(info.VolumeUUID||'').toUpperCase()===EXPECTED_EXTERNAL_SSD_UUID;
+  return {valid:apfs&&writable&&external};
+}
+export function guardExternalPersistentStorage(){
+  // BEFORE Docker Desktop starts (and BEFORE docker start). When the
+  // original data root is moved to a pinned SSD via symlink, a missing
+  // removable volume must fail closed; never generate an empty root.
+  const root=path.join(os.homedir(),'.cloud-sandbox-mcp-data');
+  let st;
+  try{st=fs.lstatSync(root);}
+  catch(error){throw Error('SANDBOX_DATA_ROOT_NOT_AVAILABLE:'+error.code);}
+  if(st.isDirectory()&&!st.isSymbolicLink())return 'MAC_ORIGINAL_DATA';
+  if(!st.isSymbolicLink()||fs.readlinkSync(root)!==EXPECTED_EXTERNAL_DATA)
+    throw Error('SANDBOX_DATA_ROOT_UNTRUSTED_SYMLINK');
+  const mount=fs.lstatSync('/Volumes/SSD');
+  if(!mount.isDirectory()||mount.isSymbolicLink())
+    throw Error('SSD_VOLUME_MOUNT_MISSING');
+  const disk=spawnSync('/usr/sbin/diskutil',
+    ['info','-plist','/Volumes/SSD'],{encoding:'utf8',timeout:10000});
+  if(disk.status!==0||disk.error)
+    throw Error('SSD_VOLUME_IDENTITY_CHECK_FAILED');
+  const decoded=spawnSync('/usr/bin/plutil',
+    ['-convert','json','-o','-','-'],{
+      encoding:'utf8',input:disk.stdout,timeout:10000
+    });
+  if(decoded.status!==0||decoded.error)
+    throw Error('SSD_VOLUME_PROPERTIES_UNREADABLE');
+  let volume;
+  try{volume=JSON.parse(decoded.stdout);}
+  catch{throw Error('SSD_VOLUME_PROPERTIES_CORRUPT');}
+  if(!externalSSDClass(volume).valid)
+    throw Error('SSD_VOLUME_UUID_OR_APFS_RW_MISMATCH');
+  if(fs.realpathSync(root)!==EXPECTED_EXTERNAL_DATA||
+    !fs.statSync(root).isDirectory())
+    throw Error('SSD_DATA_ROOT_TARGET_NOT_AVAILABLE');
+  const marker=JSON.parse(fs.readFileSync(
+    '/Volumes/SSD/Sandbox/.sandbox-v3-stage.json','utf8'));
+  if(marker.targetRoot!=='/Volumes/SSD/Sandbox'||
+    marker.volumeUuid!==EXPECTED_EXTERNAL_SSD_UUID||
+    marker.dataSource!==root)
+    throw Error('SSD_STAGE_IDENTITY_MARKER_UNTRUSTED');
+  fs.accessSync(root,fs.constants.R_OK|fs.constants.W_OK);
+  return 'VERIFIED_EXTERNAL_SSD';
+}
+
+export const SSD_DIRECT_STATE_FILE=
+  path.join(os.homedir(),'.local/share/sandbox-v3/ssd-direct-cutover-state.json');
+
+export function classifyDirectSSDState(state){
+  if(state===null)return 'NO_DIRECT_SSD_CUTOVER_STATE';
+  if(state?.schema!=='sandbox-v3.ssd-direct-cutover.v1'||
+    state.ssdUuid!==EXPECTED_EXTERNAL_SSD_UUID)
+    throw Error('DIRECT_SSD_CUTOVER_RECORD_UNTRUSTED');
+  if(state.phase==='ROLLBACK_COMPLETE')return 'MAC_ORIGINAL_DATA';
+  if(state.phase!=='SUCCEEDED')
+    throw Error('SSD_DIRECT_CUTOVER_INCOMPLETE_FAIL_CLOSED');
+  return 'DIRECT_SSD_REQUIRED';
+}
+function validateDirectSSDPhysicalMount(){
+  const disk=spawnSync('/usr/sbin/diskutil',
+    ['info','-plist','/Volumes/SSD'],{encoding:'utf8',timeout:10000});
+  if(disk.status!==0||disk.error)
+    throw Error('DIRECT_SSD_VOLUME_IDENTITY_CHECK_FAILED');
+  const decoded=spawnSync('/usr/bin/plutil',
+    ['-convert','json','-o','-','-'],{
+      encoding:'utf8',input:disk.stdout,timeout:10000
+    });
+  if(decoded.status!==0||decoded.error)
+    throw Error('DIRECT_SSD_VOLUME_PROPERTIES_UNREADABLE');
+  let info;
+  try{info=JSON.parse(decoded.stdout);}
+  catch{throw Error('DIRECT_SSD_VOLUME_PROPERTIES_CORRUPT');}
+  if(!externalSSDClass(info).valid)
+    throw Error('DIRECT_SSD_UUID_OR_RW_MISMATCH');
+  const target=fs.lstatSync(EXPECTED_EXTERNAL_DATA);
+  if(!target.isDirectory()||target.isSymbolicLink())
+    throw Error('DIRECT_SSD_DATA_ROOT_INVALID');
+  fs.accessSync(EXPECTED_EXTERNAL_DATA,fs.constants.R_OK);
+}
+export function directSSDPreStartupGuard(){
+  let info=null;
+  try{
+    const st=fs.lstatSync(SSD_DIRECT_STATE_FILE);
+    if(!st.isFile()||st.isSymbolicLink()||
+      st.uid!==process.getuid()||(st.mode&0o077)!==0||
+      st.size>16000)
+      throw Error('DIRECT_SSD_CUTOVER_RECORD_UNTRUSTED');
+    info=JSON.parse(fs.readFileSync(SSD_DIRECT_STATE_FILE,'utf8'));
+  }catch(error){
+    if(error.code!=='ENOENT')throw error;
+  }
+  const mode=classifyDirectSSDState(info);
+  if(mode==='DIRECT_SSD_REQUIRED')validateDirectSSDPhysicalMount();
+  return mode;
+}
+export function directSSDBindMatch(containers){
+  if(!Array.isArray(containers)||containers.length!==2)
+    throw Error('DIRECT_SSD_RUNNING_CONTAINERS_MISSING');
+  const source=EXPECTED_EXTERNAL_DATA;
+  const mounts={
+    'cloud-sandbox-mcp':{'/data':source},
+    'cloud-sandbox-dev-main':{
+      '/workspace':source+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/repo',
+      '/home/agent':source+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/home',
+      '/shared-auth':source+'/shared-auth',
+      '/var/lib/docker':source+'/workspaces/6544ba3e-e124-4ca5-adc7-62c6dd47ba86/docker'
+    }
+  };
+  for(const [name,expected] of Object.entries(mounts)){
+    const container=containers.find(c=>c.Name==='/'+name);
+    if(!container)throw Error('DIRECT_SSD_CONTAINER_NOT_FOUND:'+name);
+    for(const [destination,target] of Object.entries(expected)){
+      const mount=(container.Mounts||[]).find(
+        m=>m.Destination===destination);
+      if(!mount||mount.Type!=='bind'||mount.Source!==target)
+        throw Error('DIRECT_SSD_CONTAINER_BIND_DRIFT:'+name+':'+destination);
+    }
+  }
+  return true;
+}
+function verifyDirectDockerMounts(){
+  const r=exec('docker',['inspect',
+    DEFAULT_CONTROLLER,DEFAULT_WORKSTATION],20000);
+  if(!r.ok)throw Error('DIRECT_SSD_DOCKER_INSPECT_FAILED');
+  let containers;
+  try{containers=JSON.parse(r.stdout);}
+  catch{throw Error('DIRECT_SSD_DOCKER_INSPECT_UNREADABLE');}
+  directSSDBindMatch(containers);
+}
+
+export function parseContainerStatus(text,name){
+  const match=String(text).trim().match(/^(\/[A-Za-z0-9_.-]+)\|(true|false)\|([A-Za-z_-]+)$/);
+  if(!match||match[1]!=='/'+name)throw Error('UNEXPECTED_CONTAINER_IDENTITY:'+name);
+  return {name,active:match[2]==='true',health:match[3]};
+}
+const machineReadable=process.argv[2]==='doctor'||
+  process.argv[3]==='--plain'||process.env.SANDBOX_VERBOSE==='1';
+const out=(key,val)=>{
+  const important=['RESULT','STOP','CLOUDFLARE_ADMIN','DOCKER_DESKTOP',
+    'MAC_BRIDGE_RECOVERY'];
+  if(machineReadable||important.includes(key)||
+     key==='cloud-sandbox-mcp'||key==='cloud-sandbox-dev-main')
+    console.log('[Sandbox V3 CLI] '+key+'='+String(val));
+};
+function exec(cmd,args,timeout=12000){
+  const r=spawnSync(cmd,args,{encoding:'utf8',timeout,
+    stdio:['ignore','pipe','pipe'],maxBuffer:50000});
+  return {ok:r.status===0&&!r.error,stdout:String(r.stdout||'').trim(),
+    stderr:String(r.stderr||'').trim(),code:r.status};
+}
+function privilegedCloudflareOperation(args){
+  // The service module provides exactly two allowed launchctl forms:
+  // kickstart of a known label, or bootstrap of a verified existing plist.
+  const command=['/bin/launchctl',...args];
+  const noninteractive=exec('/usr/bin/sudo',['-n',...command],12000);
+  if(noninteractive.ok)return true;
+  if(!process.stdin.isTTY||!process.stderr.isTTY)return false;
+  out('CLOUDFLARE_ADMIN','ONE_TIME_MACOS_PRIVILEGE_IF_NEEDED');
+  const withPrompt=spawnSync('/usr/bin/sudo',command,{
+    stdio:'inherit',timeout:90000
+  });
+  return withPrompt.status===0&&!withPrompt.error;
+}
+function printCloudflareStatus(){
+  const state=inspectCloudflare({exec});
+  out('CLOUDFLARE_LAUNCHD',state.running?'RUNNING':
+    state.selected?'STOPPED':'NOT_LOADED');
+  if(state.selected)out('CLOUDFLARE_SERVICE',state.selected.label);
+  out('CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS');
+}
+function optionalContainerState(name){
+  try{return state(name);}catch{return null;}
+}
+export function composeHealthRows({docker,controller,workstation,
+  controllerHttp,cloudflare,bridge,bridgeLaunchd,publicEndpoints}){
+  if(!Array.isArray(publicEndpoints)||publicEndpoints.length!==2)
+    throw Error('PUBLIC_HEALTH_PROBES_INCOMPLETE');
+  const canRun=status=>Boolean(status?.active)&&
+    ['healthy','none'].includes(status.health);
+  const rows=[
+    healthRow('DOCKER','Docker Desktop',docker,
+      'Motor Docker disponible','Motor Docker detenido'),
+    healthRow('CONTROLLER','MCP Controller',docker&&canRun(controller),
+      'Contenedor cloud-sandbox-mcp activo','Controlador no disponible'),
+    healthRow('WORKSTATION','Workstation',docker&&canRun(workstation),
+      'dev-main activo · datos persistentes','Workstation no disponible'),
+    healthRow('MCP_HTTP','MCP /healthz',controllerHttp,
+      'HTTP local correcto','Healthcheck MCP falló'),
+    healthRow('CLOUDFLARE','Cloudflare Tunnel',cloudflare?.running===true,
+      'cloud-sandbox-mac · launchd activo',
+      cloudflare?.selected?'Servicio detenido':'Servicio no cargado'),
+    ...publicEndpoints,
+    {id:'MAC_BRIDGE_LAUNCHD',label:'Bridge · LaunchAgent',
+      status:bridgeLaunchd?.running?'ok':'warn',
+      code:bridgeLaunchd?.code??'NOT_VERIFIED',
+      detail:bridgeLaunchd?.running?
+        'Servicio macOS bajo launchd':
+        bridgeLaunchd?.loaded?
+          'Servicio detenido · sandbox puede recuperarlo':
+          'LaunchAgent no cargado o no verificado'},
+    bridge,
+    {id:'CHROME_CDP',label:'Chrome · CDP',
+      status:'unknown',code:'V3_BROWSER_RUNTIME_REQUIRED',
+      detail:'Validar navegador con Sandbox V3'},
+    {id:'V3_PLUGIN',label:'ChatGPT · Sandbox V3',
+      status:'unknown',code:'EXTERNAL_PLUGIN',
+      detail:'Conexión MCP: verificar desde ChatGPT'}
+  ];
+  return rows;
+}
+async function collectHealthRows(){
+  // Keep synchronous Docker checks outside the timed HTTPS window:
+  // otherwise reported network latency includes time blocked by spawnSync.
+  const docker=dockerReady();
+  const controller=docker?optionalContainerState(DEFAULT_CONTROLLER):null;
+  const workstation=docker?optionalContainerState(DEFAULT_WORKSTATION):null;
+  const controllerHttp=docker&&controller?.active?controllerHealth():false;
+  const cloudflare=inspectCloudflare({exec});
+  const bridgeLaunchd=inspectBridgeLaunchd({exec});
+  // These are read-only and run concurrently even when Docker is down.
+  const [publicEndpoints,bridge]=await Promise.all([
+    probePublicEndpoints(),probeBrowserBridge()
+  ]);
+  return composeHealthRows({docker,controller,workstation,
+    controllerHttp,cloudflare,bridge,bridgeLaunchd,publicEndpoints});
+}
+function showHealthRows(rows,{json=false,plain=false}={}){
+  if(json){
+    console.log(JSON.stringify({
+      schema:'sandbox-v3.health.v1',
+      checked_at:new Date().toISOString(),
+      status:outcomeCode(rows)?'DEGRADED':'READY',
+      rows
+    },null,2));
+  }else if(plain){
+    for(const row of rows){
+      console.log('[Sandbox V3 CLI] '+row.id+'='+row.code+
+        ' STATUS='+row.status.toUpperCase()+
+        ' DETAIL='+row.detail);
+    }
+    console.log('[Sandbox V3 CLI] HEALTH_RESULT='+
+      (outcomeCode(rows)?'DEGRADED':'READY'));
+  }else{
+    console.log(formatDashboard(rows));
+  }
+}
+function state(container){
+  const r=exec('docker',['inspect','--format',
+    '{{.Name}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}',
+    container],6000);
+  if(!r.ok)throw Error('EXISTING_CONTAINER_NOT_FOUND:'+container);
+  return parseContainerStatus(r.stdout,container);
+}
+function dockerReady(){return exec('docker',['info','--format','{{.ServerVersion}}'],5000).ok;}
+function controllerHealth(){
+  const statement="fetch('http://127.0.0.1:3000/healthz',{signal:AbortSignal.timeout(3500)})"+
+    ".then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))";
+  return exec('docker',['exec',DEFAULT_CONTROLLER,'node','-e',statement],7000).ok;
+}
+async function ensureDocker(){
+  if(dockerReady())return;
+  if(process.platform!=='darwin')throw Error('DOCKER_DAEMON_NOT_READY');
+  out('DOCKER_DESKTOP','OPENING_EXISTING_APP');
+  const open=exec('/usr/bin/open',['-a','Docker'],10000);
+  if(!open.ok)throw Error('DOCKER_DESKTOP_START_FAILED');
+  for(let i=0;i<60;i++){
+    await delay(1500);
+    if(dockerReady())return;
+  }
+  throw Error('DOCKER_DAEMON_NOT_READY');
+}
+async function ensureExisting(name){
+  let current=state(name);
+  if(!current.active){
+    out(name,'STARTING_EXISTING_CONTAINER');
+    const started=exec('docker',['start',name],30000);
+    if(!started.ok)throw Error('EXISTING_CONTAINER_START_FAILED:'+name);
+  }
+  for(let i=0;i<35;i++){
+    current=state(name);
+    if(current.active&&['none','healthy'].includes(current.health))return current;
+    if(current.health==='unhealthy')throw Error('EXISTING_CONTAINER_UNHEALTHY:'+name);
+    await delay(1000);
+  }
+  throw Error('EXISTING_CONTAINER_NOT_READY:'+name);
+}
+function help(){
+  console.log('Usage: sandbox [start|status|doctor|help|cats|jupiter]');
+  console.log('       sandbox art [cats|jupiter]     preview ASCII, no Docker');
+  console.log('       sandbox theme [cats|jupiter]   save preferred intro');
+  console.log('       sandbox --no-art               start without ASCII');
+  console.log('       sandbox status --plain         machine-readable text');
+  console.log('       sandbox status --json          structured check results');
+  console.log('No argument means start. Existing Docker and Cloudflare Tunnel only.');
+}
+export function isMainModule(argv1=process.argv[1],url=import.meta.url){
+  if(!argv1)return false;
+  try{
+    // A symlink executable passes ~/.local/bin/sandbox in argv[1],
+    // while Node loads its ESM module from ~/.local/share/sandbox-v3/cli.mjs.
+    // Comparing path.resolve() without realpathSync() silently skipped main.
+    return fs.realpathSync(argv1)===fs.realpathSync(fileURLToPath(url));
+  }catch{return false;}
+}
+async function main(){
+  const command=process.argv[2]??'start';
+  const option=process.argv[3];
+  if(command==='help'||command==='--help'){
+    if(option!==undefined)throw Error('USAGE_SANDBOX_HELP');
+    help();return;
+  }
+  if(command==='art'){
+    if(process.argv.length>4)throw Error('USAGE_SANDBOX_ART_CATS_OR_JUPITER');
+    console.log(banner(normalizeTheme(option??readTheme())));
+    return;
+  }
+  if(command==='theme'){
+    if(process.argv.length>4)throw Error('USAGE_SANDBOX_THEME_CATS_OR_JUPITER');
+    if(option){saveTheme(normalizeTheme(option));out('ASCII_THEME',option.toUpperCase());}
+    else out('ASCII_THEME',readTheme().toUpperCase());
+    return;
+  }
+  if((option!==undefined&&
+      !(command==='status'&&['--plain','--json'].includes(option)))||
+     !['start','status','doctor','cats','jupiter','--no-art'].includes(command))
+    throw Error('USAGE_SANDBOX_START_STATUS_DOCTOR_ART_THEME');
+  const launching=['start','cats','jupiter','--no-art'].includes(command);
+  if(launching&&command!=='--no-art'){
+    console.log(banner(['cats','jupiter'].includes(command)?command:readTheme()));
+  }
+  if(process.platform!=='darwin')throw Error('MACOS_OPERATOR_HOST_REQUIRED');
+  out('PRODUCT','Sandbox V3');
+  out('CONNECTOR_PREFERENCE','Sandbox_V3');
+  out('LEGACY_MCP_V2_START','DISABLED');
+  out('MULTI_WORKSTATION_START','DISABLED');
+  if(command==='doctor'){
+    out('CLI_ENTRY',fileURLToPath(import.meta.url).replaceAll(process.env.HOME||'', '~'));
+    out('CONTROLLER',DEFAULT_CONTROLLER);
+    out('WORKSTATION',DEFAULT_WORKSTATION);
+    out('EXTERNAL_PLUGIN_ROUTING','NOT_CONTROLLED_BY_SHELL');
+  }
+  if(command==='status'||command==='doctor'){
+    const rows=await collectHealthRows();
+    if(command==='doctor'){
+      printCloudflareStatus();
+      out('DOCKER',rows[0].code);
+      out('CONTROLLER',rows[1].code);
+      out('WORKSTATION',rows[2].code);
+      out('MCP_CONTROLLER_HTTP_HEALTH',rows[3].code);
+      for(const row of rows.slice(5,10))out(row.id,row.code);
+      out('V3_CONNECTOR_EXTERNAL_HEALTH','REQUIRES_CHATGPT_V3_CHECK');
+    }
+    showHealthRows(rows,{json:option==='--json',plain:option==='--plain'});
+    if(outcomeCode(rows))process.exitCode=1;
+    return;
+  }
+  // A physical direct bind leaves the original ~/ data directory
+  // untouched. The older symlink-only guard is not enough.
+  const directStatus=directSSDPreStartupGuard();
+  const rootStatus=guardExternalPersistentStorage();
+  out('STORAGE_GUARD',directStatus==='DIRECT_SSD_REQUIRED'?
+    directStatus:rootStatus);
+  await ensureDocker();
+  if(directStatus==='DIRECT_SSD_REQUIRED')verifyDirectDockerMounts();
+  // A new runtime / workspace is NEVER created: both container names
+  // must exist before any start operation is attempted.
+  state(DEFAULT_CONTROLLER);
+  state(DEFAULT_WORKSTATION);
+  await ensureExisting(DEFAULT_CONTROLLER);
+  await ensureExisting(DEFAULT_WORKSTATION);
+  const tunnel=await ensureCloudflare({exec,
+    privileged:privilegedCloudflareOperation,sleep:delay});
+  // A running LaunchAgent is NEVER force-restarted: that could revoke
+  // another agent's delegated Chrome/Edge session.
+  try{
+    const bridgeStart=await ensureMacBridge({exec,probe:probeBrowserBridge,
+      sleep:delay});
+    out('MAC_BRIDGE_LAUNCHAGENT',bridgeStart.code);
+  }catch(error){
+    out('MAC_BRIDGE_RECOVERY',String(error?.message||'UNAVAILABLE').slice(0,110));
+  }
+  out('CLOUDFLARE_TUNNEL',tunnel.state);
+  out('CLOUDFLARE_SERVICE',tunnel.service);
+  out('CLOUDFLARE_NETWORK_HEALTH','CHECK_PUBLIC_HTTPS_ROWS');
+  let healthy=false;
+  for(let attempt=0;attempt<18;attempt++){
+    healthy=controllerHealth();
+    if(healthy)break;
+    await delay(750);
+  }
+  if(!healthy)throw Error('MCP_CONTROLLER_HTTP_HEALTH_FAILED');
+  out('CONTROLLER','RUNNING');
+  out('CONTROLLER_HTTP_HEALTH','PASS');
+  out('WORKSTATION','RUNNING');
+  out('DATA_REUSED','YES');
+  out('EXISTING_CLOUDFLARE_REUSED','YES');
+  out('BROWSER_BRIDGE_RESTARTED','NO');
+  out('EXTERNAL_V3_CONNECTOR','VERIFY_WITH_SANDBOX_V3_PLUGIN');
+  const rows=await collectHealthRows();
+  showHealthRows(rows);
+  const degraded=outcomeCode(rows)>0;
+  out('RESULT',degraded?'LOCAL_READY_PUBLIC_DEGRADED':'LOCAL_SANDBOX_V3_READY');
+  if(degraded)process.exitCode=1;
+}
+if(isMainModule()){
+  main().catch(error=>{
+    out('STOP',String(error?.message||'UNKNOWN').slice(0,190));
+    process.exitCode=2;
+  });
+}

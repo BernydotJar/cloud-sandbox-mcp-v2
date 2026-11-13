@@ -1,0 +1,365 @@
+// Invoked only by the authenticated Cloud Sandbox macOS host service.
+// The script cannot execute caller-provided JavaScript or AppleScript.
+'use strict';
+
+function safeUrl(input) {
+  const t = String(input || '').split('#')[0].split('?')[0];
+  const low = t.toLowerCase();
+  const proto = low.startsWith('https://') ? 'https://' : low.startsWith('http://') ? 'http://' : '';
+  if (!proto) return '';
+  const rem = t.slice(proto.length);
+  const slash = rem.indexOf('/');
+  const authority = slash < 0 ? rem : rem.slice(0,slash);
+  if (!authority || authority.includes('@') || authority.includes(' ')) return '';
+  return (proto + authority.toLowerCase() + (slash < 0 ? '/' : rem.slice(slash))).slice(0,2048);
+}
+function fail(code) { return JSON.stringify({ok: false, error: code}); }
+function ok(data) { return JSON.stringify({ok: true, data: data}); }
+
+
+function nativeAXWindowMatches(win, title, rect) {
+  try {
+    const name=String(win.name() || '');
+    const p=win.position(),s=win.size();
+    return Boolean(title) && (name===title || name.startsWith(title+' - ')) &&
+      [Number(p[0])-rect.x,Number(p[1])-rect.y,Number(s[0])-rect.width,Number(s[1])-rect.height].every(v=>Number.isFinite(v)&&Math.abs(v)<=2);
+  } catch (_) { return false; }
+}
+function nativeTargetFocused(proc,title,rect) {
+  try { return Boolean(proc.frontmost()) && nativeAXWindowMatches(proc.attributes.byName('AXFocusedWindow').value(),title,rect); }
+  catch (_) { return false; }
+}
+function nativeWaitForTargetFocus(proc,title,rect) {
+  for(let attempt=0;attempt<8;attempt++) {
+    if(nativeTargetFocused(proc,title,rect)) return true;
+    delay(0.1);
+  }
+  return false;
+}
+function nativeEnsureTargetFocus(app,proc,target,tabIndex,title,rect) {
+  if(nativeTargetFocused(proc,title,rect)) return true;
+  target.activeTabIndex=tabIndex;
+  app.activate();
+  try {
+    const matches=proc.windows().filter(w=>nativeAXWindowMatches(w,title,rect));
+    if(matches.length===1) matches[0].actions.byName('AXRaise').perform();
+  } catch (_) {}
+  if(nativeWaitForTargetFocus(proc,title,rect)) return true;
+  // Chromium's scripting window order is not the OS key window. Select a
+  // unique exact Window-menu title only when AXRaise could not prove focus.
+  try {
+    const item=proc.menuBars[0].menuBarItems.byName('Window');
+    item.actions.byName('AXPress').perform();
+    const matches=item.menus[0].menuItems().filter(m=>String(m.name()||'')===title);
+    if(matches.length===1) matches[0].actions.byName('AXPress').perform();
+    else { try { item.menus[0].actions.byName('AXCancel').perform(); } catch (_) {} }
+  } catch (_) {}
+  return nativeWaitForTargetFocus(proc,title,rect);
+}
+
+function nativeFocusedControl(proc,title,rect) {
+  if(!nativeTargetFocused(proc,title,rect)) return {available:false,error:'TARGET_AX_WINDOW_NOT_FOCUSED'};
+  try {
+    const el = proc.attributes.byName('AXFocusedUIElement').value();
+    const role = String(el.role() || '');
+    function attr(name) {
+      try { const value=el.attributes.byName(name).value(); return typeof value==='string'?value:''; }
+      catch (_) { return ''; }
+    }
+    let name='';
+    try { name=String(el.name() || ''); } catch (_) {}
+    name=name || attr('AXDescription') || attr('AXTitle') || attr('AXPlaceholderValue');
+    const subrole=attr('AXSubrole');
+    const protectedInput=/secure|password/i.test(subrole) ||
+      /password|passcode|verification code|security code|credit card|cvv|otp/i.test(name);
+    const input=/^AX(TextArea|TextField|ComboBox)$/.test(role);
+    const data={available:true,source:'AXFocusedUIElement',role:role,
+                name:name.slice(0,300),is_text_input:input,protected:protectedInput};
+    if (input && !protectedInput) {
+      try { const value=el.value(); if(typeof value==='string') data.value=value.slice(0,2000); } catch (_) {}
+    }
+    try { const p=el.position(),s=el.size(); data.bounds_points={x:Number(p[0]),y:Number(p[1]),width:Number(s[0]),height:Number(s[1])}; } catch (_) {}
+    return data;
+  } catch (_) { return {available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'}; }
+}
+function nativeWindowBounds(target) {
+  const b=target.bounds();
+  const r=Array.isArray(b)?{x:Number(b[0]),y:Number(b[1]),width:Number(b[2])-Number(b[0]),height:Number(b[3])-Number(b[1])}:
+    {x:Number(b.x),y:Number(b.y),width:Number(b.width),height:Number(b.height)};
+  if (![r.x,r.y,r.width,r.height].every(Number.isFinite) || r.width<=0 || r.height<=0) throw Error('INVALID_BOUNDS');
+  return r;
+}
+
+
+function pasteNativeText(value, systems) {
+  ObjC.import('AppKit');
+  const board=$.NSPasteboard.generalPasteboard;
+  const originals=[];
+  const items=board.pasteboardItems;
+  if (items) for(let i=0;i<Number(items.count);i++) {
+    const item=items.objectAtIndex(i),types=item.types,formats=[];
+    for(let j=0;j<Number(types.count);j++) {
+      const type=types.objectAtIndex(j),data=item.dataForType(type);
+      if(data)formats.push({type:type,data:data});
+    }
+    originals.push(formats);
+  }
+  board.clearContents;
+  let ownCount=Number(board.changeCount);
+  try {
+    if(!board.setStringForType($(value),$.NSPasteboardTypeString))throw Error('PASTE_UNAVAILABLE');
+    ownCount=Number(board.changeCount);
+    systems.keystroke('v',{using:'command down'});
+    delay(0.25);
+  } finally {
+    // Restore every format only if the user has not replaced the clipboard.
+    if(Number(board.changeCount)===ownCount) {
+      board.clearContents;
+      if(originals.length) {
+        const restored=$.NSMutableArray.alloc.init;
+        for(const formats of originals) {
+          const item=$.NSPasteboardItem.alloc.init;
+          for(const format of formats)item.setDataForType(format.data,format.type);
+          restored.addObject(item);
+        }
+        board.writeObjects(restored);
+      }
+    }
+  }
+}
+
+
+function nativeMouseAccess() {
+  try {
+    ObjC.import('ApplicationServices');
+    if(typeof $.CGPreflightPostEventAccess!=='function') ObjC.bindFunction('CGPreflightPostEventAccess',['bool',[]]);
+    return Boolean($.CGPreflightPostEventAccess());
+  } catch (_) { return false; }
+}
+function nativeMouseClick(x,y) {
+  ObjC.import('ApplicationServices');
+  const point={x:x,y:y};
+  const down=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseDown,point,$.kCGMouseButtonLeft);
+  const up=$.CGEventCreateMouseEvent(null,$.kCGEventLeftMouseUp,point,$.kCGMouseButtonLeft);
+  if(!down || !up)throw Error('MOUSE_EVENT_CREATE_FAILED');
+  $.CGEventPost($.kCGHIDEventTap,down);
+  $.CGEventPost($.kCGHIDEventTap,up);
+  delay(0.15);
+}
+
+function run(argv) {
+  const operation = String(argv[0] || '');
+  const browser = String(argv[1] || '');
+  const apps = {chrome: 'Google Chrome', edge: 'Microsoft Edge'};
+  if (!Object.prototype.hasOwnProperty.call(apps, browser)) return fail('UNSUPPORTED_BROWSER');
+
+  try {
+    const app = Application(apps[browser]);
+    if (!app.running()) {
+      if (operation === 'state') return ok({browser: browser, running: false, windows: []});
+      return fail('BROWSER_NOT_RUNNING');
+    }
+    const windows = app.windows();
+    if (operation === 'state') {
+      return ok({browser: browser, running: true, windows: windows.map(function(w, i) {
+        let active = -1;
+        try { active = Number(w.activeTabIndex()); } catch (_) { /* Unknown active tab. */ }
+        // Access to the window itself still requires macOS Automation authorization.
+        // A single loading or stale tab must not abort the full discovery pass.
+        const tabs = w.tabs();
+        return {window_index: i + 1, tabs: tabs.map(function(t, j) {
+          try {
+            return {tab_index: j + 1,
+                    active: active === j + 1,
+                    title: String(t.title() || '').slice(0, 300),
+                    url: safeUrl(t.url())};
+          } catch (_) {
+            return {tab_index: j + 1, active: false, title: '', url: ''};
+          }
+        })};
+      })});
+    }
+
+    const windowIndex = Number(argv[2]);
+    const tabIndex = Number(argv[3]);
+    const expected = String(argv[4] || '');
+    const expectedTitle = String(argv[5] || '');
+    if (!Number.isInteger(windowIndex) || windowIndex < 1 ||
+        !Number.isInteger(tabIndex) || tabIndex < 1) return fail('STALE_WINDOW');
+
+    // Chrome and Edge reorder AppleScript window lists when a different
+    // tab/window is activated. A previously observed array index is a hint,
+    // NOT a durable tab identity. Rebind only to a uniquely matching pair of
+    // sanitized URL AND exact observed title; never infer identity by origin.
+    function tabMatches(tab) {
+      try {
+        // Title first: macOS Apple Events for tab URLs are relatively costly,
+        // especially when Edge has dozens of corporate tabs.
+        if (expectedTitle && String(tab.title() || '').slice(0,300) !== expectedTitle) return false;
+        return safeUrl(tab.url()) === expected;
+      } catch (_) { return false; }
+    }
+    function atIndex(wi, ti) {
+      try {
+        const w = windows[wi - 1];
+        if (!w) return null;
+        const tabs = w.tabs();
+        const tab = tabs[ti - 1];
+        if (!tab || !tabMatches(tab)) return null;
+        return {window: w, window_index: wi, tab_index: ti, tab: tab, rebound: false};
+      } catch (_) { return null; }
+    }
+
+    let selected = atIndex(windowIndex, tabIndex);
+    if (!selected) {
+      let staleCode = 'STALE_WINDOW';
+      if (windowIndex <= windows.length) {
+        try {
+          const hinted = windows[windowIndex-1].tabs()[tabIndex-1];
+          staleCode = hinted ? (safeUrl(hinted.url()) === expected ?
+            'STALE_TITLE' : 'STALE_URL') : 'STALE_TAB';
+        } catch (_) { staleCode = 'STALE_TAB'; }
+      }
+      // Legacy callers without a title have no second identity factor:
+      // a changed index MUST fail rather than act on a possibly different tab.
+      if (!expectedTitle) return fail(staleCode);
+
+      let matches = 0;
+      for (let wi=0; wi<windows.length; wi++) {
+        let tabs;
+        try { tabs=windows[wi].tabs(); } catch (_) { continue; }
+        for (let ti=0; ti<tabs.length; ti++) {
+          if (!tabMatches(tabs[ti])) continue;
+          matches++;
+          if (matches > 1) return fail('AMBIGUOUS_NATIVE_TARGET');
+          selected={window:windows[wi],window_index:wi+1,
+                    tab_index:ti+1,tab:tabs[ti],rebound:true};
+        }
+      }
+      if (!selected) return fail(staleCode);
+    }
+    // Before mutating a global GUI, require a single identity even when the
+    // original index still matches. Two identically titled URLs in different
+    // windows are not distinguishable by the current MCP input contract.
+    if (operation === 'action' && !selected.rebound) {
+      let matches=0;
+      for (const candidateWindow of windows) {
+        let candidates;
+        try { candidates=candidateWindow.tabs(); } catch (_) { continue; }
+        for (const candidateTab of candidates) {
+          if (tabMatches(candidateTab) && ++matches > 1)
+            return fail('AMBIGUOUS_NATIVE_TARGET');
+        }
+      }
+      if (matches !== 1) return fail('TARGET_CHANGED');
+    }
+    const target = selected.window;
+    const selectedTabIndex = selected.tab_index;
+    if (operation === 'focus') {
+      let p=null,verified=false,rect;
+      try {
+        rect=nativeWindowBounds(target);
+        p=Application('System Events').processes[apps[browser]];
+        verified=nativeEnsureTargetFocus(app,p,target,selectedTabIndex,String(selected.tab.title()||''),rect);
+      } catch (_) {}
+      const result={focused:verified,window_focus_verified:verified,browser:browser,url:expected,
+                    recovered_stale_index:selected.rebound};
+      if(rect) result.window_bounds_points=rect;
+      try { const w=p.attributes.byName('AXFocusedWindow').value(); result.focused_window={name:String(w.name()||''),position:w.position(),size:w.size()}; } catch (_) { result.focused_window={available:false}; }
+      result.mouse_event_access=nativeMouseAccess();
+      result.focused_control=p?nativeFocusedControl(p,String(selected.tab.title()||''),rect):{available:false,error:'FOCUS_OBSERVATION_UNAVAILABLE'};
+      return ok(result);
+    }
+    if (operation === 'inspect') {
+      return ok({browser: browser, window_index: selected.window_index,
+                 tab_index: selected.tab_index, url: expected,
+                 recovered_stale_index: selected.rebound});
+    }
+    // Reading a screenshot must not collapse an open native <select> menu.
+    // Only foreground the tab when it is NOT already the focused target.
+    // System Events provides the process-level foreground check so an
+    // inactive Edge window cannot be mistaken for the actual desktop front.
+    const systems = Application('System Events');
+    const proc = systems.processes[apps[browser]];
+    if (!proc.exists()) return fail('ACCESSIBILITY_PROCESS_UNAVAILABLE');
+    const actualTitle=String(selected.tab.title()||'');
+    let actualRect;
+    try { actualRect=nativeWindowBounds(target); } catch (_) { return fail('INVALID_BOUNDS'); }
+    if(!nativeEnsureTargetFocus(app,proc,target,selectedTabIndex,actualTitle,actualRect))
+      return fail('TARGET_AX_WINDOW_NOT_FOCUSED');
+    if (operation === 'bounds') {
+      // The capture backend crops the FRONTMOST window, so refuse to return
+      // a screenshot of a different tab after a focus/order race.
+      const frontmost = app.windows()[0];
+      if (!frontmost || !tabMatches(frontmost.activeTab()) ||
+          !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
+      // AX windows are a separate list: index zero may be a tooltip or
+      // auxiliary window (for example 66x20 points), not this browser window.
+      // Read the rectangle from the already identity-bound browser object.
+      const bounds = target.bounds();
+      let region;
+      if (Array.isArray(bounds) && bounds.length === 4) {
+        region = {x: Number(bounds[0]), y: Number(bounds[1]),
+                  width: Number(bounds[2]) - Number(bounds[0]),
+                  height: Number(bounds[3]) - Number(bounds[1])};
+      } else if (bounds && typeof bounds === 'object' && !Array.isArray(bounds)) {
+        region = {x: Number(bounds.x), y: Number(bounds.y),
+                  width: Number(bounds.width), height: Number(bounds.height)};
+      }
+      if (!region || ![region.x,region.y,region.width,region.height].every(
+          value => Number.isFinite(value) && value >= 0) ||
+          region.width < 1 || region.height < 1 ||
+          region.width > 5000 || region.height > 4000) return fail('INVALID_BOUNDS');
+      // Reading browser properties is another Apple Event: recheck identity
+      // afterwards so a focus race cannot produce a stale capture rectangle.
+      const current = app.windows()[0];
+      if (!current || !tabMatches(current.activeTab()) ||
+          !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
+      if(!nativeTargetFocused(proc,actualTitle,region)) return fail('TARGET_AX_WINDOW_NOT_FOCUSED');
+      return ok(region);
+    }
+    if (operation === 'action') {
+      // Revalidate the visible selection immediately before the UI event.
+      // A window reorder does not invalidate the resolved window object.
+      // Verify BOTH the target's active tab and the browser's actual front
+      // window before sending a keystroke/click to the global macOS UI.
+      const refreshed = app.windows();
+      const activeWindow = refreshed[0];
+      if (!activeWindow || !tabMatches(activeWindow.activeTab()) ||
+          !tabMatches(target.activeTab())) return fail('TARGET_CHANGED');
+      if(!nativeTargetFocused(proc,actualTitle,actualRect)) return fail('TARGET_AX_WINDOW_NOT_FOCUSED');
+      const action = String(argv[6] || '');
+      if (action === 'click') {
+        const x = Number(argv[7]), y = Number(argv[8]);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 32768 || y > 32768) return fail('INVALID_COORDINATES');
+        const rect=nativeWindowBounds(target);
+        if(x<rect.x || y<rect.y || x>=rect.x+rect.width || y>=rect.y+rect.height) return fail('CLICK_OUTSIDE_TARGET_WINDOW');
+        if(!nativeMouseAccess()) return fail('MAC_POST_EVENT_PERMISSION_REQUIRED');
+        nativeMouseClick(x,y);
+      } else if (action === 'type_text') {
+        const value = String(argv[7] || '');
+        if (!value || value.length > 2000) return fail('INVALID_INPUT');
+        const control=nativeFocusedControl(proc,actualTitle,actualRect);
+        if(!control.available || !control.is_text_input || control.protected) return fail('VERIFIED_TEXT_CONTROL_REQUIRED');
+        pasteNativeText(value,systems);
+      } else if (action === 'press_key') {
+        const key = String(argv[7] || '');
+        const codes = {tab: 48, escape: 53, enter: 36, space: 49,
+                       backspace: 51, up: 126, down: 125, left: 123, right: 124};
+        if (!Object.prototype.hasOwnProperty.call(codes, key)) return fail('INVALID_KEY');
+        systems.keyCode(codes[key]);
+      } else return fail('INVALID_ACTION');
+      return ok({performed:true,action:action,browser:browser,
+                 recovered_stale_index:selected.rebound,input_backend:action==='click'?'quartz_mouse_event':action==='type_text'?'clipboard_paste':'system_events_key',focused_control:nativeFocusedControl(proc,actualTitle,actualRect)});
+    }
+    return fail('INVALID_OPERATION');
+  } catch (error) {
+    // AppleEvents' -1743 means the invoking GUI process lacks Automation permission.
+    // Do not expose the raw OS error, which may reveal a URL or window title.
+    const code = Number(error && error.number);
+    if (code === -1743 || String(error && error.message).indexOf('-1743') >= 0) {
+      return fail('MAC_AUTOMATION_PERMISSION_DENIED');
+    }
+    return fail('MAC_AUTOMATION_PERMISSION_OR_SCRIPT_ERROR');
+  }
+}

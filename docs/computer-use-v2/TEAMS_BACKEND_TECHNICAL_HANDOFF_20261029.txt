@@ -1,0 +1,379 @@
+HANDOFF TÉCNICO — Sandbox V3 / Teams Toyota en Edge
+Fecha: 29 de octubre de 2026. Estado observado final: 20:29 UTC.
+Destinatario: siguiente agente de ingeniería.
+Objetivo del usuario: interacción real desde Sandbox V3 en su sesión Toyota
+existente, en segundo plano. Prefiere evitar una extensión; no presentar este
+prototipo como solución definitiva ni ampliar su acceso para resolverlo.
+
+1. VEREDICTO OPERATIVO
+
+ACEPTACIÓN PARCIAL, CON UN FLUJO REAL EXITOSO Y UN FALLO POSTERIOR SIN RESOLVER.
+
+Probado con herramientas REALES del plugin Sandbox V3, no simulación:
+- Cuenta Eduardo.Sacahui@proveedor.toyota.com.ar, Toyota Argentina S.A.
+- Chat propio Eduardo Sacahui (You), compositor inicialmente vacío.
+- Escribir un marcador por el modelo CKEditor, leer su huella.
+- Recargar Teams y volver a encontrar la misma huella.
+- Limpiar el marcador, recargar y comprobar vacío.
+- Navegar Calendar -> Chat y regresar al chat propio vacío.
+- Docker (com.docker.docker) permaneció al frente; Edge detrás; Teams inactivo.
+- Ningún Enviar/Enter en Teams, ningún cambio Jira ni a otros borradores.
+- El grant de cada prueba se cerró; estado final active=false.
+
+Después de varios minutos, browser_inspect devolvió DOM_TIMEOUT_INSPECT dos
+veces mientras el broker seguía connected=true y profile_pinned=true.
+No se ejecutó la siguiente escritura: la comprobación previa no obtuvo controls.
+Último compositor vacío verificado: el ciclo exitoso anterior. NO afirmar que una
+lectura fallida demuestra su estado actual. Tampoco afirmar fiabilidad continua.
+
+Hipótesis: pestaña dormida/congelada por Edge. Hubo una observación nativa de
+Sleeping y la documentación de Chromium describe que una pestaña frozen no
+ejecuta eventos. NO se obtuvo todavía un flag frozen fresco de esta pestaña:
+el worker instalado no lo expone. Congelación sigue siendo hipótesis plausible,
+no causa raíz demostrada por la última captura.
+
+2. ALCANCE Y AUTORIZACIONES DEL USUARIO
+
+El usuario autorizó:
+- Corregir el bridge y probar en su chat propio sin enviar mensajes.
+- Añadir previamente el origen https://teams.cloud.microsoft.
+- Habilitar Accesibilidad al Node actualizado 26.13.0; autenticó él mismo.
+- Instalar/cargar la extensión únicamente en Toyota Work11 y recargar solo el
+  bridge, con permisos nativeMessaging, storage y ese único origen Teams.
+
+Su preferencia más reciente: no le gusta depender de una extensión y solicita
+este handoff técnico para otro agente. No continuar modificando rendimiento,
+políticas corporativas o acceso de navegador por inferencia.
+
+Conservar:
+- Los tres borradores que el usuario aceptó. No volver a pegarlos.
+- Comentarios Jira ya publicados: no republicar, modificar ni enviar Teams.
+- Perfiles Edge existentes, sesiones, llamadas de otros perfiles y datos Docker.
+- Sin Remote Debugging, CDP nuevo, flags en Edge, reinicio del navegador,
+  perfiles nuevos, exportación de cookies, contraseñas o sesiones.
+- Nunca usar el conector Teams de otra cuenta como sustituto de Toyota.
+- Credenciales, Touch ID, OTP y consentimiento nuevo corresponden al usuario.
+- Usar solo un grant Edge propio y cerrarlo. No copiar un session_id del handoff.
+
+3. DÓNDE ESTÁ EL CÓDIGO
+
+Plugin de trabajo: Sandbox V3, namespace mcp__codex_apps__sandbox_v3_*.
+Workstation/contenedor: cloud-sandbox-dev-main.
+Workspace runtime: 6544ba3e-e124-4ca5-adc7-62c6dd47ba86.
+Workspace registrado DEL REPOSITORIO FUENTE:
+  4451d54b-4994-4eab-afe6-ec6e654ad7f4
+Ruta Linux:
+  /workspace/projects/cloud-sandbox-mcp-v2
+Rama:
+  feat/computer-use-runtime-v2
+
+El workspace runtime raíz tiene otros cambios: no usar su git_commit para
+cometer esta entrega. Usar el workspace de fuente anterior.
+
+Commits locales relevantes (sin push):
+- 130ebadae12380790ac5ccd5d2203e821421f429:
+  reparación de Node/sondas vivas de permisos.
+- 9207cdc: trabajador AX residente y comprobación de identidad independiente.
+- 85f6d72629c907991b6a1a65b8022c766096e30d:
+  primer backend DOM emparejado y despliegue protegido.
+- 201bf6a0940331e385b9bf101d76eeda650f4285:
+  adaptador CKEditor y prueba real completa en segundo plano.
+- El commit final de compatibilidad/handoff se registra en release.json del
+  paquete v0.1.1-compat. No inferir que 201bf6a es el bridge final instalado.
+
+Leer /workspace/AGENTS.md, AGENTS.md del repo y:
+  docs/computer-use-v2/TEAMS_DOM_BACKEND_20261029.md
+  docs/computer-use-v2/ENGINE_ROUTING.md
+  docs/computer-use-v2/AGENT_REINFORCEMENT.md
+  docs/computer-use-v2/SPEC.md
+  docs/computer-use-v2/OPERATIONS.md
+
+En Mac los comandos de shell llevan prefijo rtk; en workspace Linux no.
+workspace_exec es Linux, NO Terminal del Mac. No inventar un ejecutor Mac.
+
+4. ARQUITECTURA INSTALADA
+
+ChatGPT / herramientas Sandbox V3
+ -> controlador MCP personalizado existente (no sustituido)
+ -> Mac Bridge autenticado existente
+ -> DOMBrowserTabs -> DOMBroker, socket Unix privado
+ -> host Native Messaging de Edge
+ -> worker de extensión en el perfil Toyota
+ -> content.js en mundo aislado
+ -> editor-main.js estático MAIN solo para la API CKEditor del control validado.
+
+No hay nuevo puerto HTTP/CDP. Native Messaging no transporta el secreto al
+JavaScript de la extensión. El secreto local autentica host -> broker Unix.
+No se transfirieron cookies, sesiones o contraseñas a Linux.
+
+Manifiesto MV3, versión 0.1.1.
+ID fijo:
+  ecamjbhjlcacmchoebdligpmhcebdgci
+Host:
+  com.lch.sandbox_v3_dom
+Permisos:
+  nativeMessaging, storage
+Host único:
+  https://teams.cloud.microsoft/*
+Storage contiene un UUID de instancia; el broker persiste paired-profile.json.
+Rechaza incógnito y otro UUID. El pin identifica esta instalación de perfil:
+NO certifica por sí mismo que la cuenta de negocio sea Toyota.
+Comprobar cuenta y destinatario antes de toda escritura.
+
+La extensión se cargó mediante Load Unpacked en Work 11. Developer Mode de
+extensiones se habilitó, no Remote Debugging. No se cambió Allow extensions from
+other stores ni políticas de la organización.
+
+5. ARCHIVOS INSTALADOS Y SERVICIOS
+
+Mac Bridge:
+  ~/Library/Application Support/LCH/CloudSandboxComputerUse/bridge.mjs
+Módulos:
+  .../CloudSandboxComputerUse/browser-dom/broker.mjs
+  .../CloudSandboxComputerUse/browser-dom/tabs.mjs
+
+DOM home privado (0700):
+  ~/Library/Application Support/LCH/SandboxDOM/
+  config.json (0600)
+  token (0600; NO leer/copiar su contenido al chat)
+  paired-profile.json (0600)
+  dom.sock (0600)
+  native-host.mjs
+  native-host (launcher)
+  extension/{manifest.json,worker.js,content.js,editor-main.js}
+  bridge-before.mjs (backup del bridge previo)
+  installation.json (hashes/recibo de instalación)
+
+Registro solo Edge:
+  ~/Library/Application Support/Microsoft Edge/NativeMessagingHosts/
+    com.lch.sandbox_v3_dom.json
+allowed_origins contiene solo chrome-extension://ecamjbhjlcacmchoebdligpmhcebdgci/.
+
+LaunchAgents existentes:
+  gui/501/com.lch.cloud-sandbox.computer-use
+  gui/501/com.lch.same-mac-ax
+Ambos usan /opt/homebrew/opt/node/bin/node, que en la prueba resolvió a
+/opt/homebrew/Cellar/node/26.13.0/bin/node.
+No instalar otro Node ni reiniciar servicios ajenos.
+
+Config del bridge:
+  ~/Library/LaunchAgents/com.lch.cloud-sandbox.computer-use.plist
+Referencia al env existente:
+  /Users/eduardosacahui/Development/Workspaces/
+    cloud-sandbox-mcp-v0.2.0-workstation/.env
+No imprimir, incluir en artefactos ni transferir sus valores secretos.
+El estado final conservó 21 orígenes y ninguna delegación activa.
+
+Hashes:
+- Bridge previo al DOM, preservado:
+  03f3c774d1ef3eaaa22e40dae6de9bc555f1100f597ef442a5dbd6d0b5c4a72a
+- Bridge del ciclo completo exitoso (antes de compatibilidad de descubrimiento):
+  01f8f0eb379d00172f11f3d0bfa867471a2062e46559795d504e9d6d551a5b29
+- Bridge instalado FINAL, con compatibilidad de otros orígenes:
+  76c4982df8e9af30328ddfbe59f910c4e5beb29718b85993a8f3552e171a1d27
+- Demás hashes instalados: RUNTIME-STATE-FOR-HANDOFF.json / installation.json.
+No actualizar recibos para hacer coincidir un archivo ajeno: detenerse en drift.
+
+6. POR QUÉ FALLABAN LOS INTENTOS ANTERIORES
+
+a) Homebrew retiró el ejecutable Node 26.5.0 mientras launchd aún lo referenciaba.
+   Se migraron los dos servicios a la ruta opt estable, se repararon sondas
+   vivas y el usuario habilitó el nuevo ejecutable en Accesibilidad.
+
+b) Captura completa no implica control AX/DOM. Se reparó captura, pero no era
+   prueba de que se pudiera editar el compositor.
+
+c) En Teams real AXSetValue y AXSelectedText fueron aceptados sin cambiar texto.
+   Se descartaron como solución del compositor. La ruta process_unicode sigue
+   limitada por el PID compartido entre ventanas Edge: no sustituye DOM seguro
+   cuando el usuario trabaja en otra ventana de ese mismo proceso.
+
+d) El primer DOM execCommand produjo input confiable, pero CKEditor descartó el
+   cambio; el compositor siguió vacío y la recarga también quedó vacía.
+   No se aceptó dispatched=true como guardado.
+
+e) Teams usa CKEditor 5. Se observó data-tid=ckeditor y ckeditorInstance real.
+   La solución usa la API documentada:
+     editableElement.ckeditorInstance.setData(escapedPlainTextAsParagraph)
+   Comprueba raíz exacta, readonly, nodo, URL completa, título y huella actual.
+   No llama focus en la ruta CKEditor, ni escribe textContent como sustituto.
+   Valores se devuelven solo como vacío o SHA256/longitud. No permite sustituir
+   un compositor rico no vacío por otro texto no vacío.
+
+f) El bridge inicialmente interceptaba todo descubrimiento Edge para Teams.
+   Se corrigió para conservar otros orígenes. Ver sección siguiente.
+
+7. CÓMO USAR LAS HERRAMIENTAS SIN CONFUNDIR PROVEEDORES
+
+No se añadieron herramientas públicas ni se reemplazó el controlador.
+Usar browser_tabs / browser_inspect / browser_action existentes.
+
+browser_runtime_status puede mostrar sus proveedores CDP desconectados y,
+simultáneamente, extension_dom.connected=true. Esto es válido: DOM no usa CDP.
+
+Descubrir el chat propio por título:
+  browser_tabs(browser="edge", title="Eduardo Sacahui (You)", exact=false)
+Si devuelve provider=extension_dom, usar su tab_ref real y revisión fresca.
+No inventar window_index/tab_index nativos para ese ref.
+Inspeccionar y elegir exactamente role=textbox, name="Type a message".
+El control anuncia fill_backend=ckeditor5_model.
+
+Para mutar:
+- grant Edge propio mediante computer_use_session_begin;
+- preflight con capacidades realmente observadas y evidencia de autorización;
+- browser_action con request_id único, revisión actual y locator exacto;
+- leer efecto independientemente, verificar persistencia tras recarga;
+- no reintentar una mutación incierta ni cambiar a clic/teclado nativo;
+- terminar el grant.
+La política de delegación existente devuelve unlimited_actions=true; no se cambió
+esa configuración en este trabajo. El tiempo/scope siguen siendo delegados.
+
+Descubrimiento general sin título puede devolver provider=mixed y
+semantic_available=false global, porque otras pestañas son nativas.
+Cada fila identifica su provider y semantic_available. Elegir por fila.
+Solo las pestañas DOM tienen su tab_ref DOM. El resto conserva native_target
+y, donde existe, la capacidad AX de fondo separada. Nunca llamarlas DOM.
+
+Verificado en Mac tras el ajuste final:
+- Descubrimiento general: 145 filas, 1 DOM Toyota + 144 nativas.
+- Consulta DTI-14949: 1 fila nativa; no se afirmó semántica DOM para Jira.
+- Se excluyen alternativas Teams nativas de otros perfiles: no usar una cuenta
+  diferente cuando la conexión DOM aprobada falla.
+
+La recarga es una ruta HTTP interna protegida /v2/browser/reload, no una nueva
+herramienta pública del catálogo actual. Se usó desde Desktop con el mismo grant
+para la prueba autorizada. Un agente solo Linux no debe inventar acceso Mac ni
+extraer secretos para imitarla. Coordinar recarga por un canal ya autorizado.
+
+8. EVIDENCIA Y PRUEBAS
+
+Marcador real, 33 caracteres:
+  Sandbox V3 DOM test 20261029 2010
+SHA256:
+  b9c8737d81fbeafdf340cfd50273772d49cf841a214e779449a21be595c10167
+
+La huella coincidió antes/después de recargar. Tras limpiar: kind=empty.
+Los controles de cuenta/chat se comprobaron con lecturas independientes.
+El foreground se observó como com.docker.docker antes, durante y después.
+No atribuir los preparativos de CUA de instalación al backend de Sandbox.
+Las escrituras del ciclo probado sí fueron llamadas reales del plugin.
+
+Pruebas Linux aisladas:
+- Extensión real + Native Messaging real + Unix privado + bridge HTTP +
+  herramientas MCP existentes.
+- Perfil/origen/grant/revisión/nodo/URL duplicados o inválidos rechazados.
+- No replay tras incertidumbre ni reconexión.
+- Reinicio de broker: host reconecta, refs viejos inválidos, ninguna mutación
+  se repite.
+- CKEditor genuino 49.0.1 de npm, sin clave comercial ni API de IA.
+  Bundle SHA256 d00faf38df0532180459affb6a4b150e822a96294806456357e1d344b787fa87.
+  El CDN tenía un canal de licencia diferente: no se eludió; se usó la
+  distribución npm apropiada del fixture GPL.
+- Edición del modelo con texto escapado, recarga, persistencia y limpieza.
+- Compatibilidad de otros orígenes y exclusión de Teams de otro perfil,
+  incluso al desconectar DOM.
+
+Comandos repo:
+  npm run verify:v2
+  npm run test:browser:dom:ckeditor
+  npm run test:browser:policy
+  npm run test:browser:reinforcement
+  project_verify con lint/typecheck/test/build.
+Los resultados finales del commit de compatibilidad van en sus logs.
+Dependencias productivas: 2 high + 3 moderate preexistentes; no se resolvieron
+en este alcance. No declarar production GO ni validar apps no probadas.
+
+9. RECUPERACIÓN DE PESTAÑA DORMIDA: WIP NO INSTALADO
+
+Se preservó una exploración de recuperación; se retiró del árbol entregable
+para no mezclar código instalado y una prueba fallida.
+Artefactos: handoff-technical/UNINSTALLED-WIP-* y FROZEN-RECOVERY-AND-COMPAT-WIP.patch.
+NO aplicar el patch completo: incluye cambios de compatibilidad ya presentes.
+
+Idea explorada:
+- Exponer frozen/discarded desde chrome.tabs.
+- Inspección de pestaña dormida: solo si su ventana NO está enfocada, seleccionar
+  temporalmente esa pestaña mediante tabs.update(active=true), sin windows.update.
+- Restaurar la pestaña anterior únicamente si la ventana sigue sin foco y el
+  usuario no cambió la selección.
+- No despertar/reintentar mutaciones; exigir inspección fresca.
+- Si el usuario usa esa misma ventana, bloquear con motivo concreto.
+
+NO se demostró:
+- Que el fallo real más reciente sea efectivamente frozen y no otro timeout.
+- Que seleccionar/restaurar resuelva el caso en Edge Mac.
+- Que conserve el foco en carreras con actividad del usuario.
+- Que los metadatos de restauración sean correctos en todas las salidas.
+
+El fixture headless falló ANTES de congelar:
+tras crear una segunda ventana focused=true, la primera seguía focused=true.
+No cuenta como prueba de recuperación. Xvfb está instalado; openbox no se halló.
+No hay tabs.update ni código de despertar instalado en el Mac.
+No se cambió Sleeping Tabs, ninguna política ni lista de exclusión de sitios.
+
+10. SIGUIENTE TRABAJO RECOMENDADO
+
+Primero leer RUNTIME-STATE-FOR-HANDOFF.json y las limitaciones; comprobar si la
+extensión sigue conectada y que no existe grant ajeno. No empezar enviando texto.
+
+A. Obtener metadatos frescos de lifecycle del target sin modificarlo.
+   Distinguir frozen, discarded, renderer/content-script sin respuesta y pérdida
+   del canal. Connected del broker no prueba editor listo.
+B. Reproducir primero en Linux con ventana real aislada y gestor de ventanas,
+   manteniendo negativos de foco/selección/otros perfiles.
+C. Evaluar con el usuario el costo de conservar la extensión. Si se mantiene,
+   cerrar la recuperación de inactividad y la prueba de no interferencia.
+   No evitar el timeout con audio falso, llamadas, debugger o cambios de política.
+D. Si se busca eliminarla, investigar una alternativa SIN prometer paridad:
+   - API oficial con cuenta Toyota y soporte real de borradores de Teams.
+     El conector histórico era LCH; revalidar identidad y capacidades. No
+     convertir un requisito de borrador en envío de chat.
+   - Automatización soportada por Edge/macOS para ejecución por pestaña.
+     No está validada aquí. Si exige habilitar JavaScript desde Apple Events
+     u otro acceso nuevo, necesita revisión/consentimiento específico.
+   - AX nativo existente sirve como observación/navegación limitada; no afirmar
+     que su setter guarda este CKEditor, pues la prueba demostró lo contrario.
+No copiar cookies ni cambiar a Chrome para simular la sesión Toyota.
+
+No hay agente nuevo creado ni mensaje nuevo enviado al chat cloud original.
+Este último NO ejecutó independientemente la prueba. Chat original de referencia:
+https://chatgpt.com/g/g-p-6ae2a7014208819187cf776b78026a23-tickets-toyota/c/6ae2a7d4-7d14-83e8-aef5-996209692c59
+
+11. PAQUETE, REVERSIÓN Y UBICACIÓN DEL HANDOFF
+
+Directorio Mac:
+  /Users/eduardosacahui/Downloads/Toyota-Sandbox-DOM-20261029/
+Handoff local:
+  TECHNICAL-HANDOFF.txt
+Estado vivo final:
+  RUNTIME-STATE-FOR-HANDOFF.json
+Prueba histórica:
+  LIVE-RESULT.SUCCESSFUL-RUN-201bf6a.json
+Paquete que corresponde al bridge final:
+  v0.1.1-compat/
+No usar el instalador del paquete antiguo 0.1.0 o 0.1.1 para el nuevo bridge:
+su hash guardado puede rechazarlo correctamente.
+
+Mac, inspección sin mutación:
+  rtk proxy /opt/homebrew/opt/node/bin/node \
+    "/Users/eduardosacahui/Downloads/Toyota-Sandbox-DOM-20261029/v0.1.1-compat/install-on-mac.mjs" --inspect
+
+Reversión SOLO si el usuario decide retirar la solución:
+  mismo comando con --rollback
+Exige ningún grant activo, bridge y archivos propios sin cambios y backup válido.
+Restaura bridge previo y retira solo archivos conocidos; recarga solo el bridge.
+Después descargar/eliminar la extensión en Toyota y devolver Developer Mode a
+su estado previo si corresponde. No quitar la concesión Node que usan los dos
+servicios salvo nueva indicación. No reiniciar Edge, Docker, AX ni el controlador.
+No ejecutar rollback solamente para comprobarlo: la simulación ya está probada.
+
+Equivalente compartido Linux:
+  /workspace/_shared/evidence/toyota-sandbox-drafts-20261028/handoff-technical/
+Releases:
+  /workspace/_shared/releases/
+
+Para el nuevo agente:
+"Lee TECHNICAL-HANDOFF.txt y RUNTIME-STATE-FOR-HANDOFF.json. Continúa desde la
+aceptación parcial: flujo Toyota real probado, timeout después de inactividad
+pendiente. Prioriza investigar una solución sin extensión según la preferencia
+del usuario. No envíes Teams/Jira ni modifiques los borradores existentes."
