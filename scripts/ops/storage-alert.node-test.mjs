@@ -1,5 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {classifyCapacity,captureCapacity} from './storage-alert.mjs';
 
 test('critical when either free space or utilization exceeds safe thresholds',()=>{
@@ -19,9 +22,17 @@ test('capacity input validation is fail closed',()=>{
   }
 });
 test('workspace and shared-auth same mount are counted once, without mutation',async()=>{
-  const data=await captureCapacity();
-  assert.equal(data.read_only,true);
-  assert.equal(data.automatic_cleanup,false);
-  assert(data.filesystems.length>=1 && data.filesystems.length<=2);
-  assert(data.filesystems[0].available_gib>=0);
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'capacity-readonly-'));
+  try{
+    const workspace=path.join(root,'workspace'),auth=path.join(root,'shared-auth');
+    await fs.mkdir(workspace);await fs.mkdir(auth);
+    await fs.writeFile(path.join(workspace,'preserved'),'fixture');
+    const data=await captureCapacity([workspace,auth]);
+    assert.equal(data.read_only,true);
+    assert.equal(data.automatic_cleanup,false);
+    assert.equal(data.filesystems.length,1);
+    assert(data.filesystems[0].available_gib>=0);
+    assert.equal(await fs.readFile(path.join(workspace,'preserved'),'utf8'),'fixture');
+    assert.deepEqual(await fs.readdir(auth),[]);
+  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
