@@ -46,3 +46,6 @@ Las pruebas Linux no validan permisos ni experiencia gráfica macOS. Consultar D
 
 
 El paquete incluye portal/ con el splash verde animado y un whoosh original de 640ms. Instalarlo al terminar el cambio del bridge con node portal/install-glass-on-mac.mjs --install. El sonido respeta el mute del sistema y puede desactivarse con --silent o SANDBOX_PORTAL_SOUND=0 en el proceso. El cambio visual solo sustituye el ejecutable ux/bridge-toast, con respaldo y --rollback.
+
+
+La promoción también protege los jobs existentes host-automation/runtime.sh y watchdog.sh: comprueba propiedad y formato conocido, respalda y sustituye únicamente la selección Compose del controlador por la recuperación del contenedor canónico cloud-sandbox-mcp. Conserva el inicio sin foco de Docker y la supervisión de dev-main. Así un respaldo retenido no se selecciona para sustituir automáticamente al controlador actualizado. No ejecutar manualmente un Compose histórico contra esos respaldos.

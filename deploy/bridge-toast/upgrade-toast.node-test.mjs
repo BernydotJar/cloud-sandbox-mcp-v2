@@ -11,13 +11,13 @@ import {upgradeToastBridgeSource,upgradeToastEnvSource,TOAST_MARKER} from './upg
 import * as requireTrustedMigrator from './upgrade-trusted-notice.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
-const releases='/shared-auth/deployment/handoff/cloud-sandbox-computer-use';
+const releases=path.join(here,'fixtures');
 const variations=[
-  ['per-browser','edge-playwright-75d5a19'],
-  ['scalar','browser-native-first-47a9513']
+  ['per-browser','edge-playwright-bridge.mjs.fixture'],
+  ['scalar','native-first-bridge.mjs.fixture']
 ];
 for(const [variant,name] of variations) {
-  const file=path.join(releases,name,'bridge.mjs');
+  const file=path.join(releases,name);
   test('native glass toast migrates existing '+variant+' Mac Bridge without deleting code',{
     skip:!fs.existsSync(file)
   },()=>{
@@ -55,9 +55,9 @@ test('toast reports an incompatible source instead of writing a partial patch',(
 });
 
 test('toast is emitted once after persistent Chrome discovery and never blocks actions',{
-  skip:!fs.existsSync(path.join(releases,'edge-playwright-75d5a19','bridge.mjs'))
+  skip:!fs.existsSync(path.join(releases,'edge-playwright-bridge.mjs.fixture'))
 },async()=>{
-  const source=fs.readFileSync(path.join(releases,'edge-playwright-75d5a19','bridge.mjs'),'utf8');
+  const source=fs.readFileSync(path.join(releases,'edge-playwright-bridge.mjs.fixture'),'utf8');
   const patch=upgradeToastBridgeSource(source);
   const original="result=await runtime.discover(input);";
   const count=patch.source.split(original).length-1;
@@ -177,7 +177,7 @@ test('delegated Edu notification is 20 seconds and dismissible without ending se
 
 test('trusted notice patch supports installed per-browser and legacy scalar routing',()=>{
   const source=fs.readFileSync(
-    path.join(releases,'edge-playwright-75d5a19','bridge.mjs'),'utf8');
+    path.join(releases,'edge-playwright-bridge.mjs.fixture'),'utf8');
   const {upgradeTrustedNoticeBridgeSource,upgradeTrustedNoticeEnvSource}=
     requireTrustedMigrator;
   const patch=upgradeTrustedNoticeBridgeSource(source);

@@ -18,7 +18,7 @@ export function createSpec(original,image){
  const networks=original.NetworkSettings.Networks;
  const endpoints={};
  for(const [name,n] of Object.entries(networks)){
-  if(n.IPAMConfig||n.Links)throw Error('STATIC_OR_LINKED_NETWORK_REQUIRES_REVIEW');
+  if(Object.values(n.IPAMConfig||{}).some(v=>Array.isArray(v)?v.length>0:typeof v==='string'?v.length>0:v!=null)||n.Links?.length)throw Error('STATIC_OR_LINKED_NETWORK_REQUIRES_REVIEW');
   endpoints[name]={Aliases:n.Aliases,DriverOpts:n.DriverOpts,GwPriority:n.GwPriority??0};
  }
  return {...structuredClone(original.Config),Image:image,
@@ -35,6 +35,21 @@ export function verifyParity(original,current,image){
            original.Mounts.map(m=>[m.Type,m.Source,m.Destination,m.RW]).sort())||
     !equal(Object.keys(current.NetworkSettings.Networks).sort(),Object.keys(original.NetworkSettings.Networks).sort()))
   throw Error('CONTROLLER_PARITY_FAILED');
+}
+export function guardCanonicalController(source,kind){
+ if(source.includes('TASK_SCOPED_CANONICAL_CONTROLLER_V1'))return source;
+ const begin=source.indexOf('if [ -d "$PROJECT_DIR" ]; then');
+ const end=kind==='runtime.sh'?source.indexOf('docker start   "$WORKSTATION"',begin):source.indexOf('WORKSTATION_RUNNING=',begin);
+ if(begin<0||end<begin||!source.slice(begin,end).includes('docker compose'))throw Error('UNKNOWN_HOST_SUPERVISION_SOURCE');
+ const guard=`# TASK_SCOPED_CANONICAL_CONTROLLER_V1
+# Reuse the named controller; never recreate from a historical Compose image.
+MCP_RUNNING="$(docker inspect --format '{{.State.Running}}' cloud-sandbox-mcp 2>/dev/null || true)"
+if [ "$MCP_RUNNING" != "true" ]; then
+  docker start cloud-sandbox-mcp >/dev/null 2>&1 || true
+fi
+
+`;
+ return source.slice(0,begin)+guard+source.slice(end);
 }
 function engine(socketPath,method,route,body){
  return new Promise((resolve,reject)=>{
@@ -78,6 +93,20 @@ async function main(){
  const suffix=Date.now().toString(),backup='cloud-sandbox-mcp-before-task-'+suffix;
  const journal=path.join(os.homedir(),'Library/Application Support/LCH/CloudSandboxBackups','controller-'+suffix);
  fs.mkdirSync(journal,{recursive:true,mode:0o700});
+ // The old host jobs used Compose discovery, which can select a retained backup.
+ // Keep their existing Docker start/focus behavior and change only controller ownership.
+ for(const name of ['runtime.sh','watchdog.sh']){
+  const file=path.join(os.homedir(),'.local/share/cloud-sandbox/host-automation',name);
+  if(!fs.existsSync(file))continue;
+  const stat=fs.lstatSync(file);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==process.getuid()||(stat.mode&0o022))throw Error('UNSAFE_SUPERVISION_FILE');
+  const before=fs.readFileSync(file,'utf8'),after=guardCanonicalController(before,name);
+  if(before!==after){
+   fs.writeFileSync(path.join(journal,name+'.previous'),before,{mode:0o600,flag:'wx'});
+   const temp=file+'.task-portal-'+process.pid;
+   fs.writeFileSync(temp,after,{mode:stat.mode&0o777,flag:'wx'});fs.renameSync(temp,file);
+  }
+ }
  let created,renamed=false,stopped=false;
  const health=async()=>{
   for(let i=0;i<30;i++){
