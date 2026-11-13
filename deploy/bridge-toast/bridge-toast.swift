@@ -218,7 +218,10 @@ panel.hidesOnDeactivate = false
 panel.animationBehavior = .none
 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 panel.isReleasedWhenClosed = false
-panel.appearance = NSAppearance(named: .darkAqua)
+// Follow the system appearance. The optional override is only for visual QA.
+if let index = arguments.firstIndex(of: "--preview-appearance"), index + 1 < arguments.count {
+    panel.appearance = NSAppearance(named: arguments[index + 1] == "dark" ? .darkAqua : .aqua)
+}
 
 let glass = NSView(frame: NSRect(x: 0, y: 0, width: PortalSplash.width, height: height))
 glass.wantsLayer = true
@@ -226,8 +229,8 @@ glass.wantsLayer = true
 if #available(macOS 26.0, *) {
     let liquid = NSGlassEffectView(frame: glass.bounds)
     liquid.cornerRadius = 26
-    liquid.style = .clear
-    liquid.tintColor = NSColor(calibratedRed: 0.025, green: 0.05, blue: 0.04, alpha: 0.90)
+    liquid.style = .regular
+    liquid.tintColor = nil
     liquid.contentView = glass
     panel.contentView = liquid
     print("[Portal View] MATERIAL=NATIVE_LIQUID_GLASS")
@@ -255,14 +258,6 @@ fallback.addSubview(glass)
 panel.contentView = fallback
 print("[Portal View] MATERIAL=LEGACY_SDK")
 #endif
-let shade = CAGradientLayer()
-shade.frame = glass.bounds
-shade.colors = [NSColor(calibratedRed: 0.015, green: 0.055, blue: 0.035, alpha: 0.90).cgColor,
-                NSColor(calibratedRed: 0.025, green: 0.032, blue: 0.045, alpha: 0.92).cgColor]
-shade.startPoint = CGPoint(x: 0, y: 0.5)
-shade.endPoint = CGPoint(x: 1, y: 0.5)
-shade.cornerRadius = 26
-glass.layer?.addSublayer(shade)
 private let portal = PortalView(frame: NSRect(x: 6, y: height - 154, width: 146, height: 146))
 glass.addSubview(portal)
 let contentX: CGFloat = 152
@@ -276,33 +271,33 @@ func label(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFlo
     return field
 }
 let brand = label("Edu!  ·  SANDBOX V3", x: contentX, y: height - 32, width: 285, height: 15,
-                  size: 10.5, weight: .semibold, color: NSColor.white.withAlphaComponent(0.58))
+                  size: 10.5, weight: .semibold, color: .secondaryLabelColor)
 glass.addSubview(brand)
 let status = label(alertInfo?.0 ?? (delegated ? "Sesión delegada activa" : "Portal conectado"),
                    x: contentX, y: height - 63, width: 310, height: 25,
-                   size: 18, weight: .semibold, color: .white)
+                   size: 18, weight: .semibold, color: .labelColor)
 glass.addSubview(status)
 // Spanish translation of The Tempest, 4.1: "We are such stuff as dreams are made on."
 // Attribution and the primary text URL are documented in README, not loaded remotely.
 let phrase = NSTextField(wrappingLabelWithString: alertInfo?.1 ?? "«Estamos hechos de la materia de los sueños.»")
 phrase.frame = NSRect(x: contentX, y: height - 111, width: 308, height: 38)
 phrase.font = NSFont(name: "Georgia-Italic", size: 13) ?? .systemFont(ofSize: 13)
-phrase.textColor = NSColor.white.withAlphaComponent(0.87)
+phrase.textColor = .labelColor
 phrase.maximumNumberOfLines = 2
 phrase.isSelectable = false
 glass.addSubview(phrase)
 let attribution = label(alerted ? "ESTADO LOCAL · SANDBOX" : "WILLIAM SHAKESPEARE · LA TEMPESTAD",
                         x: contentX, y: height - 129, width: 315, height: 14,
-                        size: 8.5, weight: .medium, color: NSColor.white.withAlphaComponent(0.46))
+                        size: 8.5, weight: .medium, color: .secondaryLabelColor)
 glass.addSubview(attribution)
 let quip = label("Portal listo. Multiverso intacto.", x: contentX, y: height - 150, width: 315, height: 15,
                  size: 10.5, weight: .regular,
-                 color: NSColor(calibratedRed: 0.70, green: 0.90, blue: 0.59, alpha: 0.9))
+                 color: .secondaryLabelColor)
 if !alerted { glass.addSubview(quip) }
 if delegated {
     let details = label("\(browserName)  ·  \(minutes) min  ·  máx. \(actions) acciones",
                         x: contentX, y: 15, width: 315, height: 16,
-                        size: 10, weight: .medium, color: NSColor.white.withAlphaComponent(0.58))
+                        size: 10, weight: .medium, color: .secondaryLabelColor)
     glass.addSubview(details)
 }
 private final class NoticeDismissal: NSObject {
@@ -319,7 +314,7 @@ if delegated || alerted {
     close.frame = NSRect(x: PortalSplash.width - 36, y: height - 34, width: 20, height: 20)
     close.isBordered = false
     close.font = .systemFont(ofSize: 18, weight: .light)
-    close.contentTintColor = NSColor.white.withAlphaComponent(0.65)
+    close.contentTintColor = .secondaryLabelColor
     close.setAccessibilityLabel("Cerrar aviso")
     close.toolTip = "Cerrar aviso; no revoca la sesión"
     glass.addSubview(close)

@@ -32,3 +32,11 @@ test('portal sound is original, bounded, quiet and optionally silent',()=>{
   assert(swift.includes(contract),contract);
  assert.doesNotMatch(swift,/AVCapture|requestRecordPermission|URLSession/);
 });
+
+test('glass follows system appearance and uses adaptive text without an opaque black plate',()=>{
+ assert(swift.includes('liquid.style = .regular'));
+ assert(swift.includes('liquid.tintColor = nil'));
+ assert(swift.includes('phrase.textColor = .labelColor'));
+ assert(swift.includes('color: .secondaryLabelColor'));
+ assert.doesNotMatch(swift,/let shade = CAGradientLayer|panel.appearance = NSAppearance\(named: .darkAqua\)/);
+});
