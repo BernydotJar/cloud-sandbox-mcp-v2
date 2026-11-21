@@ -15,7 +15,7 @@ RUN apt-get update \
       docker.io docker-compose git gh jq less lsof make openssh-client \
       # docker.io docker-compose-plugin git gh jq less lsof make openssh-client \
       postgresql-client python3 python3-dev python3-pip python3-venv \
-      redis-tools ripgrep shellcheck sudo unzip wget zip \
+      redis-tools ripgrep shellcheck sudo tini unzip wget zip \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable \
     && curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \

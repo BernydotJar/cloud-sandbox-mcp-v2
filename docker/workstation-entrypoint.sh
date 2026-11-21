@@ -29,5 +29,9 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-# Keep the workstation alive while allowing `docker exec` to be the primary shell.
-exec sleep infinity
+# Keep the workstation alive while reaping orphaned child processes.
+# This script begins as PID 1; after starting dockerd, exec tini as PID 1.
+# A raw `sleep infinity` cannot wait() for orphaned Chromium/Node children,
+# causing process-table exhaustion in the shared long-lived workstation.
+# `tini` forwards shutdown signals to sleep and reaps adopted children.
+exec /usr/bin/tini -g -- sleep infinity
