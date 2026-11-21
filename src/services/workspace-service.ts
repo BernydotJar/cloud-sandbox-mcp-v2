@@ -275,8 +275,9 @@ export class WorkspaceService {
     const workspace = await this.store.get(id);
     const targetBranch = branch ?? workspace.resolvedBranch ?? workspace.requestedBranch;
     if (!targetBranch) throw new AppError('Unable to determine branch to push.', 'BRANCH_UNKNOWN');
+    const startedAt = new Date().toISOString();
     const result = await this.hostGit(id, ['push', remote, `HEAD:${targetBranch}`], gitAuthEnvironment(this.cfg.GITHUB_TOKEN));
-    await this.docker.fixOwnership(this.store.hostRepoDir(id), workspace.image);
+    await this.recordExecution(id, 'git_push', `git push ${remote} HEAD:${targetBranch}`, startedAt, result);
     return result;
   }
 
